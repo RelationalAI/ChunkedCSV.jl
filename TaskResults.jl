@@ -1,4 +1,4 @@
-"""TaskResultBuffer accumulates results from each task"""
+"""TaskResultBuffer accumulates results produced by a single task"""
 
 @enum RowStatus::UInt8 NoMissing HasMissing TooFewColumnsError UnknownTypeError ValueParsingError TooManyColumnsError
 

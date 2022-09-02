@@ -30,21 +30,21 @@ foreach(identity, CSV.Chunks(NoopStream(open("tst_4xstr.csv")), types=[String,St
 foreach(identity, CSV.Rows(NoopStream(open("tst_4xstr.csv")), types=[String,String,String,String], reusebuffer=true));
 
 @time collect(CSV.read(NoopStream(open("tst_4xint.csv")), NamedTuple, types=[Int,Int,Int,Int], ntasks=Threads.nthreads()));
-#  0.162314 seconds (9.40 k allocations: 70.777 MiB)
+#  0.060106 seconds (6.25 k allocations: 69.340 MiB)
 @time foreach(identity, CSV.Chunks(NoopStream(open("tst_4xint.csv")), types=[Int,Int,Int,Int], ntasks=Threads.nthreads()));
 #  0.147805 seconds (6.03 k allocations: 69.325 MiB, 1.67% gc time)
 @time foreach(identity, CSV.Rows(NoopStream(open("tst_4xint.csv")), types=[Int,Int,Int,Int], reusebuffer=true));
 #  0.219820 seconds (4.01 M allocations: 99.076 MiB, 4.07% gc time)
 
 @time collect(CSV.read(NoopStream(open("tst_4xdouble.csv")), NamedTuple, types=[Float64, Float64, Float64, Float64], ntasks=Threads.nthreads()));
-#  0.172747 seconds (9.43 k allocations: 70.081 MiB, 1.07% gc time)
+#  0.062281 seconds (6.08 k allocations: 68.631 MiB)
 @time foreach(identity, CSV.Chunks(NoopStream(open("tst_4xdouble.csv")), types=[Float64, Float64, Float64, Float64], ntasks=Threads.nthreads()));
 #  0.151726 seconds (6.04 k allocations: 68.627 MiB, 1.47% gc time)
 @time foreach(identity, CSV.Rows(NoopStream(open("tst_4xdouble.csv")), types=[Float64, Float64, Float64, Float64], reusebuffer=true));
 #  0.196413 seconds (4.01 M allocations: 98.691 MiB, 2.56% gc time)
 
 @time collect(CSV.read(NoopStream(open("tst_4xstr.csv")), NamedTuple, types=[String,String,String,String], ntasks=Threads.nthreads()));
-#  0.324234 seconds (4.01 M allocations: 269.842 MiB)
+#  0.149315 seconds (4.01 M allocations: 268.399 MiB, 18.07% gc time)
 @time foreach(identity, CSV.Chunks(NoopStream(open("tst_4xstr.csv")), types=[String,String,String,String], ntasks=Threads.nthreads()));
 #  0.322632 seconds (4.01 M allocations: 268.610 MiB, 7.57% gc time)
 @time foreach(identity, CSV.Rows(NoopStream(open("tst_4xstr.csv")), types=[String,String,String,String], reusebuffer=true));

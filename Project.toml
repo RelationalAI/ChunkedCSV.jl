@@ -1,0 +1,5 @@
+[deps]
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+Parsers = "69de0a69-1ddd-5017-9359-2bf0b02dc9f0"
+ScanByte = "7b38b023-a4d7-4c5e-8d43-3f3097f304eb"
+TranscodingStreams = "3bb67fe8-82b1-5028-8e26-92a6c54297fa"

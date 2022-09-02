@@ -161,7 +161,7 @@ function _parse_file(name, schema::Vector{DataType}, ::Val{N}, ::Val{M}) where {
                         type = schema[col_idx]
                         if Parsers.eof(code)
                             row_status = TooFewColumnsError
-                            break # move from column parsing (does this need to be a @goto?)
+                            break # from column parsing (does this need to be a @goto?)
                         end
                         if type === Int
                             (;val, tlen, code) = Parsers.xparse(Int, row_bytes, pos, len, options)::Parsers.Result{Int}
@@ -174,11 +174,11 @@ function _parse_file(name, schema::Vector{DataType}, ::Val{N}, ::Val{M}) where {
                             (getindex(result_buf.cols, col_idx)::BufferedVector{Parsers.PosLen})[] = Parsers.PosLen(prev_newline+pos, val.len)
                         else
                             row_status = UnknownTypeError
-                            break # move from column parsing (does this need to be a @goto?)
+                            break # from column parsing (does this need to be a @goto?)
                         end
                         if Parsers.invalid(code)
                             row_status = ValueParsingError
-                            break # move from column parsing (does this need to be a @goto?)
+                            break # from column parsing (does this need to be a @goto?)
                         elseif Parsers.sentinel(code)
                             row_status = HasMissing
                             missing_flags |= 1 << (col_idx - 1)

@@ -113,7 +113,7 @@ function consume!(taks_buf::TaskResultBuffer{N}, row_num::Int, byte_offset::UInt
     #         row += 1
     #     end
     # end
-    @info taks_buf.cols[1].elements[1:10]
+    # @info taks_buf.cols[1].elements[1:10]
     return nothing
 end
 

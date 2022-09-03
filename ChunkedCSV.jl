@@ -2,6 +2,7 @@ using ScanByte
 import Parsers
 using TranscodingStreams # TODO: ditch this
 
+# IDEA: Double-buffering -- for simpler CSVs where parsing time is < lexing time, we could lex the next buffer in parallel with parsing and once we're done parsing the last buffer and lexing the next buffer, we switch the buffers.
 # IDEA: We could make a 48bit PosLen string type (8MB -> 23 bits if we represent 8MB as 0, 2 bits for metadata)
 # IDEA: Instead of having SoA layout in TaskResultBuffer, we could try AoS using Tuples of Refs (this might be more cache friendly?)
 # IDEA: Introduce `unsafe_setindex!` to buffered vectors and ensure capacity every x iterations without checking it
@@ -212,3 +213,105 @@ end
 
 parse_file(name, schema) = _parse_file(name, schema, Val(length(schema)), Val(_bounding_flag_type(length(schema))))
 
+function _parse_file_doublebuffer(name, schema::Vector{DataType}, ::Val{N}, ::Val{M}) where {N,M}
+    f = NoopStream(open(name, "r"))
+    TranscodingStreams.changemode!(f, :read)
+    buf = Vector{UInt8}(undef, BUFFER_SIZE)
+    buf_next = Vector{UInt8}(undef, BUFFER_SIZE) # double-buffering
+    eols_buf = BufferedVector{UInt32}()
+
+    options = Parsers.Options(openquotechar='"', closequotechar='"', delim=',')
+    result_bufs = [TaskResultBuffer{N}(schema) for _ in 1:Threads.nthreads()] # has to match the number of spawned tasks
+    done = false
+    quoted = false
+    # We always end on a newline when processing a chunk, so we're inserting a dummy variable to
+    # signal that. This works out even for the very first chunk.
+    eols_buf[] = UInt32(0)
+    row_num = 1
+    byte_offset = UInt32(1)
+    bytes_read_in = prepare_buffer!(f, buf, UInt32(0)) # init buffer
+    # TODO: actually detect and parse header, now we only pretend we have done it
+    header = ["a","b","c","d"]
+    @assert N == 4
+    bytes_read_in -= prepare_buffer!(f, buf, UInt32(8)) - UInt32(8) # "read header"
+    # Updates eols_buf with new newlines, byte buffer was updated either from initialization stage or at the end of the loop
+    (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(f, buf, eols_buf, bytes_read_in, quoted)
+    eols_buf_next = BufferedVector{UInt32}(Vector{UInt32}(undef, eols_buf.occupied), 0) # double-buffering
+    while !done
+        eols = eols_buf[]
+        # At most one task per thread (per iteration), fewer if not enough rows to warrant spawning extra tasks
+        task_size = max(5_000, cld(length(eols), Threads.nthreads()))
+        @sync begin
+            for (task_id, task) = enumerate(Iterators.partition(eols, task_size))
+                # TODO: currently, `byte_offset` computation is not correct, it is only used in `consume!`, i.e. not needed for parsing itself
+                @inbounds byte_offset += task[1]
+                Threads.@spawn begin
+                    result_buf = result_bufs[task_id]
+                    empty!(result_buf)
+                    #= @inbounds =# for chunk_row_idx in 2:length(task)
+                        prev_newline = task[chunk_row_idx - 1]
+                        curr_newline = task[chunk_row_idx]
+                        # +1 -1 to exclude delimiters
+                        row_bytes = view($buf, prev_newline+1:curr_newline-1)
+
+                        pos = 1
+                        len = length(row_bytes)
+                        code = Parsers.OK
+                        row_status = NoMissing
+                        missing_flags = zero(M)
+                        for col_idx in 1:N
+                            type = schema[col_idx]
+                            if Parsers.eof(code)
+                                row_status = TooFewColumnsError
+                                break # from column parsing (does this need to be a @goto?)
+                            end
+                            if type === Int
+                                (;val, tlen, code) = Parsers.xparse(Int, row_bytes, pos, len, options)::Parsers.Result{Int}
+                                (getindex(result_buf.cols, col_idx)::BufferedVector{Int})[] = val
+                            elseif type === Float64
+                                (;val, tlen, code) = Parsers.xparse(Float64, row_bytes, pos, len, options)::Parsers.Result{Float64}
+                                (getindex(result_buf.cols, col_idx)::BufferedVector{Float64})[] = val
+                            elseif type === String
+                                (;val, tlen, code) = Parsers.xparse(String, row_bytes, pos, len, options)::Parsers.Result{Parsers.PosLen}
+                                (getindex(result_buf.cols, col_idx)::BufferedVector{Parsers.PosLen})[] = Parsers.PosLen(prev_newline+pos, val.len)
+                            else
+                                row_status = UnknownTypeError
+                                break # from column parsing (does this need to be a @goto?)
+                            end
+                            if Parsers.invalid(code)
+                                row_status = ValueParsingError
+                                break # from column parsing (does this need to be a @goto?)
+                            elseif Parsers.sentinel(code)
+                                row_status = HasMissing
+                                missing_flags |= 1 << (col_idx - 1)
+                            end
+                            pos += tlen
+                        end # for col_idx
+                        if !Parsers.eof(code)
+                            row_status = TooManyColumnsError
+                        end
+                        result_buf.row_statuses[] = row_status
+                        # TODO: should we store missing_flags even when there were no missing values?
+                        !iszero(missing_flags) && (result_buf.missings_flags[] = missing_flags)
+                    end # for row_idx
+                    consume!(result_buf, $row_num, $byte_offset, nothing) # Note we interpolated `row_num` and `byte_offset` to this task!
+                end # @spawn
+                row_num += length(task)
+            end # for (task_id, task)
+            Threads.@spawn begin
+                empty!(eols_buf_next)
+                # We always end on a newline when processing a chunk, so we're inserting a dummy variable to
+                # signal that. This works out even for the very first chunk.
+                eols_buf_next[] = UInt32(0)
+                bytes_read_in = prepare_buffer!(f, buf_next, $last_chunk_newline_at)
+                (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(f, buf_next, eols_buf_next, bytes_read_in, $quoted)
+            end
+        end #@sync
+        byte_offset -= BUFFER_SIZE - bytes_read_in
+        buf, buf_next = buf_next, buf
+        eols_buf, eols_buf_next = eols_buf_next, eols_buf
+    end # while !done
+    close(f)
+end
+
+parse_file_doublebuffer(name, schema) = _parse_file_doublebuffer(name, schema, Val(length(schema)), Val(_bounding_flag_type(length(schema))))

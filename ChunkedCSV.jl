@@ -6,13 +6,11 @@ using TranscodingStreams # TODO: ditch this
 # IDEA: Instead of having SoA layout in TaskResultBuffer, we could try AoS using Tuples of Refs (this might be more cache friendly?)
 # IDEA: Introduce `unsafe_setindex!` to buffered vectors and ensure capacity every x iterations without checking it
 
-# TODO: Instead of `GLOBAL_BYTE_BUFFER`, create a local buffer in `parse_file`
 # TODO: Use information from initial
 
 # In bytes. This absolutely has to be larger than any single row.
 # Much safer if any two consecutive rows are smaller than this threshold.
-const BUFFER_SIZE = UInt(8 * 1024 * 1024)  # 8 MiB
-const GLOBAL_BYTE_BUFFER = Vector{UInt8}(undef, BUFFER_SIZE)
+const BUFFER_SIZE = UInt32(8 * 1024 * 1024)  # 8 MiB
 
 include("BufferedVectors.jl")
 include("TaskResults.jl")
@@ -20,15 +18,15 @@ include("TaskResults.jl")
 function prepare_buffer!(f::NoopStream, buf::Vector{UInt8}, last_chunk_newline_at)
     ptr = pointer(buf)
     if last_chunk_newline_at == 0 # this is the first time we saw the buffer, we'll just fill it up
-        bytes_read_in = UInt(Base.readbytes!(f.stream, buf, BUFFER_SIZE; all = true))
+        bytes_read_in = UInt32(Base.readbytes!(f.stream, buf, BUFFER_SIZE; all = true))
     elseif last_chunk_newline_at < BUFFER_SIZE
         # We'll keep the bytes that are past the last newline, shifting them to the left
         # and refill the rest of the buffer.
         unsafe_copyto!(ptr, ptr + last_chunk_newline_at, BUFFER_SIZE - last_chunk_newline_at)
-        bytes_read_in = @inbounds UInt(Base.readbytes!(f.stream, @view(buf[BUFFER_SIZE - last_chunk_newline_at:end]), last_chunk_newline_at; all = true))
+        bytes_read_in = @inbounds UInt32(Base.readbytes!(f.stream, @view(buf[BUFFER_SIZE - last_chunk_newline_at:end]), last_chunk_newline_at; all = true))
     else
         # Last chunk was consumed entirely
-        bytes_read_in = UInt(Base.readbytes!(f.stream, buf, BUFFER_SIZE; all = true))
+        bytes_read_in = UInt32(Base.readbytes!(f.stream, buf, BUFFER_SIZE; all = true))
     end
     TranscodingStreams.supplied!(f.state.buffer1, bytes_read_in)
     return bytes_read_in
@@ -41,15 +39,18 @@ end
 # TODO: '\n\r' currently produces 2 newlines...
 const BYTESET = Val(ByteSet((UInt8('"'),UInt8('\n'),UInt8('\r'))))
 findmark(ptr, bytes_to_search) = UInt(something(memchr(ptr, bytes_to_search, BYTESET), 0))
-function lex_newlines_in_buffer(f::NoopStream, eols::BufferedVector{UInt}, bytes_to_search::UInt, quoted::Bool=false)
-    buf = GLOBAL_BYTE_BUFFER
+function lex_newlines_in_buffer(f::NoopStream, buf, eols::BufferedVector{UInt32}, bytes_to_search::UInt32, quoted::Bool=false)
     ptr = pointer(buf) # We never resize the buffer, the array shouldn't need to relocate
     orig_bytes_to_search = bytes_to_search
+    # ScanByte.memchr only accepts UInt for the `len` argument, but we want to store our data in UInt32,
+    # so we do a little conversion dance here to avoid converting the input on every iteration.
+    _orig_bytes_to_search = UInt(orig_bytes_to_search)
+    _bytes_to_search = UInt(bytes_to_search)
 
-    offset = UInt(0)
+    offset = UInt32(0)
     while bytes_to_search > 0
-        pos_to_check = findmark(ptr, bytes_to_search)
-        offset = UInt(-bytes_to_search + orig_bytes_to_search + pos_to_check)::UInt
+        pos_to_check = findmark(ptr, _bytes_to_search)
+        offset = UInt32(-_bytes_to_search + _orig_bytes_to_search + pos_to_check)
         if pos_to_check == 0
             isempty(eols) && !eof(f.stream) && error("CSV parse job failed on lexing newlines. There was no linebreak in the entire buffer of $bytes_to_search bytes.")
             break
@@ -69,7 +70,7 @@ function lex_newlines_in_buffer(f::NoopStream, eols::BufferedVector{UInt}, bytes
                 end
             end
             ptr += pos_to_check
-            bytes_to_search -= pos_to_check
+            _bytes_to_search -= pos_to_check
         end
     end
 
@@ -89,15 +90,15 @@ end
 abstract type AbstractContext end
 # This is where the parsed results get consumed.
 # Users could dispatch on AbstractContext. Currently WIP sketch of what will be needed for RAI.
-function consume!(buf::TaskResultBuffer{N}, row_num::Int, byte_offset::UInt, context::Union{AbstractContext,Nothing}=nothing) where {N}
+function consume!(taks_buf::TaskResultBuffer{N}, row_num::Int, byte_offset::UInt32, context::Union{AbstractContext,Nothing}=nothing) where {N}
     # # errsink = context.errsink
     # # eols = context.eols
     # @inbounds for c in 1:N
     #     row = row_num
-    #     col = buf.cols[c].elements
+    #     col = taks_buf.cols[c].elements
     #     # sink = context.sinks[c]
-    #     for r in 1:length(buf.row_statuses)
-    #         row_status = buf.row_statuses.elements[r]
+    #     for r in 1:length(taks_buf.row_statuses)
+    #         row_status = taks_buf.row_statuses.elements[r]
     #         val = col[r]
     #         if row_status === NoMissing
     #         elseif row_status === HasMissing
@@ -111,31 +112,33 @@ function consume!(buf::TaskResultBuffer{N}, row_num::Int, byte_offset::UInt, con
     #         row += 1
     #     end
     # end
+    @info taks_buf.cols[1].elements[1:10]
     return nothing
 end
 
 function _parse_file(name, schema::Vector{DataType}, ::Val{N}, ::Val{M}) where {N,M}
     f = NoopStream(open(name, "r"))
     TranscodingStreams.changemode!(f, :read)
+    buf = Vector{UInt8}(undef, BUFFER_SIZE)
 
     options = Parsers.Options(openquotechar='"', closequotechar='"', delim=',')
     result_bufs = [TaskResultBuffer{N}(schema) for _ in 1:Threads.nthreads()] # has to match the number of spawned tasks
     done = false
     quoted = false
-    eols_buf = BufferedVector{UInt}() # end-of-line buffer
+    eols_buf = BufferedVector{UInt32}() # end-of-line buffer
     # We always end on a newline when processing a chunk, so we're inserting a dummy variable to
     # signal that. This works out even for the very first chunk.
-    eols_buf[] = UInt(0)
+    eols_buf[] = UInt32(0)
     row_num = 1
-    byte_offset = UInt(1)
-    bytes_read_in = prepare_buffer!(f, GLOBAL_BYTE_BUFFER, UInt(0)) # init buffer
+    byte_offset = UInt32(1)
+    bytes_read_in = prepare_buffer!(f, buf, UInt32(0)) # init buffer
     # TODO: actually detect and parse header, now we only pretend we have done it
     header = ["a","b","c","d"]
     @assert N == 4
-    bytes_read_in -= prepare_buffer!(f, GLOBAL_BYTE_BUFFER, UInt(8)) - UInt(8) # "read header"
+    bytes_read_in -= prepare_buffer!(f, buf, UInt32(8)) - UInt32(8) # "read header"
     while !done
         # Updates eols_buf with new newlines, byte buffer was updated either from initialization stage or at the end of the loop
-        (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(f, eols_buf, bytes_read_in, quoted)
+        (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(f, buf, eols_buf, bytes_read_in, quoted)
         eols = eols_buf[]
 
         # At most one task per thread (per iteration), fewer if not enough rows to warrant spawning extra tasks
@@ -150,7 +153,7 @@ function _parse_file(name, schema::Vector{DataType}, ::Val{N}, ::Val{M}) where {
                     prev_newline = task[chunk_row_idx - 1]
                     curr_newline = task[chunk_row_idx]
                     # +1 -1 to exclude delimiters
-                    row_bytes = @view GLOBAL_BYTE_BUFFER[prev_newline+1:curr_newline-1]
+                    row_bytes = @view buf[prev_newline+1:curr_newline-1]
 
                     pos = 1
                     len = length(row_bytes)
@@ -199,8 +202,8 @@ function _parse_file(name, schema::Vector{DataType}, ::Val{N}, ::Val{M}) where {
         empty!(eols_buf)
         # We always end on a newline when processing a chunk, so we're inserting a dummy variable to
         # signal that. This works out even for the very first chunk.
-        eols_buf[] = UInt(0)
-        bytes_read_in = prepare_buffer!(f, GLOBAL_BYTE_BUFFER, last_chunk_newline_at)
+        eols_buf[] = UInt32(0)
+        bytes_read_in = prepare_buffer!(f, buf, last_chunk_newline_at)
         byte_offset -= BUFFER_SIZE - bytes_read_in
     end # while !done
     close(f)

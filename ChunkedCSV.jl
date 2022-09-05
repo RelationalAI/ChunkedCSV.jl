@@ -15,7 +15,7 @@ const BUFFER_SIZE = UInt32(8 * 1024 * 1024)  # 8 MiB
 include("BufferedVectors.jl")
 include("TaskResults.jl")
 
-struct ParsingBuffers
+struct ParsingContext
     schema::Vector{DataType}
     bytes::Vector{UInt8}
     eols::BufferedVector{UInt32}
@@ -48,12 +48,12 @@ end
 #             and newline characters.
 # TODO: '\n\r' currently produces 2 newlines...
 findmark(ptr, bytes_to_search, ::Val{B}) where B = UInt(something(memchr(ptr, bytes_to_search, B), 0))
-function lex_newlines_in_buffer(io::IO, parsing_buffs::ParsingBuffers, options, byteset::Val{B}, bytes_to_search::UInt32, quoted::Bool=false) where B
-    ptr = pointer(parsing_buffs.bytes) # We never resize the buffer, the array shouldn't need to relocate
+function lex_newlines_in_buffer(io::IO, parsing_ctxfs::ParsingContext, options, byteset::Val{B}, bytes_to_search::UInt32, quoted::Bool=false) where B
+    ptr = pointer(parsing_ctxfs.bytes) # We never resize the buffer, the array shouldn't need to relocate
     e, q = options.e, options.oq
     orig_bytes_to_search = bytes_to_search
-    buf = parsing_buffs.bytes
-    eols = parsing_buffs.eols
+    buf = parsing_ctxfs.bytes
+    eols = parsing_ctxfs.eols
     # ScanByte.memchr only accepts UInt for the `len` argument, but we want to store our data in UInt32,
     # so we do a little conversion dance here to avoid converting the input on every iteration.
     _orig_bytes_to_search = UInt(orig_bytes_to_search)
@@ -99,21 +99,21 @@ function lex_newlines_in_buffer(io::IO, parsing_buffs::ParsingBuffers, options, 
     end
     return last_chunk_newline_at, quoted, done
 end
-function lex_newlines_in_buffer(io::NoopStream, parsing_buffs::ParsingBuffers, options::Parsers.Options, byteset::Val{B}, bytes_to_search::UInt32, quoted::Bool=false) where B
-    return lex_newlines_in_buffer(io.stream, parsing_buffs, options, byteset, bytes_to_search, quoted)
+function lex_newlines_in_buffer(io::NoopStream, parsing_ctxfs::ParsingContext, options::Parsers.Options, byteset::Val{B}, bytes_to_search::UInt32, quoted::Bool=false) where B
+    return lex_newlines_in_buffer(io.stream, parsing_ctxfs, options, byteset, bytes_to_search, quoted)
 end
 
 
 abstract type AbstractParsingContext end
 struct DebugContext <: AbstractParsingContext; end
-consume!(taks_buf::TaskResultBuffer{N}, parsing_bufs::ParsingBuffers, row_num::UInt32, context::DebugContext) where {N} = nothing
+consume!(taks_buf::TaskResultBuffer{N}, parsing_ctxs::ParsingContext, row_num::UInt32, context::DebugContext) where {N} = nothing
 
 
 macro _parse_file_setup()
     esc(quote
         # We always end on a newline when processing a chunk, so we're inserting a dummy variable to
         # signal that. This works out even for the very first chunk.
-        parsing_bufs = ParsingBuffers(
+        parsing_ctxs = ParsingContext(
             schema,
             Vector{UInt8}(undef, BUFFER_SIZE),
             BufferedVector{UInt32}([UInt32(0)], 1),
@@ -122,11 +122,11 @@ macro _parse_file_setup()
         done = false
         quoted = false
         row_num = UInt32(1)
-        bytes_read_in = prepare_buffer!(io, parsing_bufs.bytes, UInt32(0)) # init buffer
+        bytes_read_in = prepare_buffer!(io, parsing_ctxs.bytes, UInt32(0)) # init buffer
         # TODO: actually detect and parse header, now we only pretend we have done it
         header = ["a","b","c","d"]
         @assert N == 4
-        bytes_read_in -= prepare_buffer!(io, parsing_bufs.bytes, UInt32(8)) - UInt32(8) # "read header"
+        bytes_read_in -= prepare_buffer!(io, parsing_ctxs.bytes, UInt32(8)) - UInt32(8) # "read header"
     end)
 end
 
@@ -188,23 +188,23 @@ function _parse_file(io, schema::Vector{DataType}, ctx::AbstractParsingContext, 
     @_parse_file_setup
     while !done
         # Updates eols_buf with new newlines, byte buffer was updated either from initialization stage or at the end of the loop
-        (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(io, parsing_bufs, options, byteset, bytes_read_in, quoted)
-        eols = parsing_bufs.eols[]
+        (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(io, parsing_ctxs, options, byteset, bytes_read_in, quoted)
+        eols = parsing_ctxs.eols[]
         # At most one task per thread (per iteration), fewer if not enough rows to warrant spawning extra tasks
         task_size = max(5_000, cld(length(eols), Threads.nthreads()))
         @sync for (task_id, task) = enumerate(Iterators.partition(eols, task_size))
             Threads.@spawn begin
-                buf = $(parsing_bufs.bytes)
+                buf = $(parsing_ctxs.bytes)
                 @_parse_rows_forloop
-                consume!(result_buf, $parsing_bufs, $row_num, ctx) # Note we interpolated `row_num` to this task!
+                consume!(result_buf, $parsing_ctxs, $row_num, ctx) # Note we interpolated `row_num` to this task!
             end # @spawn
             row_num += UInt32(length(task))
         end #@sync
-        empty!(parsing_bufs.eols)
+        empty!(parsing_ctxs.eols)
         # We always end on a newline when processing a chunk, so we're inserting a dummy variable to
         # signal that. This works out even for the very first chunk.
-        push!(parsing_bufs.eols, UInt32(0))
-        bytes_read_in = prepare_buffer!(io, parsing_bufs.bytes, last_chunk_newline_at)
+        push!(parsing_ctxs.eols, UInt32(0))
+        bytes_read_in = prepare_buffer!(io, parsing_ctxs.bytes, last_chunk_newline_at)
     end # while !done
 end
 
@@ -212,36 +212,36 @@ end
 function _parse_file_doublebuffer(io, schema::Vector{DataType}, ctx::AbstractParsingContext, options::Parsers.Options, ::Val{N}, ::Val{M}, byteset::Val{B}) where {N,M,B}
     @_parse_file_setup
     # Updates eols_buf with new newlines, byte buffer was updated either from initialization stage or at the end of the loop
-    (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(io, parsing_bufs, options, byteset, bytes_read_in, quoted)
-    parsing_bufs_next = ParsingBuffers(
+    (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(io, parsing_ctxs, options, byteset, bytes_read_in, quoted)
+    parsing_ctxs_next = ParsingContext(
         schema,
         Vector{UInt8}(undef, BUFFER_SIZE),
-        BufferedVector{UInt32}(Vector{UInt32}(undef, parsing_bufs.eols.occupied), 0),
+        BufferedVector{UInt32}(Vector{UInt32}(undef, parsing_ctxs.eols.occupied), 0),
     )
     while !done
-        eols = parsing_bufs.eols[]
+        eols = parsing_ctxs.eols[]
         # At most one task per thread (per iteration), fewer if not enough rows to warrant spawning extra tasks
         task_size = max(5_000, cld(length(eols), Threads.nthreads()))
         @sync begin
-            parsing_bufs_next.bytes[last_chunk_newline_at:end] .= parsing_bufs_next.bytes[last_chunk_newline_at:end]
+            parsing_ctxs_next.bytes[last_chunk_newline_at:end] .= parsing_ctxs_next.bytes[last_chunk_newline_at:end]
             Threads.@spawn begin
-                empty!(parsing_bufs_next.eols)
-                push!(parsing_bufs_next.eols, UInt32(0))
-                bytes_read_in = prepare_buffer!(io, parsing_bufs_next.bytes, last_chunk_newline_at)
-                (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(io, parsing_bufs_next, options, byteset, bytes_read_in, quoted)
+                empty!(parsing_ctxs_next.eols)
+                push!(parsing_ctxs_next.eols, UInt32(0))
+                bytes_read_in = prepare_buffer!(io, parsing_ctxs_next.bytes, last_chunk_newline_at)
+                (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(io, parsing_ctxs_next, options, byteset, bytes_read_in, quoted)
             end
             for (task_id, task) = enumerate(Iterators.partition(eols, task_size))
                 Threads.@spawn begin
                      # We have to interpolate the buffer into the task otherwise this allocates like crazy
                      # We interpolate here because interpolation doesn't work in nested macros (`@spawn @inbounds $buf` doesn't work)
-                    buf = $(parsing_bufs.bytes)
+                    buf = $(parsing_ctxs.bytes)
                     @_parse_rows_forloop
-                    consume!(result_buf, $parsing_bufs, $row_num, ctx) # Note we interpolated `row_num` to this task!
+                    consume!(result_buf, $parsing_ctxs, $row_num, ctx) # Note we interpolated `row_num` to this task!
                 end # @spawn
                 row_num += UInt32(length(task))
             end # for (task_id, task)
         end #@sync
-        parsing_bufs, parsing_bufs_next = parsing_bufs_next, parsing_bufs
+        parsing_ctxs, parsing_ctxs_next = parsing_ctxs_next, parsing_ctxs
     end # while !done
 end
 

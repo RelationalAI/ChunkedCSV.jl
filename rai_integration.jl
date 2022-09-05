@@ -9,13 +9,13 @@ end
 
 # This is where the parsed results get consumed.
 # Users could dispatch on AbstractContext. Currently WIP sketch of what will be needed for RAI.
-function consume!(taks_buf::TaskResultBuffer{N}, parsing_bufs::ParsingBuffers, row_num::UInt32, context::BeTreeUpsertContext) where {N}
+function consume!(taks_buf::TaskResultBuffer{N}, parsing_ctxs::ParsingContext, row_num::UInt32, context::BeTreeUpsertContext) where {N}
     errsink = context.consumer.errsink
     sinks = context.consumer.sinks
     partition = context.consumer.partition
-    schema = parsing_bufs.schema
-    eols = parsing_bufs.eols.elements
-    bytes = parsing_bufs.bytes
+    schema = parsing_ctxs.schema
+    eols = parsing_ctxs.eols.elements
+    bytes = parsing_ctxs.bytes
     column_indicators = taks_buf.column_indicators
     cols = taks_buf.cols
     row_statuses = taks_buf.row_statuses

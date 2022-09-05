@@ -108,58 +108,6 @@ abstract type AbstractParsingContext end
 struct DebugContext <: AbstractParsingContext; end
 consume!(taks_buf::TaskResultBuffer{N}, parsing_bufs::ParsingBuffers, row_num::UInt32, context::DebugContext) where {N} = nothing
 
-struct BeTreeUpsertContext <: AbstractParsingContext
-    partition::UInt32
-    sinks::Any
-    errsink::Any
-end
-
-# This is where the parsed results get consumed.
-# Users could dispatch on AbstractContext. Currently WIP sketch of what will be needed for RAI.
-function consume!(taks_buf::TaskResultBuffer{N}, parsing_bufs::ParsingBuffers, row_num::UInt32, context::BeTreeUpsertContext) where {N}
-    errsink = context.errsink
-    sinks = context.sinks
-    partition = context.partition
-    schema = parsing_bufs.schema
-    eols = parsing_bufs.eols.elements
-    bytes = parsing_bufs.bytes
-    column_indicators = taks_buf.column_indicators
-    cols = taks_buf.cols
-    row_statuses = taks_buf.row_statuses
-    @inbounds for c in 1:N
-        sink = sinks[c]
-        type = schema[c]
-        if type === Int
-            col = getfield(cols[c], :elements)::Vector{Int}
-        elseif type === Float64
-            col = getfield(cols[c], :elements)::Vector{Float64}
-        elseif type === String
-            col = getfield(cols[c], :elements)::Vector{Parsers.PosLen}
-        else
-            @assert false "unreachable"
-        end
-        row = row_num
-        colflag_num = 0
-        for r in 1:length(row_statuses)
-            row_status = row_statuses.elements[r]
-            val = col[r]
-            if row_status === NoMissing
-                unsafe_append!(sink, (partition, row), (val,))
-            elseif row_status === HasMissing
-                colflag_num += 1
-                flagset(column_indicators[colflag_num], c) && continue
-                unsafe_append!(sink, (partition, row), (val,))
-            else # error
-                c > 1 && continue
-                row_str = VariableSizeString(String(bytes[eols[r]:eols[r+1]])) # makes a copy
-                # TODO: use column_indicators to indicate the column where we errored on?
-                unsafe_append!(errsink, (partition, row, UInt32(N)), (row_str,))
-            end
-            row += 1
-        end
-    end
-    return nothing
-end
 
 macro _parse_file_setup()
     esc(quote
@@ -303,7 +251,6 @@ function _input_to_io(input::String)
     TranscodingStreams.changemode!(io, :read)
     return io
 end
-
 
 function _create_options(delim::Char, quotechar::Char, escapechar::Char; for_header::Bool)
     # Parsers.jl doesn't allow ambiguity between whitespace and delimiters, so we set

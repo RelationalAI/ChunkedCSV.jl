@@ -15,6 +15,12 @@ const BUFFER_SIZE = UInt32(8 * 1024 * 1024)  # 8 MiB
 include("BufferedVectors.jl")
 include("TaskResults.jl")
 
+struct ParsingBuffers
+    schema::Vector{DataType}
+    bytes::Vector{UInt8}
+    eols::BufferedVector{UInt32}
+end
+
 function prepare_buffer!(io::IO, buf::Vector{UInt8}, last_chunk_newline_at)
     ptr = pointer(buf)
     if last_chunk_newline_at == 0 # this is the first time we saw the buffer, we'll just fill it up
@@ -42,10 +48,12 @@ end
 #             and newline characters.
 # TODO: '\n\r' currently produces 2 newlines...
 findmark(ptr, bytes_to_search, ::Val{B}) where B = UInt(something(memchr(ptr, bytes_to_search, B), 0))
-function lex_newlines_in_buffer(io::IO, buf, eols::BufferedVector{UInt32}, options, byteset::Val{B}, bytes_to_search::UInt32, quoted::Bool=false) where B
-    ptr = pointer(buf) # We never resize the buffer, the array shouldn't need to relocate
+function lex_newlines_in_buffer(io::IO, parsing_buffs::ParsingBuffers, options, byteset::Val{B}, bytes_to_search::UInt32, quoted::Bool=false) where B
+    ptr = pointer(parsing_buffs.bytes) # We never resize the buffer, the array shouldn't need to relocate
     e, q = options.e, options.oq
     orig_bytes_to_search = bytes_to_search
+    buf = parsing_buffs.bytes
+    eols = parsing_buffs.eols
     # ScanByte.memchr only accepts UInt for the `len` argument, but we want to store our data in UInt32,
     # so we do a little conversion dance here to avoid converting the input on every iteration.
     _orig_bytes_to_search = UInt(orig_bytes_to_search)
@@ -91,59 +99,86 @@ function lex_newlines_in_buffer(io::IO, buf, eols::BufferedVector{UInt32}, optio
     end
     return last_chunk_newline_at, quoted, done
 end
-function lex_newlines_in_buffer(io::NoopStream, buf, eols::BufferedVector{UInt32}, options, byteset::Val{B}, bytes_to_search::UInt32, quoted::Bool=false) where B
-    return lex_newlines_in_buffer(io.stream, buf, eols, options, byteset, bytes_to_search, quoted)
+function lex_newlines_in_buffer(io::NoopStream, parsing_buffs::ParsingBuffers, options::Parsers.Options, byteset::Val{B}, bytes_to_search::UInt32, quoted::Bool=false) where B
+    return lex_newlines_in_buffer(io.stream, parsing_buffs, options, byteset, bytes_to_search, quoted)
 end
 
 
-abstract type AbstractContext end
+abstract type AbstractParsingContext end
+struct DebugContext <: AbstractParsingContext; end
+consume!(taks_buf::TaskResultBuffer{N}, parsing_bufs::ParsingBuffers, row_num::UInt32, context::DebugContext) where {N} = nothing
+
+struct BeTreeUpsertContext <: AbstractParsingContext
+    partition::UInt32
+    sinks::Any
+    errsink::Any
+end
+
 # This is where the parsed results get consumed.
 # Users could dispatch on AbstractContext. Currently WIP sketch of what will be needed for RAI.
-function consume!(taks_buf::TaskResultBuffer{N}, row_num::Int, byte_offset::UInt32, context::Union{AbstractContext,Nothing}=nothing) where {N}
-    # # errsink = context.errsink
-    # # eols = context.eols
-    # @inbounds for c in 1:N
-    #     row = row_num
-    #     col = taks_buf.cols[c].elements
-    #     # sink = context.sinks[c]
-    #     for r in 1:length(taks_buf.row_statuses)
-    #         row_status = taks_buf.row_statuses.elements[r]
-    #         val = col[r]
-    #         if row_status === NoMissing
-    #         elseif row_status === HasMissing
-    #         elseif row_status === TooFewColumnsError
-    #         elseif row_status === UnknownTypeError
-    #         elseif row_status === ValueParsingError
-    #         elseif row_status === TooManyColumnsError
-    #         else
-    #             @assert false "unreachable"
-    #         end
-    #         row += 1
-    #     end
-    # end
-    # @info taks_buf.cols[1].elements[1:10]
-    # @info (row_num,byte_offset)
+function consume!(taks_buf::TaskResultBuffer{N}, parsing_bufs::ParsingBuffers, row_num::UInt32, context::BeTreeUpsertContext) where {N}
+    errsink = context.errsink
+    sinks = context.sinks
+    partition = context.partition
+    schema = parsing_bufs.schema
+    eols = parsing_bufs.eols.elements
+    bytes = parsing_bufs.bytes
+    column_indicators = taks_buf.column_indicators
+    cols = taks_buf.cols
+    row_statuses = taks_buf.row_statuses
+    @inbounds for c in 1:N
+        sink = sinks[c]
+        type = schema[c]
+        if type === Int
+            col = getfield(cols[c], :elements)::Vector{Int}
+        elseif type === Float64
+            col = getfield(cols[c], :elements)::Vector{Float64}
+        elseif type === String
+            col = getfield(cols[c], :elements)::Vector{Parsers.PosLen}
+        else
+            @assert false "unreachable"
+        end
+        row = row_num
+        colflag_num = 0
+        for r in 1:length(row_statuses)
+            row_status = row_statuses.elements[r]
+            val = col[r]
+            if row_status === NoMissing
+                unsafe_append!(sink, (partition, row), (val,))
+            elseif row_status === HasMissing
+                colflag_num += 1
+                flagset(column_indicators[colflag_num], c) && continue
+                unsafe_append!(sink, (partition, row), (val,))
+            else # error
+                c > 1 && continue
+                row_str = VariableSizeString(String(bytes[eols[r]:eols[r+1]])) # makes a copy
+                # TODO: use column_indicators to indicate the column where we errored on?
+                unsafe_append!(errsink, (partition, row, UInt32(N)), (row_str,))
+            end
+            row += 1
+        end
+    end
     return nothing
 end
 
 macro _parse_file_setup()
     esc(quote
-        buf = Vector{UInt8}(undef, BUFFER_SIZE)
-
+        # We always end on a newline when processing a chunk, so we're inserting a dummy variable to
+        # signal that. This works out even for the very first chunk.
+        parsing_bufs = ParsingBuffers(
+            schema,
+            Vector{UInt8}(undef, BUFFER_SIZE),
+            BufferedVector{UInt32}([UInt32(0)], 1),
+        )
         result_bufs = [TaskResultBuffer{N}(schema) for _ in 1:Threads.nthreads()] # has to match the number of spawned tasks
         done = false
         quoted = false
-        eols_buf = BufferedVector{UInt32}() # end-of-line buffer
-        # We always end on a newline when processing a chunk, so we're inserting a dummy variable to
-        # signal that. This works out even for the very first chunk.
-        push!(eols_buf, UInt32(0))
-        row_num = 1
-        byte_offset = UInt32(1)
-        bytes_read_in = prepare_buffer!(io, buf, UInt32(0)) # init buffer
+        row_num = UInt32(1)
+        bytes_read_in = prepare_buffer!(io, parsing_bufs.bytes, UInt32(0)) # init buffer
         # TODO: actually detect and parse header, now we only pretend we have done it
         header = ["a","b","c","d"]
         @assert N == 4
-        bytes_read_in -= prepare_buffer!(io, buf, UInt32(8)) - UInt32(8) # "read header"
+        bytes_read_in -= prepare_buffer!(io, parsing_bufs.bytes, UInt32(8)) - UInt32(8) # "read header"
     end)
 end
 
@@ -156,18 +191,17 @@ macro _parse_rows_forloop()
         @inbounds prev_newline = task[chunk_row_idx - 1]
         @inbounds curr_newline = task[chunk_row_idx]
         # +1 -1 to exclude delimiters
-        @inbounds row_bytes = view(_buf, prev_newline+1:curr_newline-1)
+        @inbounds row_bytes = view(buf, prev_newline+1:curr_newline-1)
 
         pos = 1
         len = length(row_bytes)
         code = Parsers.OK
         row_status = NoMissing
-        missing_flags = zero(M)
+        column_indicators = zero(M)
         for col_idx in 1:N
             type = schema[col_idx]
             if Parsers.eof(code)
                 row_status = TooFewColumnsError
-                # TODO: bump capacity of the rest of the columns
                 break # from column parsing (does this need to be a @goto?)
             end
             if type === Int
@@ -181,16 +215,14 @@ macro _parse_rows_forloop()
                 unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{Parsers.PosLen}, Parsers.PosLen(prev_newline+pos, val.len))
             else
                 row_status = UnknownTypeError
-                # TODO: bump capacity of the rest of the columns
                 break # from column parsing (does this need to be a @goto?)
             end
             if Parsers.invalid(code)
                 row_status = ValueParsingError
-                # TODO: bump capacity of the rest of the columns
                 break # from column parsing (does this need to be a @goto?)
             elseif Parsers.sentinel(code)
                 row_status = HasMissing
-                missing_flags |= 1 << (col_idx - 1)
+                column_indicators |= 1 << (col_idx - 1)
             end
             pos += tlen
         end # for col_idx
@@ -198,86 +230,70 @@ macro _parse_rows_forloop()
             row_status = TooManyColumnsError
         end
         unsafe_push!(result_buf.row_statuses, row_status)
-        !iszero(missing_flags) && push!(result_buf.missings_flags, missing_flags) # No inbounds as we're growing this buffer lazily
+        !iszero(column_indicators) && push!(result_buf.column_indicators, column_indicators) # No inbounds as we're growing this buffer lazily
     end # for row_idx
     end)
 end
 
-function _parse_file(io, schema::Vector{DataType}, options, ::Val{N}, ::Val{M}, byteset::Val{B}) where {N,M,B}
+function _parse_file(io, schema::Vector{DataType}, ctx::AbstractParsingContext, options::Parsers.Options, ::Val{N}, ::Val{M}, byteset::Val{B}) where {N,M,B}
     @_parse_file_setup
     while !done
         # Updates eols_buf with new newlines, byte buffer was updated either from initialization stage or at the end of the loop
-        (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(io, buf, eols_buf, options, byteset, bytes_read_in, quoted)
-        eols = eols_buf[]
+        (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(io, parsing_bufs, options, byteset, bytes_read_in, quoted)
+        eols = parsing_bufs.eols[]
         # At most one task per thread (per iteration), fewer if not enough rows to warrant spawning extra tasks
         task_size = max(5_000, cld(length(eols), Threads.nthreads()))
         @sync for (task_id, task) = enumerate(Iterators.partition(eols, task_size))
-            # TODO: currently, `byte_offset` computation is not correct, it is only used in `consume!`, i.e. not needed for parsing itself
-            @inbounds byte_offset += task[1]
             Threads.@spawn begin
-                _buf = $buf
+                buf = $(parsing_bufs.bytes)
                 @_parse_rows_forloop
-                consume!(result_buf, $row_num, $byte_offset, nothing) # Note we interpolated `row_num` and `byte_offset` to this task!
+                consume!(result_buf, $parsing_bufs, $row_num, ctx) # Note we interpolated `row_num` to this task!
             end # @spawn
-            row_num += length(task)
+            row_num += UInt32(length(task))
         end #@sync
-        empty!(eols_buf)
+        empty!(parsing_bufs.eols)
         # We always end on a newline when processing a chunk, so we're inserting a dummy variable to
         # signal that. This works out even for the very first chunk.
-        push!(eols_buf, UInt32(0))
-        bytes_read_in = prepare_buffer!(io, buf, last_chunk_newline_at)
-        byte_offset -= BUFFER_SIZE - bytes_read_in
+        push!(parsing_bufs.eols, UInt32(0))
+        bytes_read_in = prepare_buffer!(io, parsing_bufs.bytes, last_chunk_newline_at)
     end # while !done
 end
 
 
-function _parse_file_doublebuffer(io, schema::Vector{DataType}, options, ::Val{N}, ::Val{M}, byteset::Val{B}) where {N,M,B}
+function _parse_file_doublebuffer(io, schema::Vector{DataType}, ctx::AbstractParsingContext, options::Parsers.Options, ::Val{N}, ::Val{M}, byteset::Val{B}) where {N,M,B}
     @_parse_file_setup
-    buf_next = Vector{UInt8}(undef, BUFFER_SIZE)
     # Updates eols_buf with new newlines, byte buffer was updated either from initialization stage or at the end of the loop
-    (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(io, buf, eols_buf, options, byteset, bytes_read_in, quoted)
-    eols_buf_next = BufferedVector{UInt32}(Vector{UInt32}(undef, eols_buf.occupied), 0) # double-buffering
+    (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(io, parsing_bufs, options, byteset, bytes_read_in, quoted)
+    parsing_bufs_next = ParsingBuffers(
+        schema,
+        Vector{UInt8}(undef, BUFFER_SIZE),
+        BufferedVector{UInt32}(Vector{UInt32}(undef, parsing_bufs.eols.occupied), 0),
+    )
     while !done
-        eols = eols_buf[]
+        eols = parsing_bufs.eols[]
         # At most one task per thread (per iteration), fewer if not enough rows to warrant spawning extra tasks
         task_size = max(5_000, cld(length(eols), Threads.nthreads()))
         @sync begin
-            buf_next[last_chunk_newline_at:end] .= buf[last_chunk_newline_at:end]
+            parsing_bufs_next.bytes[last_chunk_newline_at:end] .= parsing_bufs_next.bytes[last_chunk_newline_at:end]
             Threads.@spawn begin
-                empty!(eols_buf_next)
-                push!(eols_buf_next, UInt32(0))
-                bytes_read_in = prepare_buffer!(io, buf_next, last_chunk_newline_at)
-                (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(io, buf_next, eols_buf_next, options, byteset, bytes_read_in, quoted)
+                empty!(parsing_bufs_next.eols)
+                push!(parsing_bufs_next.eols, UInt32(0))
+                bytes_read_in = prepare_buffer!(io, parsing_bufs_next.bytes, last_chunk_newline_at)
+                (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(io, parsing_bufs_next, options, byteset, bytes_read_in, quoted)
             end
             for (task_id, task) = enumerate(Iterators.partition(eols, task_size))
-                # TODO: currently, `byte_offset` computation is not correct, it is only used in `consume!`, i.e. not needed for parsing itself
-                @inbounds byte_offset += task[1]
                 Threads.@spawn begin
                      # We have to interpolate the buffer into the task otherwise this allocates like crazy
                      # We interpolate here because interpolation doesn't work in nested macros (`@spawn @inbounds $buf` doesn't work)
-                    _buf = $buf
+                    buf = $(parsing_bufs.bytes)
                     @_parse_rows_forloop
-                    consume!(result_buf, $row_num, $byte_offset, nothing) # Note we interpolated `row_num` and `byte_offset` to this task!
+                    consume!(result_buf, $parsing_bufs, $row_num, ctx) # Note we interpolated `row_num` to this task!
                 end # @spawn
-                row_num += length(task)
+                row_num += UInt32(length(task))
             end # for (task_id, task)
         end #@sync
-        byte_offset -= BUFFER_SIZE - bytes_read_in
-        buf, buf_next = buf_next, buf
-        eols_buf, eols_buf_next = eols_buf_next, eols_buf
+        parsing_bufs, parsing_bufs_next = parsing_bufs_next, parsing_bufs
     end # while !done
-end
-
-function parse_file(input, schema, doublebuffer=false, quotechar='"', delim=',', escapechar='"')
-    io = _input_to_io(input)
-    options = Parsers.Options(openquotechar=quotechar, closequotechar=quotechar, delim=delim, escapechar=escapechar)
-    byteset = Val(ByteSet((UInt8(options.e),UInt8(options.oq),UInt8('\n'),UInt8('\r'))))
-    if doublebuffer
-        _parse_file_doublebuffer(io, schema, options, Val(length(schema)), Val(_bounding_flag_type(length(schema))), Val(byteset))
-    else
-        _parse_file(io, schema, options, Val(length(schema)), Val(_bounding_flag_type(length(schema))), Val(byteset))
-    end
-    close(io)
 end
 
 _input_to_io(input::IO) = input
@@ -285,4 +301,16 @@ function _input_to_io(input::String)
     io = NoopStream(open(input, "r"))
     TranscodingStreams.changemode!(io, :read)
     return io
+end
+
+function parse_file(input, schema, doublebuffer=false, context::AbstractParsingContext=DebugContext(), quotechar='"', delim=',', escapechar='"')
+    io = _input_to_io(input)
+    options = Parsers.Options(openquotechar=quotechar, closequotechar=quotechar, delim=delim, escapechar=escapechar)
+    byteset = Val(ByteSet((UInt8(options.e),UInt8(options.oq),UInt8('\n'),UInt8('\r'))))
+    if doublebuffer
+        _parse_file_doublebuffer(io, schema, context, options, Val(length(schema)), Val(_bounding_flag_type(length(schema))), Val(byteset))
+    else
+        _parse_file(io, schema, context, options, Val(length(schema)), Val(_bounding_flag_type(length(schema))), Val(byteset))
+    end
+    close(io)
 end

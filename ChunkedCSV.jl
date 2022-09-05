@@ -17,6 +17,7 @@ include("TaskResults.jl")
 
 struct ParsingContext
     schema::Vector{DataType}
+    header::Vector{Symbol}
     bytes::Vector{UInt8}
     eols::BufferedVector{UInt32}
 end
@@ -115,6 +116,7 @@ macro _parse_file_setup()
         # signal that. This works out even for the very first chunk.
         parsing_ctxs = ParsingContext(
             schema,
+            Symbol[],
             Vector{UInt8}(undef, BUFFER_SIZE),
             BufferedVector{UInt32}([UInt32(0)], 1),
         )
@@ -123,10 +125,10 @@ macro _parse_file_setup()
         quoted = false
         row_num = UInt32(1)
         bytes_read_in = prepare_buffer!(io, parsing_ctxs.bytes, UInt32(0)) # init buffer
-        # TODO: actually detect and parse header, now we only pretend we have done it
-        header = ["a","b","c","d"]
-        @assert N == 4
-        bytes_read_in -= prepare_buffer!(io, parsing_ctxs.bytes, UInt32(8)) - UInt32(8) # "read header"
+        header_butes = parse_header(parsing_ctxs, options, header_row, schema, header)
+        if header_bytes > 0
+            bytes_read_in -= prepare_buffer!(io, parsing_ctxs.bytes, header_bytes) - header_bytes # read header
+        end
     end)
 end
 
@@ -215,6 +217,7 @@ function _parse_file_doublebuffer(io, schema::Vector{DataType}, ctx::AbstractPar
     (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(io, parsing_ctxs, options, byteset, bytes_read_in, quoted)
     parsing_ctxs_next = ParsingContext(
         schema,
+        parsing_ctxs.header,
         Vector{UInt8}(undef, BUFFER_SIZE),
         BufferedVector{UInt32}(Vector{UInt32}(undef, parsing_ctxs.eols.occupied), 0),
     )
@@ -286,6 +289,28 @@ function _create_options(delim::Char, quotechar::Char, escapechar::Char; for_hea
     )
 end
 
+function parse_header(parsing_ctx::ParsingContext, options::Parsers.Options, header_row::Int, schema::Vector{DataType}, header::Union{Nothing,Vector{Symbol}})
+    if !isnothing(header)
+        append!(parsing_ctx, header)
+    else
+        for i in 1:length(schema)
+            push!(parsing_ctx.header, string("COL_", i))
+        end
+    end
+    header_row == 0 && return UInt32(0)
+    bytes_read_in = memchr(parsing_ctx.bytes, UInt8('\n'))
+    pos = 1
+    code = Parsers.OK
+    for i in 1:length(schema)
+        (;val, tlen, code) = Parsers.xparse(String, parsing_ctx.bytes, pos, bytes_read_in, options, String)
+        !Parsers.ok(code) && error("Error parsing header for column $i at $(header_row):$(pos).")
+        !isnothing(header) && push!(parsing_ctx.header, Symbol(strip(val)))
+        pos += tlen
+    end
+    !Parsers.eof(code) && error("Error parsing header, there are more columns that provided types in schema")
+    return UInt32(bytes_read_in)
+end
+
 function parse_file(
     input,
     schema,
@@ -294,8 +319,12 @@ function parse_file(
     quotechar::Char='"',
     delim::Char=',',
     escapechar::Char='"',
+    header::Union{Nothing,Vector{Symbol}},
+    header_row::Int=Int(!isnothing(header)),
 )
     io = _input_to_io(input)
+    !isnothing(header) && length(header) != length(schema) && error("Provided header doesn't match the number of column of schema ($(length(header)) names, $(length(schema)) types).")
+
     options = _create_options(delim, quotechar, escapechar; for_header=false)
     byteset = Val(ByteSet((UInt8(options.e),UInt8(options.oq),UInt8('\n'),UInt8('\r'))))
     if doublebuffer

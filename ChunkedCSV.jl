@@ -41,10 +41,8 @@ end
 # Assumption: we can find all valid endlines only by observing quotes (currently hardcoded to double quote)
 #             and newline characters.
 # TODO: '\n\r' currently produces 2 newlines...
-# TODO: Make BYTESET a parameter (and construct it so it supports custom quotes and escapes)
-const BYTESET = Val(ByteSet((UInt8('"'),UInt8('\n'),UInt8('\r'))))
-findmark(ptr, bytes_to_search) = UInt(something(memchr(ptr, bytes_to_search, BYTESET), 0))
-function lex_newlines_in_buffer(io::IO, buf, eols::BufferedVector{UInt32}, options, bytes_to_search::UInt32, quoted::Bool=false)
+findmark(ptr, bytes_to_search, ::Val{B}) where B = UInt(something(memchr(ptr, bytes_to_search, B), 0))
+function lex_newlines_in_buffer(io::IO, buf, eols::BufferedVector{UInt32}, options, byteset::Val{B}, bytes_to_search::UInt32, quoted::Bool=false) where B
     ptr = pointer(buf) # We never resize the buffer, the array shouldn't need to relocate
     e, q = options.e, options.oq
     orig_bytes_to_search = bytes_to_search
@@ -55,7 +53,7 @@ function lex_newlines_in_buffer(io::IO, buf, eols::BufferedVector{UInt32}, optio
 
     offset = UInt32(0)
     while bytes_to_search > 0
-        pos_to_check = findmark(ptr, _bytes_to_search)
+        pos_to_check = findmark(ptr, _bytes_to_search, byteset)
         offset = UInt32(-_bytes_to_search + _orig_bytes_to_search + pos_to_check)
         if pos_to_check == 0
             length(eols) < 2 && !eof(io) && error("CSV parse job failed on lexing newlines. There was no linebreak in the entire buffer of $bytes_to_search bytes.")
@@ -93,8 +91,8 @@ function lex_newlines_in_buffer(io::IO, buf, eols::BufferedVector{UInt32}, optio
     end
     return last_chunk_newline_at, quoted, done
 end
-function lex_newlines_in_buffer(io::NoopStream, buf, eols::BufferedVector{UInt32}, options, bytes_to_search::UInt32, quoted::Bool=false)
-    return lex_newlines_in_buffer(io.stream, buf, eols, options, bytes_to_search, quoted)
+function lex_newlines_in_buffer(io::NoopStream, buf, eols::BufferedVector{UInt32}, options, byteset::Val{B}, bytes_to_search::UInt32, quoted::Bool=false) where B
+    return lex_newlines_in_buffer(io.stream, buf, eols, options, byteset, bytes_to_search, quoted)
 end
 
 
@@ -202,11 +200,11 @@ macro _parse_rows_forloop()
     end)
 end
 
-function _parse_file(io, schema::Vector{DataType}, options, ::Val{N}, ::Val{M}) where {N,M}
+function _parse_file(io, schema::Vector{DataType}, options, ::Val{N}, ::Val{M}, byteset::Val{B}) where {N,M,B}
     @_parse_file_setup
     while !done
         # Updates eols_buf with new newlines, byte buffer was updated either from initialization stage or at the end of the loop
-        (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(io, buf, eols_buf, options, bytes_read_in, quoted)
+        (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(io, buf, eols_buf, options, byteset, bytes_read_in, quoted)
         eols = eols_buf[]
         # At most one task per thread (per iteration), fewer if not enough rows to warrant spawning extra tasks
         task_size = max(5_000, cld(length(eols), Threads.nthreads()))
@@ -232,11 +230,11 @@ function _parse_file(io, schema::Vector{DataType}, options, ::Val{N}, ::Val{M}) 
 end
 
 
-function _parse_file_doublebuffer(io, schema::Vector{DataType}, options, ::Val{N}, ::Val{M}) where {N,M}
+function _parse_file_doublebuffer(io, schema::Vector{DataType}, options, ::Val{N}, ::Val{M}, byteset::Val{B}) where {N,M,B}
     @_parse_file_setup
     buf_next = Vector{UInt8}(undef, BUFFER_SIZE)
     # Updates eols_buf with new newlines, byte buffer was updated either from initialization stage or at the end of the loop
-    (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(io, buf, eols_buf, options, bytes_read_in, quoted)
+    (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(io, buf, eols_buf, options, byteset, bytes_read_in, quoted)
     eols_buf_next = BufferedVector{UInt32}(Vector{UInt32}(undef, eols_buf.occupied), 0) # double-buffering
     while !done
         eols = eols_buf[]
@@ -248,7 +246,7 @@ function _parse_file_doublebuffer(io, schema::Vector{DataType}, options, ::Val{N
                 empty!(eols_buf_next)
                 eols_buf_next[] = UInt32(0)
                 bytes_read_in = prepare_buffer!(io, buf_next, last_chunk_newline_at)
-                (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(io, buf_next, eols_buf_next, options, bytes_read_in, quoted)
+                (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(io, buf_next, eols_buf_next, options, byteset, bytes_read_in, quoted)
             end
             for (task_id, task) = enumerate(Iterators.partition(eols, task_size))
                 # TODO: currently, `byte_offset` computation is not correct, it is only used in `consume!`, i.e. not needed for parsing itself
@@ -274,10 +272,11 @@ end
 function parse_file(input, schema, doublebuffer=false, quotechar='"', delim=',', escapechar='"')
     io = _input_to_io(input)
     options = Parsers.Options(openquotechar=quotechar, closequotechar=quotechar, delim=delim, escapechar=escapechar)
+    byteset = Val(ByteSet((UInt8(options.e),UInt8(options.oq),UInt8('\n'),UInt8('\r'))))
     if doublebuffer
-        _parse_file_doublebuffer(io, schema, options, Val(length(schema)), Val(_bounding_flag_type(length(schema))))
+        _parse_file_doublebuffer(io, schema, options, Val(length(schema)), Val(_bounding_flag_type(length(schema))), Val(byteset))
     else
-        _parse_file(io, schema, options, Val(length(schema)), Val(_bounding_flag_type(length(schema))))
+        _parse_file(io, schema, options, Val(length(schema)), Val(_bounding_flag_type(length(schema))), Val(byteset))
     end
     close(io)
 end

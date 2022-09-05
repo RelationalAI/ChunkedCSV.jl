@@ -7,6 +7,7 @@ parse_file("tst_4xint.csv", [Int,Int,Int,Int])
 parse_file("tst_4xdouble.csv", [Float64,Float64,Float64,Float64])
 parse_file("tst_4xstr.csv", [String,String,String,String])
 
+# NOTE: ScanByte.jl doesn't use SIMD on M1 chips
 @time parse_file("tst_4xint.csv", [Int,Int,Int,Int])
 # 0.059793 seconds (464 allocations: 18.239 MiB)
 @time parse_file("tst_4xdouble.csv", [Float64,Float64,Float64,Float64])
@@ -16,6 +17,13 @@ parse_file("tst_4xstr.csv", [String,String,String,String])
 
 
 import CSV
+
+function csv(name, schema)
+    f = NoopStream(open(name))
+    out = CSV.read(f, NamedTuple, types=schema, ntasks=Threads.nthreads())
+    close(f)
+    return out
+end
 
 collect(CSV.read(NoopStream(open("tst_4xint.csv")), NamedTuple, types=[Int,Int,Int,Int], ntasks=Threads.nthreads()));
 foreach(identity, CSV.Chunks(NoopStream(open("tst_4xint.csv")), types=[Int,Int,Int,Int], ntasks=Threads.nthreads()));

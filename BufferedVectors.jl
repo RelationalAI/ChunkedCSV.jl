@@ -16,7 +16,7 @@ Base.IndexStyle(::BufferedVector) = Base.IndexLinear()
 Base.IteratorSize(::BufferedVector) = Base.HasLength()
 Base.IteratorEltype(::BufferedVector) = Base.HasEltype()
 Base.eltype(::BufferedVector{T}) where T = T
-@inline function Base.setindex!(buffer::BufferedVector{T}, x::T) where {T}
+@inline function Base.push!(buffer::BufferedVector{T}, x::T) where {T}
     if length(buffer.elements) == buffer.occupied
         Base._growend!(buffer.elements, _grow_by(T))
     end
@@ -26,3 +26,10 @@ end
 _grow_by(::Type{T}) where {T<:Union{UInt32,UInt64,Int64,Int32,Enum{Int32},Enum{UInt32}}} = div(128, sizeof(T))
 _grow_by(::Type) = 16
 _grow_by(::Type{T}) where {T<:Union{Bool,UInt8}} = 64
+
+@inline function unsafe_push!(buffer::BufferedVector{T}, x::T) where {T}
+    buffer.occupied += 1
+    @inbounds buffer.elements[buffer.occupied] = x
+end
+Base.ensureroom(x::BufferedVector, n) = (length(x.elements) < n && Base._growend!(x.elements, n - length(x.elements)); return nothing)
+skip_element!(x::BufferedVector) = x.occupied += 1

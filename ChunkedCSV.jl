@@ -70,7 +70,7 @@ function lex_newlines_in_buffer(io::IO, buf, eols::BufferedVector{UInt32}, optio
                 if byte_to_check == q
                     quoted = true
                 elseif byte_to_check != e
-                    eols[] = offset
+                    push!(eols, offset)
                 end
             end
             ptr += pos_to_check
@@ -83,7 +83,7 @@ function lex_newlines_in_buffer(io::IO, buf, eols::BufferedVector{UInt32}, optio
         done = true
         # Insert a newline at the end of the file if there wasn't one
         # This is just to make `eols` contain both start and end `pos` of every single line
-        @inbounds eols.elements[eols.occupied] != orig_bytes_to_search && (eols[] = orig_bytes_to_search)
+        @inbounds eols.elements[eols.occupied] != orig_bytes_to_search && push!(eols, orig_bytes_to_search)
         last_chunk_newline_at = orig_bytes_to_search
     else
         done = false
@@ -136,7 +136,7 @@ macro _parse_file_setup()
         eols_buf = BufferedVector{UInt32}() # end-of-line buffer
         # We always end on a newline when processing a chunk, so we're inserting a dummy variable to
         # signal that. This works out even for the very first chunk.
-        eols_buf[] = UInt32(0)
+        push!(eols_buf, UInt32(0))
         row_num = 1
         byte_offset = UInt32(1)
         bytes_read_in = prepare_buffer!(io, buf, UInt32(0)) # init buffer
@@ -149,11 +149,14 @@ end
 
 macro _parse_rows_forloop()
     esc(quote
+    @inbounds result_buf = result_bufs[task_id]
+    empty!(result_buf)
+    Base.ensureroom(result_buf, length(task)+1)
     for chunk_row_idx in 2:length(task)
-        prev_newline = task[chunk_row_idx - 1]
-        curr_newline = task[chunk_row_idx]
+        @inbounds prev_newline = task[chunk_row_idx - 1]
+        @inbounds curr_newline = task[chunk_row_idx]
         # +1 -1 to exclude delimiters
-        row_bytes = view(_buf, prev_newline+1:curr_newline-1)
+        @inbounds row_bytes = view(_buf, prev_newline+1:curr_newline-1)
 
         pos = 1
         len = length(row_bytes)
@@ -169,13 +172,13 @@ macro _parse_rows_forloop()
             end
             if type === Int
                 (;val, tlen, code) = Parsers.xparse(Int, row_bytes, pos, len, options)::Parsers.Result{Int}
-                (getindex(result_buf.cols, col_idx)::BufferedVector{Int})[] = val
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{Int}, val)
             elseif type === Float64
                 (;val, tlen, code) = Parsers.xparse(Float64, row_bytes, pos, len, options)::Parsers.Result{Float64}
-                (getindex(result_buf.cols, col_idx)::BufferedVector{Float64})[] = val
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{Float64}, val)
             elseif type === String
                 (;val, tlen, code) = Parsers.xparse(String, row_bytes, pos, len, options)::Parsers.Result{Parsers.PosLen}
-                (getindex(result_buf.cols, col_idx)::BufferedVector{Parsers.PosLen})[] = Parsers.PosLen(prev_newline+pos, val.len)
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{Parsers.PosLen}, Parsers.PosLen(prev_newline+pos, val.len))
             else
                 row_status = UnknownTypeError
                 # TODO: bump capacity of the rest of the columns
@@ -194,8 +197,8 @@ macro _parse_rows_forloop()
         if !Parsers.eof(code)
             row_status = TooManyColumnsError
         end
-        result_buf.row_statuses[] = row_status
-        !iszero(missing_flags) && (result_buf.missings_flags[] = missing_flags)
+        unsafe_push!(result_buf.row_statuses, row_status)
+        !iszero(missing_flags) && push!(result_buf.missings_flags, missing_flags) # No inbounds as we're growing this buffer lazily
     end # for row_idx
     end)
 end
@@ -212,10 +215,8 @@ function _parse_file(io, schema::Vector{DataType}, options, ::Val{N}, ::Val{M}, 
             # TODO: currently, `byte_offset` computation is not correct, it is only used in `consume!`, i.e. not needed for parsing itself
             @inbounds byte_offset += task[1]
             Threads.@spawn begin
-                @inbounds result_buf = result_bufs[task_id]
-                empty!(result_buf)
                 _buf = $buf
-                @inbounds @_parse_rows_forloop
+                @_parse_rows_forloop
                 consume!(result_buf, $row_num, $byte_offset, nothing) # Note we interpolated `row_num` and `byte_offset` to this task!
             end # @spawn
             row_num += length(task)
@@ -223,7 +224,7 @@ function _parse_file(io, schema::Vector{DataType}, options, ::Val{N}, ::Val{M}, 
         empty!(eols_buf)
         # We always end on a newline when processing a chunk, so we're inserting a dummy variable to
         # signal that. This works out even for the very first chunk.
-        eols_buf[] = UInt32(0)
+        push!(eols_buf, UInt32(0))
         bytes_read_in = prepare_buffer!(io, buf, last_chunk_newline_at)
         byte_offset -= BUFFER_SIZE - bytes_read_in
     end # while !done
@@ -244,7 +245,7 @@ function _parse_file_doublebuffer(io, schema::Vector{DataType}, options, ::Val{N
             buf_next[last_chunk_newline_at:end] .= buf[last_chunk_newline_at:end]
             Threads.@spawn begin
                 empty!(eols_buf_next)
-                eols_buf_next[] = UInt32(0)
+                push!(eols_buf_next, UInt32(0))
                 bytes_read_in = prepare_buffer!(io, buf_next, last_chunk_newline_at)
                 (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(io, buf_next, eols_buf_next, options, byteset, bytes_read_in, quoted)
             end
@@ -252,12 +253,10 @@ function _parse_file_doublebuffer(io, schema::Vector{DataType}, options, ::Val{N
                 # TODO: currently, `byte_offset` computation is not correct, it is only used in `consume!`, i.e. not needed for parsing itself
                 @inbounds byte_offset += task[1]
                 Threads.@spawn begin
-                    @inbounds result_buf = result_bufs[task_id]
-                    empty!(result_buf)
                      # We have to interpolate the buffer into the task otherwise this allocates like crazy
                      # We interpolate here because interpolation doesn't work in nested macros (`@spawn @inbounds $buf` doesn't work)
                     _buf = $buf
-                    @inbounds @_parse_rows_forloop
+                    @_parse_rows_forloop
                     consume!(result_buf, $row_num, $byte_offset, nothing) # Note we interpolated `row_num` and `byte_offset` to this task!
                 end # @spawn
                 row_num += length(task)

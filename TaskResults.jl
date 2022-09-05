@@ -35,3 +35,8 @@ function Base.empty!(buf::TaskResultBuffer)
     empty!(buf.row_statuses)
     empty!(buf.missings_flags)
 end
+
+function Base.ensureroom(buf::TaskResultBuffer, n)
+    foreach(x->Base.ensureroom(x, n), buf.cols)
+    Base.ensureroom(buf.row_statuses, n)
+end

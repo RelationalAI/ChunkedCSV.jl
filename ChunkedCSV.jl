@@ -190,6 +190,7 @@ macro _parse_rows_forloop()
     for chunk_row_idx in 2:length(task)
         @inbounds prev_newline = task[chunk_row_idx - 1]
         @inbounds curr_newline = task[chunk_row_idx]
+        (curr_newline - prev_newline) == 1 && continue # ignore empty lines
         # +1 -1 to exclude delimiters
         @inbounds row_bytes = view(buf, prev_newline+1:curr_newline-1)
 
@@ -222,7 +223,7 @@ macro _parse_rows_forloop()
                 break # from column parsing (does this need to be a @goto?)
             elseif Parsers.sentinel(code)
                 row_status = HasMissing
-                column_indicators |= 1 << (col_idx - 1)
+                column_indicators |= M(1) << (col_idx - 1)
             end
             pos += tlen
         end # for col_idx
@@ -303,9 +304,52 @@ function _input_to_io(input::String)
     return io
 end
 
-function parse_file(input, schema, doublebuffer=false, context::AbstractParsingContext=DebugContext(), quotechar='"', delim=',', escapechar='"')
+
+function _create_options(delim::Char, quotechar::Char, escapechar::Char; for_header::Bool)
+    # Parsers.jl doesn't allow ambiguity between whitespace and delimiters, so we set
+    # the whitespace to bogus when the delimiters are spaces and tabs.
+    if delim == ' ' || delim == '\t'
+        wh1 = 'x'
+        wh2 = 'x'
+    else
+        wh1 = ' '
+        wh2 = '\t'
+    end
+
+    # Allows to parse various strings into Boolean.
+    mytrues = String["true", "1", "True", "t"]
+    myfalses = String["false", "0", "False", "f"]
+
+    # Within the header's fields, trim whitespace aggressively.
+    stripwhitespace_header = for_header && (delim !== ' ' && delim !== '\t')
+
+    return Parsers.Options(
+        sentinel=missing,
+        wh1=wh1,
+        wh2=wh2,
+        openquotechar=UInt8(quotechar),
+        closequotechar=UInt8(quotechar),
+        escapechar=UInt8(escapechar),
+        delim=UInt8(delim),
+        quoted=true,
+        ignoreemptylines=true,
+        stripwhitespace=stripwhitespace_header,
+        trues=mytrues,
+        falses=myfalses,
+    )
+end
+
+function parse_file(
+    input,
+    schema,
+    doublebuffer::Bool=false,
+    context::AbstractParsingContext=DebugContext(),
+    quotechar::Char='"',
+    delim::Char=',',
+    escapechar::Char='"',
+)
     io = _input_to_io(input)
-    options = Parsers.Options(openquotechar=quotechar, closequotechar=quotechar, delim=delim, escapechar=escapechar)
+    options = _create_options(delim, quotechar, escapechar; for_header=false)
     byteset = Val(ByteSet((UInt8(options.e),UInt8(options.oq),UInt8('\n'),UInt8('\r'))))
     if doublebuffer
         _parse_file_doublebuffer(io, schema, context, options, Val(length(schema)), Val(_bounding_flag_type(length(schema))), Val(byteset))
@@ -313,4 +357,5 @@ function parse_file(input, schema, doublebuffer=false, context::AbstractParsingC
         _parse_file(io, schema, context, options, Val(length(schema)), Val(_bounding_flag_type(length(schema))), Val(byteset))
     end
     close(io)
+    return nothing
 end

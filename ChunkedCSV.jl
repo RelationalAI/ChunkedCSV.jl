@@ -7,12 +7,6 @@ using TranscodingStreams # TODO: ditch this
 
 # TODO: Use information from initial buffer fill to see if we're deaing with a small file (and have a fast path for that)
 
-"""
-In bytes. This absolutely has to be larger than any single row.
-Much safer if any two consecutive rows are smaller than this threshold.
-"""
-const BUFFER_SIZE = UInt32(8 * 1024 * 1024)  # 8 MiB
-
 include("BufferedVectors.jl")
 include("TaskResults.jl")
 
@@ -22,6 +16,7 @@ struct ParsingContext
     bytes::Vector{UInt8}
     eols::BufferedVector{UInt32}
     limit::UInt32
+    ntasks_per_chunk::UInt8
 end
 
 struct ParserSettings
@@ -30,22 +25,25 @@ struct ParserSettings
     header_row::UInt32
     skiprows::UInt32
     limit::UInt32
+    buffer_size::UInt32
+    ntasks_per_chunk::UInt8
 end
 
 readbytesall!(io::IO, buf, n) = UInt32(Base.readbytes!(io, buf, n; all = true))
 readbytesall!(io::IOBuffer, buf, n) = UInt32(Base.readbytes!(io, buf, n))
 function prepare_buffer!(io::IO, buf::Vector{UInt8}, last_chunk_newline_at)
     ptr = pointer(buf)
+    buffer_size = length(buf)
     if last_chunk_newline_at == 0 # this is the first time we saw the buffer, we'll just fill it up
-        bytes_read_in = readbytesall!(io, buf, BUFFER_SIZE)
-    elseif last_chunk_newline_at < BUFFER_SIZE
+        bytes_read_in = readbytesall!(io, buf, buffer_size)
+    elseif last_chunk_newline_at < buffer_size
         # We'll keep the bytes that are past the last newline, shifting them to the left
         # and refill the rest of the buffer.
-        unsafe_copyto!(ptr, ptr + last_chunk_newline_at, BUFFER_SIZE - last_chunk_newline_at)
-        bytes_read_in = @inbounds readbytesall!(io, @view(buf[BUFFER_SIZE - last_chunk_newline_at:end]), last_chunk_newline_at)
+        unsafe_copyto!(ptr, ptr + last_chunk_newline_at, buffer_size - last_chunk_newline_at)
+        bytes_read_in = @inbounds readbytesall!(io, @view(buf[buffer_size - last_chunk_newline_at:end]), last_chunk_newline_at)
     else
         # Last chunk was consumed entirely
-        bytes_read_in = readbytesall!(io, buf, BUFFER_SIZE)
+        bytes_read_in = readbytesall!(io, buf, buffer_size)
     end
     return bytes_read_in
 end
@@ -60,29 +58,29 @@ end
 # Assumption: we can find all valid endlines only by observing quotes (currently hardcoded to double quote)
 #             and newline characters.
 # TODO: '\n\r' currently produces 2 newlines... but we skip empty lines, so no biggie?
-findmark(ptr, bytes_to_search, ::Val{B}) where B = UInt(something(memchr(ptr, bytes_to_search, B), 0))
-function lex_newlines_in_buffer(io::IO, parsing_ctxfs::ParsingContext, options, byteset::Val{B}, bytes_to_search::UInt32, quoted::Bool=false) where B
+findmark(ptr, bytes_to_search, ::Val{B}) where B = something(memchr(ptr, bytes_to_search, B), zero(UInt))
+function lex_newlines_in_buffer(io::IO, parsing_ctxfs::ParsingContext, options, byteset::Val{B}, bytes_read_in::UInt32, quoted::Bool) where B
     ptr = pointer(parsing_ctxfs.bytes) # We never resize the buffer, the array shouldn't need to relocate
     e, q = options.e, options.oq
-    orig_bytes_to_search = bytes_to_search
     buf = parsing_ctxfs.bytes
     eols = parsing_ctxfs.eols
-    # ScanByte.memchr only accepts UInt for the `len` argument, but we want to store our data in UInt32,
-    # so we do a little conversion dance here to avoid converting the input on every iteration.
-    _orig_bytes_to_search = UInt(orig_bytes_to_search)
-    _bytes_to_search = UInt(bytes_to_search)
+    bytes_to_search = UInt(bytes_read_in)
 
-    offset = UInt32(0)
-    while bytes_to_search > 0
-        pos_to_check = findmark(ptr, _bytes_to_search, byteset)
-        offset = UInt32(-_bytes_to_search + _orig_bytes_to_search + pos_to_check)
-        if pos_to_check == 0
-            length(eols) < 2 && !eof(io) && error("CSV parse job failed on lexing newlines. There was no linebreak in the entire buffer of $bytes_to_search bytes.")
+    offset = UInt32(length(buf)) - bytes_read_in
+    ptr += offset
+    @inbounds while bytes_to_search > UInt(0)
+        pos_to_check = findmark(ptr, bytes_to_search, byteset)
+        offset += UInt32(pos_to_check)
+        if pos_to_check == UInt(0)
+            if (length(eols) == 0 || (length(eols) == 1 && eols.elements[1] == 0)) && !eof(io)
+                close(io)
+                error("CSV parse job failed on lexing newlines. There was no linebreak in the entire buffer of $(length(buf)) bytes. \n")
+            end
             break
         else
-            byte_to_check = @inbounds buf[offset]
+            byte_to_check = buf[offset]
             if quoted
-                if byte_to_check == e && get(buf, offset+1, 0xFF) == q
+                if byte_to_check == e && get(buf, offset+UInt32(1), 0xFF) == q
                     pos_to_check += 1
                 elseif byte_to_check == q
                     quoted = false
@@ -95,24 +93,24 @@ function lex_newlines_in_buffer(io::IO, parsing_ctxfs::ParsingContext, options, 
                 end
             end
             ptr += pos_to_check
-            _bytes_to_search -= pos_to_check
+            bytes_to_search -= pos_to_check
         end
     end
 
     if eof(io)
-        quoted && error("CSV parse job failed on lexing newlines. There file has ended with an unmatched quote.")
+        quoted && (close(io); error("CSV parse job failed on lexing newlines. There file has ended with an unmatched quote."))
         done = true
         # Insert a newline at the end of the file if there wasn't one
         # This is just to make `eols` contain both start and end `pos` of every single line
-        @inbounds eols.elements[eols.occupied] != orig_bytes_to_search && push!(eols, orig_bytes_to_search + UInt32(1))
-        last_chunk_newline_at = orig_bytes_to_search
+        @inbounds eols.elements[eols.occupied] != UInt32(length(buf)) && push!(eols, UInt32(length(buf)) + UInt32(1))
+        last_chunk_newline_at = UInt32(length(buf))
     else
         done = false
         last_chunk_newline_at = @inbounds eols.elements[eols.occupied]
     end
     return last_chunk_newline_at, quoted, done
 end
-function lex_newlines_in_buffer(io::NoopStream, parsing_ctxfs::ParsingContext, options::Parsers.Options, byteset::Val{B}, bytes_to_search::UInt32, quoted::Bool=false) where B
+function lex_newlines_in_buffer(io::NoopStream, parsing_ctxfs::ParsingContext, options::Parsers.Options, byteset::Val{B}, bytes_to_search::UInt32, quoted::Bool) where B
     return lex_newlines_in_buffer(io.stream, parsing_ctxfs, options, byteset, bytes_to_search, quoted)
 end
 
@@ -120,7 +118,7 @@ end
 abstract type AbstractConsumeContext end
 struct DebugContext <: AbstractConsumeContext; end
 function consume!(taks_buf::TaskResultBuffer{N}, parsing_ctx::ParsingContext, row_num::UInt32, context::DebugContext) where {N}
-    # @info taks_buf.cols[1].elements[1:5]
+    # @info @view taks_buf.cols[1].elements[1:5]
     # @info parsing_ctx.bytes[1:10]
     # @info parsing_ctx.eols
     return nothing
@@ -131,7 +129,10 @@ macro _parse_file_setup()
         row_num = UInt32(1)
         done = false
         schema = parsing_ctx.schema
-        result_bufs = [TaskResultBuffer{N}(schema) for _ in 1:Threads.nthreads()] # has to match the number of spawned tasks
+        result_bufs = [
+            TaskResultBuffer{N}(schema, cld(length(parsing_ctx.eols), parsing_ctx.ntasks_per_chunk))
+            for _ in 1:parsing_ctx.ntasks_per_chunk
+        ] # has to match the number of spawned tasks
     end)
 end
 
@@ -195,7 +196,7 @@ function _parse_file(io, parsing_ctx::ParsingContext, consume_ctx::AbstractConsu
         # Updates eols_buf with new newlines, byte buffer was updated either from initialization stage or at the end of the loop
         eols = parsing_ctx.eols[]
         # At most one task per thread (per iteration), fewer if not enough rows to warrant spawning extra tasks
-        task_size = max(5_000, cld(length(eols), Threads.nthreads()))
+        task_size = max(1_000, cld(length(eols), parsing_ctx.ntasks_per_chunk))
         @sync for (task_id, task) = enumerate(Iterators.partition(eols, task_size))
             Threads.@spawn begin
                 buf = $(parsing_ctx.bytes)
@@ -213,6 +214,28 @@ function _parse_file(io, parsing_ctx::ParsingContext, consume_ctx::AbstractConsu
     end # while !done
 end
 
+function _parse_file_serial(io, parsing_ctx::ParsingContext, consume_ctx::AbstractConsumeContext, options::Parsers.Options, last_chunk_newline_at::UInt32, quoted::Bool, ::Val{N}, ::Val{M}, byteset::Val{B}) where {N,M,B}
+    row_num = UInt32(1)
+    done = false
+    schema = parsing_ctx.schema
+    result_bufs = (TaskResultBuffer{N}(schema, length(parsing_ctx.eols)),)
+    task_id = 1
+    while !done
+        # @info (Int(row_num), Int(last_chunk_newline_at), length(parsing_ctx.eols))
+        # Updates eols_buf with new newlines, byte buffer was updated either from initialization stage or at the end of the loop
+        task = parsing_ctx.eols[]
+        buf = parsing_ctx.bytes
+        @_parse_rows_forloop
+        consume!(result_buf, parsing_ctx, row_num, consume_ctx) # Note we interpolated `row_num` to this task!
+        row_num += UInt32(length(task))
+        empty!(parsing_ctx.eols)
+        # We always end on a newline when processing a chunk, so we're inserting a dummy variable to
+        # signal that. This works out even for the very first chunk.
+        push!(parsing_ctx.eols, UInt32(0))
+        bytes_read_in = prepare_buffer!(io, parsing_ctx.bytes, last_chunk_newline_at)
+        (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(io, parsing_ctx, options, byteset, bytes_read_in, quoted)
+    end # while !done
+end
 
 function _parse_file_doublebuffer(io, parsing_ctx::ParsingContext, consume_ctx::AbstractConsumeContext, options::Parsers.Options, last_chunk_newline_at::UInt32, quoted::Bool, ::Val{N}, ::Val{M}, byteset::Val{B}) where {N,M,B}
     @_parse_file_setup
@@ -220,14 +243,15 @@ function _parse_file_doublebuffer(io, parsing_ctx::ParsingContext, consume_ctx::
     parsing_ctx_next = ParsingContext(
         parsing_ctx.schema,
         parsing_ctx.header,
-        Vector{UInt8}(undef, BUFFER_SIZE),
+        Vector{UInt8}(undef, length(parsing_ctx.bytes)),
         BufferedVector{UInt32}(Vector{UInt32}(undef, parsing_ctx.eols.occupied), 0),
         parsing_ctx.limit,
+        parsing_ctx.ntasks_per_chunk,
     )
     while !done
         eols = parsing_ctx.eols[]
         # At most one task per thread (per iteration), fewer if not enough rows to warrant spawning extra tasks
-        task_size = max(5_000, cld(length(eols), Threads.nthreads()))
+        task_size = max(1_000, cld(length(eols), parsing_ctx.ntasks_per_chunk))
         @sync begin
             @inbounds parsing_ctx_next.bytes[last_chunk_newline_at:end] .= parsing_ctx_next.bytes[last_chunk_newline_at:end]
             Threads.@spawn begin
@@ -290,9 +314,10 @@ function parse_preamble!(io::IO, settings::ParserSettings, options::Parsers.Opti
     parsing_ctx = ParsingContext(
         schema,
         Symbol[],
-        Vector{UInt8}(undef, BUFFER_SIZE),
+        Vector{UInt8}(undef, settings.buffer_size),
         BufferedVector{UInt32}(),
         settings.limit,
+        settings.ntasks_per_chunk,
     )
     # We always end on a newline when processing a chunk, so we're inserting a dummy variable to
     # signal that. This works out even for the very first chunk.
@@ -326,11 +351,11 @@ function parse_preamble!(io::IO, settings::ParserSettings, options::Parsers.Opti
             code = Parsers.OK
             for i in 1:length(settings.schema)
                 (;val, tlen, code) = Parsers.xparse(String, v, pos, length(v), options)
-                !Parsers.ok(code) && error("Error parsing header for column $i at $(settings.header_row):$(pos).")
+                !Parsers.ok(code) && (close(io); error("Error parsing header for column $i at $(settings.header_row):$(pos)."))
                 @inbounds push!(parsing_ctx.header, Symbol(strip(String(v[val.pos:val.pos+val.len-1]))))
                 pos += tlen
             end
-            !(Parsers.eof(code) || Parsers.newline(code)) && error("Error parsing header, there are more columns that provided types in schema")
+            !(Parsers.eof(code) || Parsers.newline(code)) && (close(io); error("Error parsing header, there are more columns that provided types in schema"))
         end
     elseif should_parse_header
         #infer the number of columns from the first data row
@@ -341,7 +366,7 @@ function parse_preamble!(io::IO, settings::ParserSettings, options::Parsers.Opti
         i = 1
         while !(Parsers.eof(code) || Parsers.newline(code))
             (;val, tlen, code) = Parsers.xparse(String, v, pos, length(v), options)
-            !Parsers.ok(code) && error("Error parsing header for column $i at $(settings.header_row):$(pos).")
+            !Parsers.ok(code) && (close(io); error("Error parsing header for column $i at $(settings.header_row):$(pos)."))
             pos += tlen
             push!(parsing_ctx.header, Symbol(string("COL_", i)))
             i += 1
@@ -356,7 +381,7 @@ function parse_preamble!(io::IO, settings::ParserSettings, options::Parsers.Opti
         code = Parsers.OK
         while !(Parsers.eof(code) || Parsers.newline(code))
             (;val, tlen, code) = Parsers.xparse(String, v, pos, length(v), options)
-            !Parsers.ok(code) && error("Error parsing header for column $i at $(settings.header_row):$(pos).")
+            !Parsers.ok(code) && (close(io); error("Error parsing header for column $i at $(settings.header_row):$(pos)."))
             @inbounds push!(parsing_ctx.header, Symbol(strip(String(v[val.pos:val.pos+val.len-1]))))
             pos += tlen
         end
@@ -379,20 +404,27 @@ function parse_file(
     skiprows::Integer=UInt32(0),
     limit::Integer=UInt32(0),
     doublebuffer::Bool=false,
+    # In bytes. This absolutely has to be larger than any single row.
+    # Much safer if any two consecutive rows are smaller than this threshold.
+    buffer_size::Integer=UInt32(8 * 1024 * 1024),
+    ntasks_per_chunk::Integer=Threads.nthreads(),
 )
     @assert header_row < 2 # else not implemented
     @assert skiprows == 0  # else not implemented
     @assert limit == 0     # else not implemented
+    @assert ntasks_per_chunk > 0
     !isnothing(header) && !isnothing(schema) && length(header) != length(schema) && error("Provided header doesn't match the number of column of schema ($(length(header)) names, $(length(schema)) types).")
 
     io = _input_to_io(input)
-    settings = ParserSettings(schema, header, UInt32(header_row), UInt32(skiprows), UInt32(limit))
+    settings = ParserSettings(schema, header, UInt32(header_row), UInt32(skiprows), UInt32(limit), UInt32(buffer_size), UInt8(ntasks_per_chunk))
     options = _create_options(delim, quotechar, escapechar)
     byteset = Val(ByteSet((UInt8(options.e), UInt8(options.oq), UInt8('\n'), UInt8('\r'))))
     (parsing_ctx, last_chunk_newline_at, quoted, done) = parse_preamble!(io, settings, options, Val(byteset))
     schema = parsing_ctx.schema
 
-    if doublebuffer
+    if settings.ntasks_per_chunk == 1 || buffer_size < 32 * 1024 || last_chunk_newline_at < 32 * 1024
+              _parse_file_serial(io, parsing_ctx, consume_ctx, options, last_chunk_newline_at, quoted, Val(length(schema)), Val(_bounding_flag_type(length(schema))), Val(byteset))
+    elseif doublebuffer && !done
         _parse_file_doublebuffer(io, parsing_ctx, consume_ctx, options, last_chunk_newline_at, quoted, Val(length(schema)), Val(_bounding_flag_type(length(schema))), Val(byteset))
     else
                      _parse_file(io, parsing_ctx, consume_ctx, options, last_chunk_newline_at, quoted, Val(length(schema)), Val(_bounding_flag_type(length(schema))), Val(byteset))

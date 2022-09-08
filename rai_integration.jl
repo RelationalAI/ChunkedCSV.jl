@@ -27,6 +27,7 @@ function consume!(taks_buf::TaskResultBuffer{N}, parsing_ctx::ParsingContext, ro
         elseif type === Float64
             col = getfield(cols[c], :elements)::Vector{Float64}
         elseif type === String
+            # TODO: Strings need a bit more care (handling escaped chars and converting PosLen to String)
             col = getfield(cols[c], :elements)::Vector{Parsers.PosLen}
         else
             @assert false "unreachable"

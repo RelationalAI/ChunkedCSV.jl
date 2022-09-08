@@ -9,6 +9,17 @@ Base.getindex(x::BufferedVector) = resize!(x.elements, x.occupied)
 
 Base.length(x::BufferedVector) = x.occupied
 Base.size(x::BufferedVector) = (x.occupied,)
+Base.@propagate_inbounds function Base.last(x::BufferedVector)
+    x.elements[x.occupied]
+end
+@inline function Base.first(x::BufferedVector)
+    @boundscheck x.occupied > 0
+    @inbounds x.elements[1]
+end
+@inline function Base.getindex(x::BufferedVector, i::Int)
+    @boundscheck x.occupied >= i && i > 0
+    @inbounds x.elements[i]
+end
 Base.ndims(x::BufferedVector) = 1
 Base.empty!(x::BufferedVector) = x.occupied = 0
 Base.isempty(x::BufferedVector) = x.occupied == 0
@@ -31,5 +42,5 @@ _grow_by(::Type{T}) where {T<:Union{Bool,UInt8}} = 64
     buffer.occupied += 1
     @inbounds buffer.elements[buffer.occupied] = x
 end
-Base.ensureroom(x::BufferedVector, n) = (length(x.elements) < n && Base._growend!(x.elements, n - length(x.elements)); return nothing)
+Base.ensureroom(x::BufferedVector, n) = ((length(x.elements) < n) && Base._growend!(x.elements, n - length(x.elements)); return nothing)
 skip_element!(x::BufferedVector) = x.occupied += 1

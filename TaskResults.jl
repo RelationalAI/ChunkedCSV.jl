@@ -26,7 +26,7 @@ TaskResultBuffer{N}(schema::Vector{DataType}) where N = TaskResultBuffer{N, _bou
 # Prealocate BufferedVectors with `n` values
 TaskResultBuffer(schema, n) = TaskResultBuffer{length(schema)}(schema, n)
 TaskResultBuffer{N}(schema::Vector{DataType}, n::Int) where N = TaskResultBuffer{N, _bounding_flag_type(N)}(
-    [BufferedVector{schema[i]}(Vector{_translate_to_buffer_type(schema[i])}(undef, n), 0) for i in 1:N],
+    [BufferedVector{_translate_to_buffer_type(schema[i])}(Vector{_translate_to_buffer_type(schema[i])}(undef, n), 0) for i in 1:N],
     BufferedVector{RowStatus}(Vector{RowStatus}(undef, n), 0),
     BufferedVector{_bounding_flag_type(N)}(),
 )

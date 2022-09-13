@@ -26,7 +26,7 @@ function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingCont
             push!(parsing_ctx_next.eols, UInt32(0))
             parsing_ctx_next.bytes[last_chunk_newline_at:end] .= parsing_ctx.bytes[last_chunk_newline_at:end]
             bytes_read_in = prepare_buffer!(io, parsing_ctx_next.bytes, last_chunk_newline_at)
-            (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(io, parsing_ctx_next, options, byteset, bytes_read_in, quoted)
+            (last_chunk_newline_at, quoted, next_done) = lex_newlines_in_buffer(io, parsing_ctx_next, options, byteset, bytes_read_in, quoted)
         end
         # Wait for parsers to finish processing current chunk
         @lock parsing_ctx.cond.cond_wait begin
@@ -40,6 +40,7 @@ function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingCont
         # Switch contexts
         parsing_ctx, parsing_ctx_next = parsing_ctx_next, parsing_ctx
         parsers_should_use_current_context = !parsers_should_use_current_context
+        done = next_done
     end
 end
 

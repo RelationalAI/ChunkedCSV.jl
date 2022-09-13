@@ -1,5 +1,18 @@
+name = "ChunkedCSV"
+uuid = "c0d0730e-6432-44b2-a51e-6ec55e1c8b99"
+authors = ["Tomáš Drvoštěp <tomas.drvostep@gmail.com>"]
+version = "0.1.0"
+
 [deps]
-CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 Parsers = "69de0a69-1ddd-5017-9359-2bf0b02dc9f0"
 ScanByte = "7b38b023-a4d7-4c5e-8d43-3f3097f304eb"
 TranscodingStreams = "3bb67fe8-82b1-5028-8e26-92a6c54297fa"
+
+[extras]
+Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
+JET = "c3a54625-cd67-489e-a8e7-0a5a0ff4e31b"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Aqua", "JET", "Test"]

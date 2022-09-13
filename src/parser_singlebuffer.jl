@@ -19,7 +19,7 @@ function _parse_file_singlebuffer(io, parsing_ctx::ParsingContext, consume_ctx::
         for task in Iterators.partition(eols, task_size)
             task_end = task_start + UInt32(length(task)) - UInt32(1)
             put!(queue, (task_start, task_end, row_num))
-            row_num += UInt32(length(task))
+            row_num += UInt32(length(task) - 1)
             task_start = task_end + UInt32(1)
         end
 

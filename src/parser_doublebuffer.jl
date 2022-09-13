@@ -16,7 +16,7 @@ function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingCont
         for task in Iterators.partition(eols, task_size)
             task_end = task_start + UInt32(length(task)) - UInt32(1)
             put!(parsing_queue, (task_start, task_end, row_num, parsers_should_use_current_context))
-            row_num += UInt32(length(task))
+            row_num += UInt32(length(task) - 1)
             task_start = task_end + UInt32(1)
         end
 

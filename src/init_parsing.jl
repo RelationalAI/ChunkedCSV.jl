@@ -49,7 +49,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
     end
     if skiprows > 0
         n = length(parsing_ctx.eols) - !should_parse_header
-        unsafe_copyto!(parsing_ctx.eols.elements, 1, parsing_ctx.eols.elements, 1 + skiprows, n - skiprows)
+        unsafe_copyto!(parsing_ctx.eols.elements, 1, parsing_ctx.eols.elements, 1 + skiprows, n - skiprows + 1)
         parsing_ctx.eols.occupied -= skiprows
     end
 
@@ -73,23 +73,24 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
             code = Parsers.OK
             for i in 1:length(settings.schema)
                 (;val, tlen, code) = Parsers.xparse(String, v, pos, length(v), options)
-                !Parsers.ok(code) && (close(io); error("Error parsing header for column $i at $(settings.header_row):$(pos)."))
+                !Parsers.ok(code) && (close(io); error("Error parsing header for column $i at $(header_start+1):$(pos)."))
                 push!(parsing_ctx.header, Symbol(strip(String(v[val.pos:val.pos+val.len-1]))))
                 pos += tlen
             end
             !(Parsers.eof(code) || Parsers.newline(code)) && (close(io); error("Error parsing header, there are more columns that provided types in schema"))
         end
-    elseif should_parse_header
+    elseif !should_parse_header
         #infer the number of columns from the first data row
-        eol = first(parsing_ctx.eols) # 1 because we didn't preprend 0 eol to parsing_ctx.eols in this branch (should_parse_header)
+        s = parsing_ctx.eols[1]
+        e = parsing_ctx.eols[2]
         # v = view(parsing_ctx.bytes, UInt32(1):eol)
-        v = parsing_ctx.bytes[UInt32(1):eol]
+        v = @view parsing_ctx.bytes[s+1:e]
         pos = 1
         code = Parsers.OK
         i = 1
         while !(Parsers.eof(code) || Parsers.newline(code))
-            (;_, tlen, code) = Parsers.xparse(String, v, pos, length(v), options)
-            !Parsers.ok(code) && (close(io); error("Error parsing header for column $i at $(settings.header_row):$(pos)."))
+            (;val, tlen, code) = Parsers.xparse(String, v, pos, length(v), options)
+            !Parsers.ok(code) && (close(io); error("Error parsing header for column $i at $(1):$(pos)."))
             pos += tlen
             push!(parsing_ctx.header, Symbol(string("COL_", i)))
             i += 1
@@ -98,13 +99,14 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
         fill!(schema, String)
     else
         #infer the number of columns from the header row
-        eol = parsing_ctx.eols[2] # 2 because we preprended 0 eol into parsing_ctx.eols in this branch (!should_parse_header)
-        v = view(parsing_ctx.bytes, UInt32(1):eol)
+        s = parsing_ctx.eols[1]
+        e = parsing_ctx.eols[2]
+        v = view(parsing_ctx.bytes, s:e)
         pos = 1
         code = Parsers.OK
         while !(Parsers.eof(code) || Parsers.newline(code))
             (;val, tlen, code) = Parsers.xparse(String, v, pos, length(v), options)
-            !Parsers.ok(code) && (close(io); error("Error parsing header for column $i at $(settings.header_row):$(pos)."))
+            !Parsers.ok(code) && (close(io); error("Error parsing header for column $i at $(header_start+1):$(pos)."))
             @inbounds push!(parsing_ctx.header, Symbol(strip(String(v[val.pos:val.pos+val.len-1])))) # TODO: Investigate why without the copy some of headers fail test
             pos += tlen
         end

@@ -9,7 +9,7 @@ function _parse_file_serial(io, parsing_ctx::ParsingContext, consume_ctx::Abstra
         _parse_rows_forloop!(result_buf, task, parsing_ctx.bytes, schema, options)
         consume!(result_buf, parsing_ctx, row_num, consume_ctx)
         done && break
-        row_num += UInt32(length(task))
+        row_num += UInt32(length(task) - 1)
         empty!(parsing_ctx.eols)
         # We always end on a newline when processing a chunk, so we're inserting a dummy variable to
         # signal that. This works out even for the very first chunk.

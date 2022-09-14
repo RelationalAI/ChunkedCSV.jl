@@ -21,7 +21,7 @@ end
 Threads.nthreads() == 1 && @warn "Running tests with a single thread -- won't be able to spot concurency issues"
 
 @testset "csv" begin
-    @testset "simple file, single buffer" begin
+    @testset "simple file, single chunk" begin
         for alg in [:serial, :singlebuffer, :doublebuffer]
             @testset "$alg int" begin
                 testctx = TestContext()
@@ -82,7 +82,7 @@ Threads.nthreads() == 1 && @warn "Running tests with a single thread -- won't be
         end
     end
 
-    @testset "simple file, multiple buffers" begin
+    @testset "simple file, multiple chunks" begin
         for alg in [:serial, :singlebuffer, :doublebuffer]
             @testset "$alg int" begin
                 testctx = TestContext()
@@ -164,7 +164,7 @@ Threads.nthreads() == 1 && @warn "Running tests with a single thread -- won't be
         end
     end
 
-    @testset "Skiprows" begin
+    @testset "skiprows" begin
         for alg in [:serial, :singlebuffer, :doublebuffer]
             @testset "$alg string" begin
                 testctx = TestContext()
@@ -355,6 +355,98 @@ Threads.nthreads() == 1 && @warn "Running tests with a single thread -- won't be
                 @test testctx.results[1].cols[2].elements[1:2] == [2,4]
                 @test length(testctx.results[1].cols[1]) == 2
                 @test length(testctx.results[1].cols[2]) == 2
+            end
+        end
+    end
+
+    @testset "limit" begin
+        for alg in [:serial, :singlebuffer, :doublebuffer]
+            @testset "$alg" begin
+                testctx = TestContext()
+                parse_file(IOBuffer("""
+                    1,2
+                    3,4
+                    """),
+                    [Int,Int],
+                    testctx,
+                    limit=1,
+                    hasheader=false,
+                    _force=alg,
+                )
+                @test testctx.header == [:COL_1, :COL_2]
+                @test testctx.schema == [Int, Int]
+                @test testctx.results[1].cols[1].elements[1] == 1
+                @test testctx.results[1].cols[2].elements[1] == 2
+                @test length(testctx.results[1].cols[1]) == 1
+                @test length(testctx.results[1].cols[2]) == 1
+
+                testctx = TestContext()
+                parse_file(IOBuffer("""
+                    xxx
+                    xxx
+                    1,2
+                    3,4
+                    """),
+                    [Int,Int],
+                    testctx,
+                    limit=1,
+                    hasheader=false,
+                    skiprows=2,
+                    _force=alg,
+                )
+                @test testctx.header == [:COL_1, :COL_2]
+                @test testctx.schema == [Int, Int]
+                @test testctx.results[1].cols[1].elements[1] == 1
+                @test testctx.results[1].cols[2].elements[1] == 2
+                @test length(testctx.results[1].cols[1]) == 1
+                @test length(testctx.results[1].cols[2]) == 1
+            end
+        end
+    end
+
+    @testset "limit and skiprow" begin
+        for alg in [:serial, :singlebuffer, :doublebuffer]
+            @testset "$alg" begin
+                testctx = TestContext()
+                parse_file(IOBuffer("""
+                    1,2
+                    3,4
+                    5,6
+                    """),
+                    [Int,Int],
+                    testctx,
+                    limit=1,
+                    skiprows=1,
+                    hasheader=false,
+                    _force=alg,
+                )
+                @test testctx.header == [:COL_1, :COL_2]
+                @test testctx.schema == [Int, Int]
+                @test testctx.results[1].cols[1].elements[1] == 3
+                @test testctx.results[1].cols[2].elements[1] == 4
+                @test length(testctx.results[1].cols[1]) == 1
+                @test length(testctx.results[1].cols[2]) == 1
+
+                testctx = TestContext()
+                parse_file(IOBuffer("""
+                    xxx
+                    a,b
+                    1,2
+                    3,4
+                    """),
+                    [Int,Int],
+                    testctx,
+                    limit=1,
+                    hasheader=true,
+                    skiprows=1,
+                    _force=alg,
+                )
+                @test testctx.header == [:a, :b]
+                @test testctx.schema == [Int, Int]
+                @test testctx.results[1].cols[1].elements[1] == 1
+                @test testctx.results[1].cols[2].elements[1] == 2
+                @test length(testctx.results[1].cols[1]) == 1
+                @test length(testctx.results[1].cols[2]) == 1
             end
         end
     end

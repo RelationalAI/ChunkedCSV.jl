@@ -4,6 +4,7 @@ function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingCont
     @inbounds while true
         # We start with a parsing_ctx that is already lexed from
         # initially from `parse_preamble`, later from from this function
+        limit_eols!(parsing_ctx, row_num) && break
         eols = parsing_ctx.eols[]
         task_size = max(1_000, cld(length(eols), parsing_ctx.maxtasks))
         task_start = UInt32(1)

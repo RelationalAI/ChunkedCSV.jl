@@ -42,6 +42,16 @@ struct ParserSettings
     maxtasks::UInt8
 end
 
+function limit_eols!(parsing_ctx::ParsingContext, row_num)
+    parsing_ctx.limit == 0 && return false
+    if row_num > parsing_ctx.limit
+        return true
+    elseif row_num <= parsing_ctx.limit < row_num + UInt32(length(parsing_ctx.eols) - 1)
+        parsing_ctx.eols.occupied -= ((UInt32(parsing_ctx.eols.occupied) + row_num) - parsing_ctx.limit - UInt32(2))
+    end
+    return false
+end
+
 include("init_parsing.jl")
 include("read_and_lex.jl")
 include("consume_context.jl")
@@ -80,7 +90,7 @@ function parse_file(
     hasheader::Bool=true,
     skiprows::Integer=UInt32(0),
     limit::Integer=UInt32(0),
-    doublebuffer::Bool=false,
+    doublebuffer::Bool=true,
     # In bytes. This absolutely has to be larger than any single row.
     # Much safer if any two consecutive rows are smaller than this threshold.
     buffersize::Integer=UInt32(8 * 1024 * 1024),
@@ -90,7 +100,7 @@ function parse_file(
 )
     @assert 0 < buffersize < typemax(UInt32)
     @assert skiprows >= 0
-    @assert limit == 0     # else not implemented
+    @assert limit >= 0
     @assert nworkers > 0
     @assert maxtasks > nworkers
     @assert _force in (:none, :serial, :singlebuffer, :doublebuffer)

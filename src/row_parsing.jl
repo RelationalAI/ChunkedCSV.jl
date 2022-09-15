@@ -29,6 +29,17 @@ function _parse_rows_forloop!(result_buf::TaskResultBuffer{N,M}, task::AbstractV
             elseif type === Float64
                 (;val, tlen, code) = Parsers.xparse(Float64, row_bytes, pos, len, options)::Parsers.Result{Float64}
                 unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{Float64}, val)
+            elseif type === Date
+                (;val, tlen, code) = Parsers.xparse(Date, row_bytes, pos, len, options)::Parsers.Result{Date}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{Date}, val)
+            elseif type === DateTime
+                (;val, tlen, code) = Parsers.xparse(DateTime, row_bytes, pos, len, options)::Parsers.Result{DateTime}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{DateTime}, val)
+            elseif type <: FixedDecimal
+                (;val, tlen, code) = Parsers.xparse(String, row_bytes, pos, len, options)::Parsers.Result{Parsers.PosLen}
+                ptr = pointer(buf) + prev_newline+pos+Parsers.quoted(code)
+                strview = unsafe_string(ptr, val.len-1)
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{type}, parse(type, strview))
             elseif type === String
                 (;val, tlen, code) = Parsers.xparse(String, row_bytes, pos, len, options)::Parsers.Result{Parsers.PosLen}
                 is_quoted = Parsers.quoted(code)

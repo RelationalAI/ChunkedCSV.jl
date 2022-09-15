@@ -6,6 +6,8 @@ using ScanByte
 import Parsers
 using .Threads: @spawn
 using TranscodingStreams # TODO: ditch this
+using Dates: Date, DateTime
+using FixedPointDecimals
 
 # IDEA: We could make a 48bit PosLen string type (8MB -> 23 bits if we represent 8MB as 0, 2 bits for metadata)
 # IDEA: Instead of having SoA layout in TaskResultBuffer, we could try AoS using "reinterpretable bytes"
@@ -102,7 +104,7 @@ function parse_file(
     @assert skiprows >= 0
     @assert limit >= 0
     @assert nworkers > 0
-    @assert maxtasks > nworkers
+    @assert maxtasks >= nworkers
     @assert _force in (:none, :serial, :singlebuffer, :doublebuffer)
     !isnothing(header) && !isnothing(schema) && length(header) != length(schema) && error("Provided header doesn't match the number of column of schema ($(length(header)) names, $(length(schema)) types).")
 

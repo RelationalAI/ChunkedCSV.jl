@@ -17,6 +17,8 @@ using FixedPointDecimals
 include("BufferedVectors.jl")
 include("TaskResults.jl")
 
+include("fixed_decimals_utils.jl")
+
 mutable struct TaskCondition
     ntasks::Int
     cond_wait::Threads.Condition

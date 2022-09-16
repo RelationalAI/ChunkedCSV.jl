@@ -1,5 +1,5 @@
 using FixedPointDecimals, ScanByte, Parsers, BenchmarkTools, Test
-
+using Parsers: Result
 
 function _shift(n::T, decpos) where {T<:Int128}
     if     decpos ==   0 && return n
@@ -135,7 +135,10 @@ Base.@propagate_inbounds function _parse_decimal_int(::Type{T}, f, buf::Abstract
     last_byte_to_parse = e_position == 0 ? len : e_position
 
     if e_position != 0
-        e_val = Int(Parsers.xparse2(Int32, buf, e_position+Int32(1), len).val)
+        e_result = Parsers.xparse(Int, buf, e_position+Int32(1), len, options)
+        e_val = e_result.val
+        code |= e_result.code
+        !Parsers.ok(code) && return Result{T}(code, len, T(0))
         last_byte_to_parse -= 1
     else
         e_val = 0
@@ -163,7 +166,7 @@ Base.@propagate_inbounds function _parse_decimal_int(::Type{T}, f, buf::Abstract
             if buf[2+int_start_offset] == options.decimal
                 int_start_offset += 1
                 while true
-                    1+int_start_offset > last_byte_to_parse && return (T(0), code, len) # This was something like "0.00"
+                    1+int_start_offset > last_byte_to_parse && return Result{T}(code, len, T(0)) # This was something like "0.00"
                     b = buf[1+int_start_offset]
                     if b == 0x30
                         int_start_offset += 1
@@ -176,11 +179,10 @@ Base.@propagate_inbounds function _parse_decimal_int(::Type{T}, f, buf::Abstract
                 end
             else
                 #parse error leading zero 00.x...
-                code |= Parsers.INVALID
-                return return (T(0), code, len)
+                return Result{T}(code | Parsers.INVALID, len, T(0))
             end
         else
-            return (T(0), code, len) # ok
+            return Result{T}(code, len, T(0)) # ok
         end
     end
 
@@ -197,23 +199,28 @@ Base.@propagate_inbounds function _parse_decimal_int(::Type{T}, f, buf::Abstract
 
 
     if backing_integer_digits < 0 # All digits are past our precision, no overflow possible
-        return T(0)
+        return Result{T}(code, len, T(0))
     elseif backing_integer_digits == 0 # All digits are past our precision but we may get a 1 from rounding, no overflow possible
         out = T(0)
         if number_of_fractional_digits != f
-            out += int_sign * _parse_round(T, buf, int_start_offset + 1 + parse_through_decimal, last_byte_to_parse, decimal_position, mode)
+            round_val, code = _parse_round(T, buf, int_start_offset + 1 + parse_through_decimal, last_byte_to_parse, decimal_position, code, mode)
+            out += int_sign * round_val
         end
     elseif backing_integer_digits < maxdigits(T) # The number of digits to accumulate is smaller than the capacity of T, no overflow possible
         out = zero(T)
         for i in (1+int_start_offset:int_start_offset + digits_to_iter + parse_through_decimal)
-            out = T(1 + 9 * (i != decimal_position)) * out + T(buf[i]-0x30) * (i != decimal_position)
+            (i == decimal_position) && continue
+            b = buf[i] - 0x30
+            b > 0x09 && (return Result{T}(code | Parsers.INVALID, len, out))
+            out = T(10) * out + T(b)
         end
         out *= int_sign
 
         if number_of_fractional_digits < f
             out = _shift(out, decimal_shift)
         elseif number_of_fractional_digits != f
-            out += int_sign * _parse_round(T, buf, int_start_offset + digits_to_iter + parse_through_decimal, last_byte_to_parse, decimal_position, mode)
+            round_val, code = _parse_round(T, buf, int_start_offset + digits_to_iter + parse_through_decimal, last_byte_to_parse, decimal_position, code, mode)
+            out += int_sign * round_val
         end
     elseif backing_integer_digits == maxdigits(T) # The number of digits to accumulate is the same as the capacity of T, overflow may happen
         out = zero(T)
@@ -223,6 +230,7 @@ Base.@propagate_inbounds function _parse_decimal_int(::Type{T}, f, buf::Abstract
             (i == decimal_position) && continue
             j += 1
             b = buf[i]
+            b > 0x39 && (return Result{T}(code | Parsers.INVALID, len, out))
             if check_next
                 maxbyte = _typemaxbytes(T, j)
                 if b == maxbyte
@@ -230,276 +238,283 @@ Base.@propagate_inbounds function _parse_decimal_int(::Type{T}, f, buf::Abstract
                 elseif b < maxbyte
                     check_next = false
                 else
-                    code |= Parsers.OVERFLOW
-                    return (T(0), code, len)
+                    return Result{T}(code | Parsers.OVERFLOW, len, out)
                 end
             end
-            out = T(10) * out + T(b-0x30)
+            out = T(10) * out + T(b)
         end
         out *= int_sign
 
         if number_of_fractional_digits < f
             out = _shift(out, decimal_shift)
         elseif number_of_fractional_digits != f
-            out += int_sign * _parse_round(T, buf, int_start_offset + digits_to_iter + parse_through_decimal, last_byte_to_parse, decimal_position, mode)
+            round_val, code = _parse_round(T, buf, int_start_offset + digits_to_iter + parse_through_decimal, last_byte_to_parse, decimal_position, code, mode)
+            out += int_sign * round_val
         end
     else # Always overflows
-        code |= Parsers.OVERFLOW
-        return (T(0), code, len)
+        return Result{T}(code | Parsers.OVERFLOW, len, T(0))
     end
 
-    return (out, code, len)
+    return Result{T}(code, len, out)
 end
 
-_parse_round(::Type{T}, buf, s, e, d, ::RoundingMode{:ToZero}) where {T} = T(0)
-_parse_round(::Type{T}, buf, s, e, d, ::RoundingMode{:Throws}) where {T} = s < e && !all(==(0x30), view(buf, s:e)) ? error("") : T(0)
-function _parse_round(::Type{T}, buf, s, e, d, ::RoundingMode{:Nearest}) where {T}
+_parse_round(::Type{T}, buf, s, e, d, code, ::RoundingMode{:ToZero}) where {T} = (T(0), code)
+_parse_round(::Type{T}, buf, s, e, d, code, ::RoundingMode{:Throws}) where {T} = s < e && !all(==(0x30), view(buf, s:e)) ? (T(0), code | Parsers.INVALID) : (T(0), code)
+function _parse_round(::Type{T}, buf, s, e, d, code, ::RoundingMode{:Nearest}) where {T}
     @assert s <= length(buf)
     @assert 1 < s <= e || 1 <= s < e  "$s $e"
     @inbounds begin
         carries_over = false
         b = buf[e] - 0x30
-        s >= e && return T(b > 0x05 || (b == 0x05 && buf[s-1]))
+        b > 0x09 && (return (T(0), code | Parsers.INVALID))
+        s >= e && return (T(b > 0x05 || (b == 0x05 && buf[s-1])), code)
         for i in e:-1:s+1
             i == d && continue
             i == d + 1 && (i += 1)
             pb = buf[i-1] - 0x30 + carries_over
+            pb > (0x09 + carries_over) && (return (T(0), code | Parsers.INVALID))
             carries_over = false
             if b > 0x05 || (b == 0x05 && isodd(pb))
                 if i - 1 == s
-                    return T(1)
+                    return (T(1), code)
                 else
                     carries_over = true
                 end
             end
             b = pb
         end
-        return T(carries_over)
+        return (T(carries_over), code)
     end
 end
 
 
 using Test
 
+for i in typemin(Int8):typemax(Int8)
+    bs = UInt8.(collect(string(i)))
+
+
+
+
 @testset "all" begin
 options = Parsers.Options()
-@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("0")), options)[1] == 0
-@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("0.0")), options)[1] == 0
-@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("0.0")), options)[1] == 0
-@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("0.0e0")), options)[1] == 0
-@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("0.0e+0")), options)[1] == 0
-@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("0.0e-0")), options)[1] == 0
-@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("-0")), options)[1] == 0
-@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("-0.0")), options)[1] == 0
-@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("-0.0e0")), options)[1] == 0
-@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("-0.0e+0")), options)[1] == 0
-@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("-0.0e-0")), options)[1] == 0
-@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("1")), options)[1] == 10000
-@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("1.0")), options)[1] == 10000
-@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("1.0e+0")), options)[1] == 10000
-@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("1.0e-0")), options)[1] == 10000
-@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("0.1e+1")), options)[1] == 10000
-@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("0.01e+2")), options)[1] == 10000
-@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("0.00000000001e+11")), options)[1] == 10000
-@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("10.0e-1")), options)[1] == 10000
-@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("100.0e-2")), options)[1] == 10000
-@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("100000000000.0e-11")), options)[1] == 10000
-@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("-1")), options)[1] == -10000
-@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("-1.0")), options)[1] == -10000
-@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("-1.0e+0")), options)[1] == -10000
-@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("-1.0e-0")), options)[1] == -10000
-@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("-0.1e+1")), options)[1] == -10000
-@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("-0.01e+2")), options)[1] == -10000
-@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("-0.00000000001e+11")), options)[1] == -10000
-@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("-10.0e-1")), options)[1] == -10000
-@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("-100.0e-2")), options)[1] == -10000
-@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("-100000000000.0e-11")), options)[1] == -10000
+@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("0")), options).val == 0
+@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("0.0")), options).val == 0
+@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("0.0")), options).val == 0
+@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("0.0e0")), options).val == 0
+@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("0.0e+0")), options).val == 0
+@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("0.0e-0")), options).val == 0
+@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("-0")), options).val == 0
+@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("-0.0")), options).val == 0
+@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("-0.0e0")), options).val == 0
+@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("-0.0e+0")), options).val == 0
+@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("-0.0e-0")), options).val == 0
+@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("1")), options).val == 10000
+@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("1.0")), options).val == 10000
+@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("1.0e+0")), options).val == 10000
+@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("1.0e-0")), options).val == 10000
+@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("0.1e+1")), options).val == 10000
+@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("0.01e+2")), options).val == 10000
+@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("0.00000000001e+11")), options).val == 10000
+@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("10.0e-1")), options).val == 10000
+@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("100.0e-2")), options).val == 10000
+@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("100000000000.0e-11")), options).val == 10000
+@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("-1")), options).val == -10000
+@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("-1.0")), options).val == -10000
+@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("-1.0e+0")), options).val == -10000
+@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("-1.0e-0")), options).val == -10000
+@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("-0.1e+1")), options).val == -10000
+@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("-0.01e+2")), options).val == -10000
+@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("-0.00000000001e+11")), options).val == -10000
+@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("-10.0e-1")), options).val == -10000
+@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("-100.0e-2")), options).val == -10000
+@test _parse_decimal_int(Int32, Int8(4), UInt8.(collect("-100000000000.0e-11")), options).val == -10000
 
 
 # @testset "decimal position" begin
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("123")), options)[1]   == 123_00
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("0.123")), options)[1] == 0_12
-@test _parse_decimal_int(Int64, 2, UInt8.(collect(".123")), options)[1]  == 0_12
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("1.23")), options)[1]  == 1_23
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("12.3")), options)[1]  == 12_30
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("123.")), options)[1]  == 123_00
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("123.0")), options)[1] == 123_00
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("123")), options).val   == 123_00
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("0.123")), options).val == 0_12
+@test _parse_decimal_int(Int64, 2, UInt8.(collect(".123")), options).val  == 0_12
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("1.23")), options).val  == 1_23
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("12.3")), options).val  == 12_30
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("123.")), options).val  == 123_00
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("123.0")), options).val == 123_00
 
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("-123")), options)[1]   == -123_00
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("-0.123")), options)[1] == -0_12
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("-.123")), options)[1]  == -0_12
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("-1.23")), options)[1]  == -1_23
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("-12.3")), options)[1]  == -12_30
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("-123.")), options)[1]  == -123_00
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("-123.0")), options)[1] == -123_00
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("-123")), options).val   == -123_00
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("-0.123")), options).val == -0_12
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("-.123")), options).val  == -0_12
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("-1.23")), options).val  == -1_23
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("-12.3")), options).val  == -12_30
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("-123.")), options).val  == -123_00
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("-123.0")), options).val == -123_00
 # end
 
 # @testset "scientific notation" begin
-@test _parse_decimal_int(Int64, 4, UInt8.(collect("12e0")), options)[1]   == 00012_0000
-@test _parse_decimal_int(Int64, 4, UInt8.(collect("12e3")), options)[1]   == 12000_0000
-@test _parse_decimal_int(Int64, 4, UInt8.(collect("12e-3")), options)[1]  == 00000_0120
-@test _parse_decimal_int(Int64, 4, UInt8.(collect("1.2e0")), options)[1]  == 00001_2000
-@test _parse_decimal_int(Int64, 4, UInt8.(collect("1.2e3")), options)[1]  == 01200_0000
-@test _parse_decimal_int(Int64, 4, UInt8.(collect("1.2e-3")), options)[1] == 00000_0012
-@test _parse_decimal_int(Int64, 4, UInt8.(collect("1.2e-4")), options)[1] == 00000_0001
+@test _parse_decimal_int(Int64, 4, UInt8.(collect("12e0")), options).val   == 00012_0000
+@test _parse_decimal_int(Int64, 4, UInt8.(collect("12e3")), options).val   == 12000_0000
+@test _parse_decimal_int(Int64, 4, UInt8.(collect("12e-3")), options).val  == 00000_0120
+@test _parse_decimal_int(Int64, 4, UInt8.(collect("1.2e0")), options).val  == 00001_2000
+@test _parse_decimal_int(Int64, 4, UInt8.(collect("1.2e3")), options).val  == 01200_0000
+@test _parse_decimal_int(Int64, 4, UInt8.(collect("1.2e-3")), options).val == 00000_0012
+@test _parse_decimal_int(Int64, 4, UInt8.(collect("1.2e-4")), options).val == 00000_0001
 
-@test _parse_decimal_int(Int64, 4, UInt8.(collect("-12e0")), options)[1]   == -00012_0000
-@test _parse_decimal_int(Int64, 4, UInt8.(collect("-12e3")), options)[1]   == -12000_0000
-@test _parse_decimal_int(Int64, 4, UInt8.(collect("-12e-3")), options)[1]  == -00000_0120
-@test _parse_decimal_int(Int64, 4, UInt8.(collect("-1.2e0")), options)[1]  == -00001_2000
-@test _parse_decimal_int(Int64, 4, UInt8.(collect("-1.2e3")), options)[1]  == -01200_0000
-@test _parse_decimal_int(Int64, 4, UInt8.(collect("-1.2e-3")), options)[1] == -00000_0012
+@test _parse_decimal_int(Int64, 4, UInt8.(collect("-12e0")), options).val   == -00012_0000
+@test _parse_decimal_int(Int64, 4, UInt8.(collect("-12e3")), options).val   == -12000_0000
+@test _parse_decimal_int(Int64, 4, UInt8.(collect("-12e-3")), options).val  == -00000_0120
+@test _parse_decimal_int(Int64, 4, UInt8.(collect("-1.2e0")), options).val  == -00001_2000
+@test _parse_decimal_int(Int64, 4, UInt8.(collect("-1.2e3")), options).val  == -01200_0000
+@test _parse_decimal_int(Int64, 4, UInt8.(collect("-1.2e-3")), options).val == -00000_0012
 
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("999e-1")), options)[1] == 99_90
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("999e-2")), options)[1] == 09_99
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("999e-3")), options)[1] == 01_00
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("999e-4")), options)[1] == 00_10
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("999e-5")), options)[1] == 00_01
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("999e-6")), options)[1] == 00_00
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("999e-1")), options).val == 99_90
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("999e-2")), options).val == 09_99
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("999e-3")), options).val == 01_00
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("999e-4")), options).val == 00_10
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("999e-5")), options).val == 00_01
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("999e-6")), options).val == 00_00
 
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("-999e-1")), options)[1] == -99_90
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("-999e-2")), options)[1] == -09_99
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("-999e-3")), options)[1] == -01_00
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("-999e-4")), options)[1] == -00_10
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("-999e-5")), options)[1] == -00_01
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("-999e-6")), options)[1] == -00_00
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("-999e-1")), options).val == -99_90
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("-999e-2")), options).val == -09_99
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("-999e-3")), options).val == -01_00
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("-999e-4")), options).val == -00_10
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("-999e-5")), options).val == -00_01
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("-999e-6")), options).val == -00_00
 
-@test _parse_decimal_int(Int64, 4, UInt8.(collect("9"^96 * "e-100")), options)[1] == 0_001
+@test _parse_decimal_int(Int64, 4, UInt8.(collect("9"^96 * "e-100")), options).val == 0_001
 # end
 
 # @testset "round to nearest" begin
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("0.444")), options)[1] == 0_44
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("0.445")), options)[1] == 0_44
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("0.446")), options)[1] == 0_45
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("0.454")), options)[1] == 0_45
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("0.455")), options)[1] == 0_46
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("0.456")), options)[1] == 0_46
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("0.444")), options).val == 0_44
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("0.445")), options).val == 0_44
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("0.446")), options).val == 0_45
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("0.454")), options).val == 0_45
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("0.455")), options).val == 0_46
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("0.456")), options).val == 0_46
 
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("-0.444")), options)[1] == -0_44
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("-0.445")), options)[1] == -0_44
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("-0.446")), options)[1] == -0_45
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("-0.454")), options)[1] == -0_45
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("-0.455")), options)[1] == -0_46
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("-0.456")), options)[1] == -0_46
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("-0.444")), options).val == -0_44
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("-0.445")), options).val == -0_44
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("-0.446")), options).val == -0_45
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("-0.454")), options).val == -0_45
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("-0.455")), options).val == -0_46
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("-0.456")), options).val == -0_46
 
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("0.009")), options)[1]  ==  0_01
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("-0.009")), options)[1] == -0_01
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("0.009")), options).val  ==  0_01
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("-0.009")), options).val == -0_01
 
-@test _parse_decimal_int(Int64, 4, UInt8.(collect("1.5e-4")), options)[1] == 0_0002
+@test _parse_decimal_int(Int64, 4, UInt8.(collect("1.5e-4")), options).val == 0_0002
 # end
 
 # @testset "round to zero" begin
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("0.444")), options, RoundToZero)[1] == 0_44
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("0.445")), options, RoundToZero)[1] == 0_44
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("0.446")), options, RoundToZero)[1] == 0_44
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("0.454")), options, RoundToZero)[1] == 0_45
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("0.455")), options, RoundToZero)[1] == 0_45
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("0.456")), options, RoundToZero)[1] == 0_45
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("0.444")), options, RoundToZero).val == 0_44
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("0.445")), options, RoundToZero).val == 0_44
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("0.446")), options, RoundToZero).val == 0_44
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("0.454")), options, RoundToZero).val == 0_45
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("0.455")), options, RoundToZero).val == 0_45
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("0.456")), options, RoundToZero).val == 0_45
 
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("-0.444")), options, RoundToZero)[1] == -0_44
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("-0.445")), options, RoundToZero)[1] == -0_44
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("-0.446")), options, RoundToZero)[1] == -0_44
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("-0.454")), options, RoundToZero)[1] == -0_45
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("-0.455")), options, RoundToZero)[1] == -0_45
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("-0.456")), options, RoundToZero)[1] == -0_45
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("-0.444")), options, RoundToZero).val == -0_44
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("-0.445")), options, RoundToZero).val == -0_44
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("-0.446")), options, RoundToZero).val == -0_44
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("-0.454")), options, RoundToZero).val == -0_45
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("-0.455")), options, RoundToZero).val == -0_45
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("-0.456")), options, RoundToZero).val == -0_45
 
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("0.009")), options, RoundToZero)[1]  == 0_00
-@test _parse_decimal_int(Int64, 2, UInt8.(collect("-0.009")), options, RoundToZero)[1] == 0_00
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("0.009")), options, RoundToZero).val  == 0_00
+@test _parse_decimal_int(Int64, 2, UInt8.(collect("-0.009")), options, RoundToZero).val == 0_00
 
-@test _parse_decimal_int(Int64, 4, UInt8.(collect("1.5e-4")), options, RoundToZero)[1] == 0_0001
+@test _parse_decimal_int(Int64, 4, UInt8.(collect("1.5e-4")), options, RoundToZero).val == 0_0001
 
 
 
 # @testset "decimal position" begin
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("123")), options)[1]   == 123_00
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("0.123")), options)[1] == 0_12
-@test _parse_decimal_int(Int32, 2, UInt8.(collect(".123")), options)[1]  == 0_12
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("1.23")), options)[1]  == 1_23
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("12.3")), options)[1]  == 12_30
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("123.")), options)[1]  == 123_00
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("123.0")), options)[1] == 123_00
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("123")), options).val   == 123_00
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("0.123")), options).val == 0_12
+@test _parse_decimal_int(Int32, 2, UInt8.(collect(".123")), options).val  == 0_12
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("1.23")), options).val  == 1_23
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("12.3")), options).val  == 12_30
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("123.")), options).val  == 123_00
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("123.0")), options).val == 123_00
 
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("-123")), options)[1]   == -123_00
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("-0.123")), options)[1] == -0_12
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("-.123")), options)[1]  == -0_12
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("-1.23")), options)[1]  == -1_23
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("-12.3")), options)[1]  == -12_30
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("-123.")), options)[1]  == -123_00
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("-123.0")), options)[1] == -123_00
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("-123")), options).val   == -123_00
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("-0.123")), options).val == -0_12
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("-.123")), options).val  == -0_12
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("-1.23")), options).val  == -1_23
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("-12.3")), options).val  == -12_30
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("-123.")), options).val  == -123_00
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("-123.0")), options).val == -123_00
 # end
 
 # @testset "scientific notation" begin
-@test _parse_decimal_int(Int32, 4, UInt8.(collect("12e0")), options)[1]   == 00012_0000
-@test _parse_decimal_int(Int32, 4, UInt8.(collect("12e3")), options)[1]   == 12000_0000
-@test _parse_decimal_int(Int32, 4, UInt8.(collect("12e-3")), options)[1]  == 00000_0120
-@test _parse_decimal_int(Int32, 4, UInt8.(collect("1.2e0")), options)[1]  == 00001_2000
-@test _parse_decimal_int(Int32, 4, UInt8.(collect("1.2e3")), options)[1]  == 01200_0000
-@test _parse_decimal_int(Int32, 4, UInt8.(collect("1.2e-3")), options)[1] == 00000_0012
-@test _parse_decimal_int(Int32, 4, UInt8.(collect("1.2e-4")), options)[1] == 00000_0001
+@test _parse_decimal_int(Int32, 4, UInt8.(collect("12e0")), options).val   == 00012_0000
+@test _parse_decimal_int(Int32, 4, UInt8.(collect("12e3")), options).val   == 12000_0000
+@test _parse_decimal_int(Int32, 4, UInt8.(collect("12e-3")), options).val  == 00000_0120
+@test _parse_decimal_int(Int32, 4, UInt8.(collect("1.2e0")), options).val  == 00001_2000
+@test _parse_decimal_int(Int32, 4, UInt8.(collect("1.2e3")), options).val  == 01200_0000
+@test _parse_decimal_int(Int32, 4, UInt8.(collect("1.2e-3")), options).val == 00000_0012
+@test _parse_decimal_int(Int32, 4, UInt8.(collect("1.2e-4")), options).val == 00000_0001
 
-@test _parse_decimal_int(Int32, 4, UInt8.(collect("-12e0")), options)[1]   == -00012_0000
-@test _parse_decimal_int(Int32, 4, UInt8.(collect("-12e3")), options)[1]   == -12000_0000
-@test _parse_decimal_int(Int32, 4, UInt8.(collect("-12e-3")), options)[1]  == -00000_0120
-@test _parse_decimal_int(Int32, 4, UInt8.(collect("-1.2e0")), options)[1]  == -00001_2000
-@test _parse_decimal_int(Int32, 4, UInt8.(collect("-1.2e3")), options)[1]  == -01200_0000
-@test _parse_decimal_int(Int32, 4, UInt8.(collect("-1.2e-3")), options)[1] == -00000_0012
+@test _parse_decimal_int(Int32, 4, UInt8.(collect("-12e0")), options).val   == -00012_0000
+@test _parse_decimal_int(Int32, 4, UInt8.(collect("-12e3")), options).val   == -12000_0000
+@test _parse_decimal_int(Int32, 4, UInt8.(collect("-12e-3")), options).val  == -00000_0120
+@test _parse_decimal_int(Int32, 4, UInt8.(collect("-1.2e0")), options).val  == -00001_2000
+@test _parse_decimal_int(Int32, 4, UInt8.(collect("-1.2e3")), options).val  == -01200_0000
+@test _parse_decimal_int(Int32, 4, UInt8.(collect("-1.2e-3")), options).val == -00000_0012
 
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("999e-1")), options)[1] == 99_90
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("999e-2")), options)[1] == 09_99
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("999e-3")), options)[1] == 01_00
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("999e-4")), options)[1] == 00_10
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("999e-5")), options)[1] == 00_01
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("999e-6")), options)[1] == 00_00
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("999e-1")), options).val == 99_90
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("999e-2")), options).val == 09_99
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("999e-3")), options).val == 01_00
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("999e-4")), options).val == 00_10
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("999e-5")), options).val == 00_01
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("999e-6")), options).val == 00_00
 
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("-999e-1")), options)[1] == -99_90
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("-999e-2")), options)[1] == -09_99
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("-999e-3")), options)[1] == -01_00
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("-999e-4")), options)[1] == -00_10
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("-999e-5")), options)[1] == -00_01
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("-999e-6")), options)[1] == -00_00
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("-999e-1")), options).val == -99_90
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("-999e-2")), options).val == -09_99
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("-999e-3")), options).val == -01_00
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("-999e-4")), options).val == -00_10
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("-999e-5")), options).val == -00_01
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("-999e-6")), options).val == -00_00
 
-@test _parse_decimal_int(Int32, 4, UInt8.(collect("9"^96 * "e-100")), options)[1] == 0_001
+@test _parse_decimal_int(Int32, 4, UInt8.(collect("9"^96 * "e-100")), options).val == 0_001
 # end
 
 # @testset "round to nearest" begin
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("0.444")), options)[1] == 0_44
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("0.445")), options)[1] == 0_44
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("0.446")), options)[1] == 0_45
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("0.454")), options)[1] == 0_45
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("0.455")), options)[1] == 0_46
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("0.456")), options)[1] == 0_46
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("0.444")), options).val == 0_44
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("0.445")), options).val == 0_44
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("0.446")), options).val == 0_45
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("0.454")), options).val == 0_45
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("0.455")), options).val == 0_46
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("0.456")), options).val == 0_46
 
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("-0.444")), options)[1] == -0_44
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("-0.445")), options)[1] == -0_44
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("-0.446")), options)[1] == -0_45
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("-0.454")), options)[1] == -0_45
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("-0.455")), options)[1] == -0_46
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("-0.456")), options)[1] == -0_46
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("-0.444")), options).val == -0_44
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("-0.445")), options).val == -0_44
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("-0.446")), options).val == -0_45
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("-0.454")), options).val == -0_45
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("-0.455")), options).val == -0_46
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("-0.456")), options).val == -0_46
 
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("0.009")), options)[1]  ==  0_01
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("-0.009")), options)[1] == -0_01
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("0.009")), options).val  ==  0_01
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("-0.009")), options).val == -0_01
 
-@test _parse_decimal_int(Int32, 4, UInt8.(collect("1.5e-4")), options)[1] == 0_0002
+@test _parse_decimal_int(Int32, 4, UInt8.(collect("1.5e-4")), options).val == 0_0002
 # end
 
 # @testset "round to zero" begin
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("0.444")), options, RoundToZero)[1] == 0_44
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("0.445")), options, RoundToZero)[1] == 0_44
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("0.446")), options, RoundToZero)[1] == 0_44
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("0.454")), options, RoundToZero)[1] == 0_45
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("0.455")), options, RoundToZero)[1] == 0_45
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("0.456")), options, RoundToZero)[1] == 0_45
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("0.444")), options, RoundToZero).val == 0_44
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("0.445")), options, RoundToZero).val == 0_44
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("0.446")), options, RoundToZero).val == 0_44
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("0.454")), options, RoundToZero).val == 0_45
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("0.455")), options, RoundToZero).val == 0_45
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("0.456")), options, RoundToZero).val == 0_45
 
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("-0.444")), options, RoundToZero)[1] == -0_44
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("-0.445")), options, RoundToZero)[1] == -0_44
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("-0.446")), options, RoundToZero)[1] == -0_44
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("-0.454")), options, RoundToZero)[1] == -0_45
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("-0.455")), options, RoundToZero)[1] == -0_45
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("-0.456")), options, RoundToZero)[1] == -0_45
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("-0.444")), options, RoundToZero).val == -0_44
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("-0.445")), options, RoundToZero).val == -0_44
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("-0.446")), options, RoundToZero).val == -0_44
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("-0.454")), options, RoundToZero).val == -0_45
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("-0.455")), options, RoundToZero).val == -0_45
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("-0.456")), options, RoundToZero).val == -0_45
 
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("0.009")), options, RoundToZero)[1]  == 0_00
-@test _parse_decimal_int(Int32, 2, UInt8.(collect("-0.009")), options, RoundToZero)[1] == 0_00
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("0.009")), options, RoundToZero).val  == 0_00
+@test _parse_decimal_int(Int32, 2, UInt8.(collect("-0.009")), options, RoundToZero).val == 0_00
 
-@test _parse_decimal_int(Int32, 4, UInt8.(collect("1.5e-4")), options, RoundToZero)[1] == 0_0001
+@test _parse_decimal_int(Int32, 4, UInt8.(collect("1.5e-4")), options, RoundToZero).val == 0_0001
 end
 

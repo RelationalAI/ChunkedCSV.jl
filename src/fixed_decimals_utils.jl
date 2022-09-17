@@ -120,22 +120,23 @@ _typemaxbytes(::Type{Int64}, i, is_neg) = @inbounds NTuple{19,UInt8}((0x39, 0x32
 _typemaxbytes(::Type{Int128}, i, is_neg) = @inbounds NTuple{39,UInt8}((0x31, 0x37, 0x30, 0x31, 0x34, 0x31, 0x31, 0x38, 0x33, 0x34, 0x36, 0x30, 0x34, 0x36, 0x39, 0x32, 0x33, 0x31, 0x37, 0x33, 0x31, 0x36, 0x38, 0x37, 0x33, 0x30, 0x33, 0x37, 0x31, 0x35, 0x38, 0x38, 0x34, 0x31, 0x30, 0x35, 0x37, 0x32, 0x37))[i] + ((i == 39) * is_neg)
 
 const Ees = Val(ByteSet((UInt8('E'), UInt8('e'))))
-Base.@propagate_inbounds function _typeparse(::Type{T}, f, buf::AbstractVector{UInt8}, options::Parsers.Options, mode::Base.RoundingMode=Base.RoundNearest) where {T<:Union{Int8,Int16,Int32,Int64,Int128}}
-    code = Parsers.OK
-
-    is_neg = buf[1] == UInt8('-')
-    int_start_offset = (is_neg || buf[1] == '+') ? 1 : 0
+Base.@propagate_inbounds _typeparser(::Type{T}, f, buf::AbstractString, pos, len, b, code, options::Parsers.Options, mode::Base.RoundingMode=Base.RoundNearest) where {T<:Union{Int8,Int16,Int32,Int64,Int128}} =
+    _typeparser(T, f, codeunits(buf), pos, len, b, code, options, mode)
+Base.@propagate_inbounds function _typeparser(::Type{T}, f, buf::AbstractVector{UInt8}, pos, len, b, code, options::Parsers.Options, mode::Base.RoundingMode=Base.RoundNearest) where {T<:Union{Int8,Int16,Int32,Int64,Int128}}
+    is_neg = b == UInt8('-')
+    int_start_offset = pos + (is_neg || b == '+')
     int_sign = T(is_neg ? -1 : 1)
 
-    len = length(buf)
     e_position = Int(something(memchr(buf, Ees), 0))
+    e_len = 0
     last_byte_to_parse = e_position == 0 ? len : e_position
 
     if e_position != 0
-        e_result = Parsers.xparse(Int, buf, e_position+Int32(1), len, options)
+        e_result = Parsers.xparse(Int, buf, e_position+1, len, options)
         e_val = e_result.val
+        e_len = e_result.tlen
         code |= e_result.code
-        !Parsers.ok(code) && return Parsers.Result{T}(code, len, T(0))
+        !Parsers.ok(code) && return (T(0), code, pos+e_position+e_result.tlen)
         last_byte_to_parse -= 1
     else
         e_val = 0
@@ -163,7 +164,7 @@ Base.@propagate_inbounds function _typeparse(::Type{T}, f, buf::AbstractVector{U
             if buf[2+int_start_offset] == options.decimal
                 int_start_offset += 1
                 while true
-                    1+int_start_offset > last_byte_to_parse && return Parsers.Result{T}(code, len, T(0)) # This was something like "0.00"
+                    1+int_start_offset > last_byte_to_parse && return (T(0), code | Parsers.OK, last_byte_to_parse+e_len) # This was something like "0.00"
                     b = buf[1+int_start_offset]
                     if b == 0x30
                         int_start_offset += 1
@@ -176,10 +177,10 @@ Base.@propagate_inbounds function _typeparse(::Type{T}, f, buf::AbstractVector{U
                 end
             else
                 #parse error leading zero 00.x...
-                return Parsers.Result{T}(code | Parsers.INVALID, len, T(0))
+                return (T(0), code | Parsers.INVALID, pos+int_start_offset)
             end
         else
-            return Parsers.Result{T}(code, len, T(0)) # ok
+            return (T(0), code | Parsers.OK, pos+1) # ok
         end
     end
 
@@ -196,7 +197,7 @@ Base.@propagate_inbounds function _typeparse(::Type{T}, f, buf::AbstractVector{U
 
 
     if backing_integer_digits < 0 # All digits are past our precision, no overflow possible
-        return Parsers.Result{T}(code, len, T(0))
+        return (T(0), code | Parsers.OK, last_byte_to_parse+e_len)
     elseif backing_integer_digits == 0 # All digits are past our precision but we may get a 1 from rounding, no overflow possible
         out = T(0)
         if number_of_fractional_digits != f
@@ -208,7 +209,7 @@ Base.@propagate_inbounds function _typeparse(::Type{T}, f, buf::AbstractVector{U
         for i in (1+int_start_offset:int_start_offset + digits_to_iter + parse_through_decimal)
             (i == decimal_position) && continue
             b = buf[i] - 0x30
-            b > 0x09 && (return Parsers.Result{T}(code | Parsers.INVALID, len, out))
+            b > 0x09 && (return (out, code | Parsers.INVALID, len))
             out = T(10) * out + T(b)
         end
         out *= int_sign
@@ -227,7 +228,7 @@ Base.@propagate_inbounds function _typeparse(::Type{T}, f, buf::AbstractVector{U
             (i == decimal_position) && continue
             j += 1
             b = buf[i]
-            b > 0x39 && (return Parsers.Result{T}(code | Parsers.INVALID, len, out))
+            b > 0x39 && (return (out, code | Parsers.INVALID, pos+i))
             if check_next
                 maxbyte = _typemaxbytes(T, j, is_neg)
                 if b == maxbyte
@@ -235,7 +236,7 @@ Base.@propagate_inbounds function _typeparse(::Type{T}, f, buf::AbstractVector{U
                 elseif b < maxbyte
                     check_next = false
                 else
-                    return Parsers.Result{T}(code | Parsers.OVERFLOW, len, out)
+                    return (out, code | Parsers.OVERFLOW, pos+i)
                 end
             end
             out = T(10) * out + T(b-0x30)
@@ -249,10 +250,10 @@ Base.@propagate_inbounds function _typeparse(::Type{T}, f, buf::AbstractVector{U
             out += int_sign * round_val
         end
     else # Always overflows
-        return Parsers.Result{T}(code | Parsers.OVERFLOW, len, T(0))
+        return (T(0), code | Parsers.OVERFLOW, last_byte_to_parse+e_len)
     end
 
-    return Parsers.Result{T}(code, len, out)
+    return (out, code | Parsers.OK, last_byte_to_parse+e_len)
 end
 
 # Add 1 or 0 to our integer depending on the rounding mode and trailing bytes (that we din't use because the precision of our decimal is not high enough)
@@ -285,6 +286,10 @@ function _parse_round(::Type{T}, buf, s, e, d, code, ::RoundingMode{:Nearest}) w
     end
 end
 
-struct FixedDecimalInt{T<:Integer} <: Integer
-    f::Int8
+struct FixedDecimalInt4{T<:Integer} <: Integer
+    result::T
+end
+
+function Parsers.typeparser(::Type{FixedDecimalInt4{T}}, source::AbstractVector{UInt8}, pos, len, b, code, options) where {T<:Integer}
+    @inbounds _typeparser(T, 4, source, pos, len, b, code, options, RoundNearest)
 end

@@ -50,7 +50,7 @@ function consume!(taks_buf::ChunkedCSV.TaskResultBuffer{N}, parsing_ctx::Chunked
                     unsafe_append!(sink, (partition, row), (val,))
                 elseif row_status === ChunkedCSV.HasMissing
                     colflag_num += 1
-                    ChunkedCSV.flagset(column_indicators[colflag_num], c) && continue
+                    ChunkedCSV.isflagset(column_indicators[colflag_num], c) && continue
                     unsafe_append!(sink, (partition, row), (val,))
                 else # error
                     c > 1 && continue

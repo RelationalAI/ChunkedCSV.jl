@@ -56,7 +56,7 @@ function _parse_rows_forloop!(result_buf::TaskResultBuffer{N,M}, task::AbstractV
                 break
             elseif Parsers.sentinel(code)
                 row_status = HasMissing
-                column_indicators |= M(1) << (col_idx - 1)
+                setflag(column_indicators, col_idx)
             end
             pos += tlen
         end # for col_idx
@@ -64,7 +64,8 @@ function _parse_rows_forloop!(result_buf::TaskResultBuffer{N,M}, task::AbstractV
             row_status = TooManyColumnsError
         end
         unsafe_push!(result_buf.row_statuses, row_status)
-        !iszero(column_indicators) && push!(result_buf.column_indicators, column_indicators) # No inbounds as we're growing this buffer lazily
+        # TODO: replace anyflagset with a local variable?
+        anyflagset(column_indicators) && push!(result_buf.column_indicators, column_indicators) # No inbounds as we're growing this buffer lazily
     end # for row_idx
     return nothing
 end

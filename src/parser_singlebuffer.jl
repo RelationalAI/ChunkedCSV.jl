@@ -2,9 +2,12 @@ function _parse_file_singlebuffer(io, parsing_ctx::ParsingContext, consume_ctx::
     row_num = UInt32(1)
     queue = Channel{Tuple{UInt32,UInt32,UInt32}}(Inf)
     parser_tasks = Task[]
-    for _ in 1:parsing_ctx.nworkers
+    for i in 1:parsing_ctx.nworkers
         result_buf = TaskResultBuffer{N}(parsing_ctx.schema, cld(length(parsing_ctx.eols), parsing_ctx.maxtasks))
         push!(parser_tasks, errormonitor(Threads.@spawn process_and_consume_task(queue, parsing_ctx, options, result_buf, consume_ctx)))
+        if i < parsing_ctx.nworkers
+            consume_ctx = maybe_deepcopy(consume_ctx)
+        end
     end
     while true
         # Updates eols_buf with new newlines, byte buffer was updated either from initialization stage or at the end of the loop

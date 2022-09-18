@@ -59,4 +59,4 @@ function setflag(x::NTuple{N,T}, n) where {T,N}
 end
 
 anyflagset(x::Unsigned) = !iszero(x)
-anyflagset(x::NTuple{N,UInt64}) where{N} = any(anyflagset, x)
+anyflagset(x::NTuple{N,UInt64}) where {N} = any(anyflagset, x)

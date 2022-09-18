@@ -2,10 +2,10 @@ function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingCont
     row_num = UInt32(1)
     parsers_should_use_current_context = true
     @inbounds while true
-        # We start with a parsing_ctx that is already lexed from
-        # initially from `parse_preamble`, later from from this function
+        # We start with a parsing_ctx that was already lexed
+        # in `parse_preamble`, or later from this function
         limit_eols!(parsing_ctx, row_num) && break
-        eols = parsing_ctx.eols[]
+        eols = parsing_ctx.eols[] # BufferedVector -> Vector
         task_size = max(1_000, cld(length(eols), parsing_ctx.maxtasks))
         task_start = UInt32(1)
         ntasks = cld(length(eols), task_size)
@@ -72,9 +72,12 @@ function _parse_file_doublebuffer(io, parsing_ctx::ParsingContext, consume_ctx::
         TaskCondition(0, Threads.Condition(ReentrantLock())),
     )
     parser_tasks = Task[]
-    for _ in 1:parsing_ctx.nworkers
+    for i in 1:parsing_ctx.nworkers
         result_buf = TaskResultBuffer{N}(parsing_ctx.schema, cld(length(parsing_ctx.eols), parsing_ctx.maxtasks))
         push!(parser_tasks, errormonitor(Threads.@spawn process_and_consume_task(parsing_queue, parsing_ctx, parsing_ctx_next, options, result_buf, consume_ctx)))
+        if i < parsing_ctx.nworkers
+            consume_ctx = maybe_deepcopy(consume_ctx)
+        end
     end
     io_task = errormonitor(Threads.@spawn read_and_lex_task!(parsing_queue, io, parsing_ctx, parsing_ctx_next, options, byteset, last_chunk_newline_at, quoted, done))
     wait(io_task)

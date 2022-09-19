@@ -11,15 +11,18 @@ function _parse_rows_forloop!(result_buf::TaskResultBuffer{N,M}, task::AbstractV
         pos = 1
         len = length(row_bytes)
         code = Parsers.OK
-        row_status = NoMissing
+        row_status = RowStatus.Ok
         column_indicators = zero(M)
         @inbounds for col_idx in 1:N
             type = schema[col_idx]
             if Parsers.eof(code)
-                row_status = TooFewColumnsError
+                row_status |= RowStatus.TooFewColumns
+                row_status |= RowStatus.HasColumnIndicators
                 skip_element!(getindex(result_buf.cols, col_idx))
+                column_indicators = setflag(column_indicators, col_idx)
                 for _col_idx in col_idx+1:N
                     skip_element!(getindex(result_buf.cols, _col_idx))
+                    column_indicators = setflag(column_indicators, _col_idx)
                 end
                 break
             end
@@ -38,7 +41,7 @@ function _parse_rows_forloop!(result_buf::TaskResultBuffer{N,M}, task::AbstractV
             elseif type === String
                 (;val, tlen, code) = Parsers.xparse(String, row_bytes, pos, len, options)::Parsers.Result{Parsers.PosLen}
                 is_quoted = Parsers.quoted(code)
-                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{Parsers.PosLen}, Parsers.PosLen(prev_newline+pos+is_quoted, val.len-1))
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{Parsers.PosLen}, Parsers.PosLen(prev_newline+pos-1+is_quoted, val.len, val.missingvalue, val.escapedvalue))
             # TODO: We currently support only 8 digits after decimal point. We need to update Parsers.jl to accept runtime params, then we'd provide `f`
             #       param at runtime, and we'll only have to unroll on T (Int8,Int16,Int32,Int64,Int128)
             elseif type == FixedDecimal{Int8,0}
@@ -147,23 +150,36 @@ function _parse_rows_forloop!(result_buf::TaskResultBuffer{N,M}, task::AbstractV
                 (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int128,8}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int128,8}}
                 unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int128,8}}, val.x)
             else
-                row_status = UnknownTypeError
-                break
+                row_status |= RowStatus.UnknownType
+                row_status |= RowStatus.HasColumnIndicators
+                column_indicators = setflag(column_indicators, col_idx)
+                skip_element!(getindex(result_buf.cols, col_idx))
+                (;val, tlen, code) = Parsers.xparse(String, row_bytes, pos, len, options)::Parsers.Result{Parsers.PosLen}
+                # NOTE: Trying out parsing as much as possible now
+                # for _col_idx in col_idx+1:N
+                #     skip_element!(getindex(result_buf.cols, _col_idx))
+                #     column_indicators = setflag(column_indicators, _col_idx)
+                # end
+                # break
             end
             if Parsers.invalid(code)
-                row_status = ValueParsingError
-                for _col_idx in col_idx+1:N
-                    skip_element!(getindex(result_buf.cols, _col_idx))
-                end
-                break
+                row_status |= RowStatus.ValueParsingError
+                row_status |= RowStatus.HasColumnIndicators
+                column_indicators = setflag(column_indicators, col_idx)
+                # NOTE: Trying out parsing as much as possible now
+                # for _col_idx in col_idx+1:N
+                #     skip_element!(getindex(result_buf.cols, _col_idx))
+                #     column_indicators = setflag(column_indicators, _col_idx)
+                # end
+                # break
             elseif Parsers.sentinel(code)
-                row_status = HasMissing
-                setflag(column_indicators, col_idx)
+                row_status |= RowStatus.HasColumnIndicators
+                column_indicators = setflag(column_indicators, col_idx)
             end
             pos += tlen
         end # for col_idx
-        if !Parsers.eof(code) && (row_status === NoMissing || row_status === HasMissing)
-            row_status = TooManyColumnsError
+        if !Parsers.eof(code)
+            row_status |= RowStatus.TooManyColumnsWarn
         end
         unsafe_push!(result_buf.row_statuses, row_status)
         # TODO: replace anyflagset with a local variable?

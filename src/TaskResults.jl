@@ -1,10 +1,25 @@
 """TaskResultBuffer accumulates results produced by a single task"""
+#
 
-@enum RowStatus::UInt8 NoMissing HasMissing TooFewColumnsError UnknownTypeError ValueParsingError TooManyColumnsError
+module RowStatus
+    const T = UInt8
+
+    const Ok                  = 0x00 # All ok
+    const HasColumnIndicators = 0x01 # Some fields have missing values
+    const TooFewColumns       = 0x02 # Some fields have missing values due field count mismatch with the schema
+    const TooManyColumns      = 0x04 # We have a valid record according to schema, but we didn't parse some fields due to missing schema info
+    const ValueParsingError   = 0x08 # We couldn't parse some fields because we don't know how to parse that particular instance of that type
+    const UnknownTypeError    = 0x10 # We couldn't parse some fields because we don't know how to parse any instance of that type
+
+    const Marks = ('✓', '?', '<', '>', 'T', '!')
+    const Names = ("Ok", "HasColumnIndicators", "TooFewColumns", "TooManyColumns", "ValueParsingError", "UnknownTypeError")
+    const Flags = (0x00, 0x01, 0x02, 0x04, 0x08, 0x10)
+end
+
 
 struct TaskResultBuffer{N,M}
     cols::Vector{BufferedVector}
-    row_statuses::BufferedVector{RowStatus}
+    row_statuses::BufferedVector{RowStatus.T}
     column_indicators::BufferedVector{M}
 end
 
@@ -19,7 +34,7 @@ _translate_to_buffer_type(::Type{T}) where {T} = T
 TaskResultBuffer(schema) = TaskResultBuffer{length(schema)}(schema)
 TaskResultBuffer{N}(schema::Vector{DataType}) where N = TaskResultBuffer{N, _bounding_flag_type(N)}(
     [BufferedVector{_translate_to_buffer_type(schema[i])}() for i in 1:N],
-    BufferedVector{RowStatus}(),
+    BufferedVector{RowStatus.T}(),
     BufferedVector{_bounding_flag_type(N)}(),
 )
 
@@ -27,7 +42,7 @@ TaskResultBuffer{N}(schema::Vector{DataType}) where N = TaskResultBuffer{N, _bou
 TaskResultBuffer(schema, n) = TaskResultBuffer{length(schema)}(schema, n)
 TaskResultBuffer{N}(schema::Vector{DataType}, n::Int) where N = TaskResultBuffer{N, _bounding_flag_type(N)}(
     [BufferedVector{_translate_to_buffer_type(schema[i])}(Vector{_translate_to_buffer_type(schema[i])}(undef, n), 0) for i in 1:N],
-    BufferedVector{RowStatus}(Vector{RowStatus}(undef, n), 0),
+    BufferedVector{RowStatus.T}(Vector{RowStatus.T}(undef, n), 0),
     BufferedVector{_bounding_flag_type(N)}(),
 )
 

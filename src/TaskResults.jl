@@ -2,7 +2,6 @@
 
 @enum RowStatus::UInt8 NoMissing HasMissing TooFewColumnsError UnknownTypeError ValueParsingError TooManyColumnsError
 
-# TODO: optimize column_indicators
 struct TaskResultBuffer{N,M}
     cols::Vector{BufferedVector}
     row_statuses::BufferedVector{RowStatus}

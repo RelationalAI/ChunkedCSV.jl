@@ -12,8 +12,6 @@ using FixedPointDecimals
 # IDEA: We could make a 48bit PosLen string type (8MB -> 23 bits if we represent 8MB as 0, 2 bits for metadata)
 # IDEA: Instead of having SoA layout in TaskResultBuffer, we could try AoS using "reinterpretable bytes"
 
-# TODO: column_indicators should support more than 128 columns using bitsets made out of NTuples of UInt64s
-
 include("BufferedVectors.jl")
 include("TaskResults.jl")
 

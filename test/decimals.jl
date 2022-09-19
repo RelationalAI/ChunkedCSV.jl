@@ -3,8 +3,8 @@ using Test
 using ChunkedCSV: _typeparser
 
 
-const DEFAULT_OPTIONS = Parsers.Options()
-_typeparser2(::Type{T}, f, buf, r=RoundNearest) where {T} = _typeparser(T, f, buf, 0, length(buf), UInt8(first(buf)), Int16(0), DEFAULT_OPTIONS, r)
+const DEFAULT_OPTIONS = Parsers.Options(delim=',', quoted=true)
+_typeparser2(::Type{T}, f, buf, r=RoundNearest) where {T} = _typeparser(T, f, buf, 1, length(buf), UInt8(first(buf)), Int16(0), DEFAULT_OPTIONS, r)
 
 @testset "decimals" begin
     function exhaustive_tests()
@@ -32,7 +32,6 @@ _typeparser2(::Type{T}, f, buf, r=RoundNearest) where {T} = _typeparser(T, f, bu
     exhaustive_tests()
 
     @test _typeparser2(Int32, 4, "0")[1] == 0
-    @test _typeparser2(Int32, 4, "0.0")[1] == 0
     @test _typeparser2(Int32, 4, "0.0")[1] == 0
     @test _typeparser2(Int32, 4, "0.0e0")[1] == 0
     @test _typeparser2(Int32, 4, "0.0e+0")[1] == 0

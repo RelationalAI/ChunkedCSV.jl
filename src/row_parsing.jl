@@ -5,7 +5,7 @@ function _parse_rows_forloop!(result_buf::TaskResultBuffer{N,M}, task::AbstractV
         @inbounds prev_newline = task[chunk_row_idx - 1]
         @inbounds curr_newline = task[chunk_row_idx]
         (curr_newline - prev_newline) == 1 && continue # ignore empty lines
-        # +1 -1 to exclude delimiters
+        # +1 -1 to exclude newline chars
         @inbounds row_bytes = view(buf, prev_newline+1:curr_newline-1)
 
         pos = 1
@@ -35,15 +35,117 @@ function _parse_rows_forloop!(result_buf::TaskResultBuffer{N,M}, task::AbstractV
             elseif type === DateTime
                 (;val, tlen, code) = Parsers.xparse(DateTime, row_bytes, pos, len, options)::Parsers.Result{DateTime}
                 unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{DateTime}, val)
-            elseif type <: FixedDecimal
-                (;val, tlen, code) = Parsers.xparse(String, row_bytes, pos, len, options)::Parsers.Result{Parsers.PosLen}
-                ptr = pointer(buf) + prev_newline+pos+Parsers.quoted(code)
-                strview = unsafe_string(ptr, val.len-1)
-                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{type}, parse(type, strview))
             elseif type === String
                 (;val, tlen, code) = Parsers.xparse(String, row_bytes, pos, len, options)::Parsers.Result{Parsers.PosLen}
                 is_quoted = Parsers.quoted(code)
                 unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{Parsers.PosLen}, Parsers.PosLen(prev_newline+pos+is_quoted, val.len-1))
+            # TODO: We currently support only 8 digits after decimal point. We need to update Parsers.jl to accept runtime params, then we'd provide `f`
+            #       param at runtime, and we'll only have to unroll on T (Int8,Int16,Int32,Int64,Int128)
+            elseif type == FixedDecimal{Int8,0}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int8,0}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int8,0}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int8,0}}, val.x)
+            elseif type == FixedDecimal{Int8,1}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int8,1}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int8,1}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int8,1}}, val.x)
+            elseif type == FixedDecimal{Int8,2}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int8,2}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int8,2}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int8,2}}, val.x)
+            elseif type == FixedDecimal{Int16,0}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int16,0}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int16,0}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int16,0}}, val.x)
+            elseif type == FixedDecimal{Int16,1}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int16,1}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int16,1}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int16,1}}, val.x)
+            elseif type == FixedDecimal{Int16,2}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int16,2}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int16,2}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int16,2}}, val.x)
+            elseif type == FixedDecimal{Int16,3}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int16,3}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int16,3}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int16,3}}, val.x)
+            elseif type == FixedDecimal{Int16,4}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int16,4}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int16,4}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int16,4}}, val.x)
+            elseif type == FixedDecimal{Int32,0}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int32,0}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int32,0}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int32,0}}, val.x)
+            elseif type == FixedDecimal{Int32,1}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int32,1}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int32,1}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int32,1}}, val.x)
+            elseif type == FixedDecimal{Int32,2}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int32,2}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int32,2}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int32,2}}, val.x)
+            elseif type == FixedDecimal{Int32,3}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int32,3}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int32,3}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int32,3}}, val.x)
+            elseif type == FixedDecimal{Int32,4}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int32,4}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int32,4}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int32,4}}, val.x)
+            elseif type == FixedDecimal{Int32,5}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int32,5}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int32,5}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int32,5}}, val.x)
+            elseif type == FixedDecimal{Int32,6}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int32,6}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int32,6}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int32,6}}, val.x)
+            elseif type == FixedDecimal{Int32,7}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int32,7}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int32,7}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int32,7}}, val.x)
+            elseif type == FixedDecimal{Int32,8}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int32,8}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int32,8}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int32,8}}, val.x)
+            elseif type == FixedDecimal{Int64,0}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int64,0}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int64,0}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int64,0}}, val.x)
+            elseif type == FixedDecimal{Int64,1}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int64,1}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int64,1}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int64,1}}, val.x)
+            elseif type == FixedDecimal{Int64,2}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int64,2}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int64,2}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int64,2}}, val.x)
+            elseif type == FixedDecimal{Int64,3}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int64,3}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int64,3}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int64,3}}, val.x)
+            elseif type == FixedDecimal{Int64,4}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int64,4}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int64,4}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int64,4}}, val.x)
+            elseif type == FixedDecimal{Int64,5}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int64,5}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int64,5}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int64,5}}, val.x)
+            elseif type == FixedDecimal{Int64,6}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int64,6}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int64,6}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int64,6}}, val.x)
+            elseif type == FixedDecimal{Int64,7}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int64,7}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int64,7}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int64,7}}, val.x)
+            elseif type == FixedDecimal{Int64,8}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int64,8}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int64,8}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int64,8}}, val.x)
+            elseif type == FixedDecimal{Int128,0}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int128,0}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int128,0}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int128,0}}, val.x)
+            elseif type == FixedDecimal{Int128,1}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int128,1}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int128,1}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int128,1}}, val.x)
+            elseif type == FixedDecimal{Int128,2}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int128,2}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int128,2}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int128,2}}, val.x)
+            elseif type == FixedDecimal{Int128,3}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int128,3}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int128,3}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int128,3}}, val.x)
+            elseif type == FixedDecimal{Int128,4}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int128,4}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int128,4}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int128,4}}, val.x)
+            elseif type == FixedDecimal{Int128,5}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int128,5}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int128,5}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int128,5}}, val.x)
+            elseif type == FixedDecimal{Int128,6}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int128,6}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int128,6}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int128,6}}, val.x)
+            elseif type == FixedDecimal{Int128,7}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int128,7}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int128,7}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int128,7}}, val.x)
+            elseif type == FixedDecimal{Int128,8}
+                (;val, tlen, code) = Parsers.xparse(_FixedDecimal{Int128,8}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int128,8}}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{FixedDecimal{Int128,8}}, val.x)
             else
                 row_status = UnknownTypeError
                 break

@@ -30,9 +30,6 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
     # lex the entire buffer for newlines
     (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(io, parsing_ctx, options, byteset, bytes_read_in, false)
 
-    # TODO: audit header parsing with skiprows as we try to be clever and
-    # not insert the 0 if we'll process the first line here... we need to generalize
-    # that for partially skipped file.
     skiprows = Int(settings.skiprows)
     while !done && skiprows >= length(parsing_ctx.eols) - 1
         skiprows -= length(parsing_ctx.eols) - 1
@@ -40,6 +37,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
         push!(parsing_ctx.eols, UInt32(0))
         bytes_read_in = prepare_buffer!(io, parsing_ctx.bytes, last_chunk_newline_at)
         (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(io, parsing_ctx, options, byteset, bytes_read_in, quoted)
+        # TODO: Special path for the case where we skipped the entire file
         # done && (return (parsing_ctx, last_chunk_newline_at, quoted, done))
     end
     shiftleft!(parsing_ctx.eols, skiprows)

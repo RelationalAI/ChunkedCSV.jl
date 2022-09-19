@@ -4,7 +4,6 @@ function _parse_file_serial(io, parsing_ctx::ParsingContext, consume_ctx::Abstra
     limit_eols!(parsing_ctx, row_num)
     result_buf = TaskResultBuffer{N}(schema, length(parsing_ctx.eols))
     while true
-        # @info (Int(row_num), Int(last_chunk_newline_at), length(parsing_ctx.eols))
         # Updates eols_buf with new newlines, byte buffer was updated either from initialization stage or at the end of the loop
         task = parsing_ctx.eols[]
         _parse_rows_forloop!(result_buf, task, parsing_ctx.bytes, schema, options)

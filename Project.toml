@@ -5,6 +5,7 @@ version = "0.1.0"
 
 [deps]
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+FixedPointDecimals = "fb4d412d-6eee-574d-9565-ede6634db7b0"
 Parsers = "69de0a69-1ddd-5017-9359-2bf0b02dc9f0"
 ScanByte = "7b38b023-a4d7-4c5e-8d43-3f3097f304eb"
 TranscodingStreams = "3bb67fe8-82b1-5028-8e26-92a6c54297fa"

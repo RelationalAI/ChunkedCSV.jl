@@ -27,7 +27,6 @@ end
 
 
 function consume!(task_buf::TaskResultBuffer{N}, parsing_ctx::ParsingContext, row_num::UInt32, consume_ctx::DebugContext) where {N}
-    consume_ctx.n == 0 && return nothing
     status_counts = zeros(Int, length(RowStatus.Marks))
     io = IOBuffer()
     @inbounds for i in 1:length(task_buf.row_statuses)
@@ -43,56 +42,55 @@ function consume!(task_buf::TaskResultBuffer{N}, parsing_ctx::ParsingContext, ro
     write(io, "Row count by status: ")
     join(io, zip(RowStatus.Marks, status_counts), " | ")
     println(io)
-    length(task_buf.row_statuses) == 0 && return nothing
-
-    if status_counts[1] > 0
-        c = 1
-        println(io, "Ok ($(RowStatus.Marks[1])) rows:")
-        for (k, (name, col)) in enumerate(zip(parsing_ctx.header, task_buf.cols))
-            n = min(consume_ctx.n, status_counts[1])
-            print(io, "\t$(name): [")
-            for j in 1:length(task_buf.row_statuses)
-                if task_buf.row_statuses[j] == 0x00
-                    write(io, debug(col, j, parsing_ctx, consume_ctx))
-                    n != 1 && print(io, ", ")
-                elseif task_buf.row_statuses[j] == 0x01
-                    write(io, isflagset(task_buf.column_indicators[c], k) ? "?" : debug(col, j, parsing_ctx, consume_ctx))
-                    n != 1 && print(io, ", ")
-                    c += 1
-                end
-                n -= 1
-                n == 0 && break
-            end
-            print(io, "]\n")
-        end
-    end
-
-    i = 2
-    for cnt in status_counts[3:end]
-        i += 1
-        cnt == 0 && continue
-        print(io, RowStatus.Names[i])
-        print(io, " ($(RowStatus.Marks[i]))")
-        println(io, " rows:")
-        S = RowStatus.Flags[i]
-        for (k, (name, col)) in enumerate(zip(parsing_ctx.header, task_buf.cols))
+    if consume_ctx.n > 0 && length(task_buf.row_statuses) == 0
+        if status_counts[1] > 0
             c = 1
-            n = min(consume_ctx.n, cnt)
-            print(io, "\t$(name): [")
-            for j in 1:length(task_buf.row_statuses)
-                if task_buf.row_statuses[j] & S > 0
-                    has_missing = isflagset(task_buf.row_statuses[j], 1) && isflagset(task_buf.column_indicators[c], k)
-                    write(io,has_missing ? "?" : debug(col, j, parsing_ctx, consume_ctx))
-                    n != 1 && print(io, ", ")
-                    has_missing && (c += 1)
+            println(io, "Ok ($(RowStatus.Marks[1])) rows:")
+            for (k, (name, col)) in enumerate(zip(parsing_ctx.header, task_buf.cols))
+                n = min(consume_ctx.n, status_counts[1])
+                print(io, "\t$(name): [")
+                for j in 1:length(task_buf.row_statuses)
+                    if task_buf.row_statuses[j] == 0x00
+                        write(io, debug(col, j, parsing_ctx, consume_ctx))
+                        n != 1 && print(io, ", ")
+                    elseif task_buf.row_statuses[j] == 0x01
+                        write(io, isflagset(task_buf.column_indicators[c], k) ? "?" : debug(col, j, parsing_ctx, consume_ctx))
+                        n != 1 && print(io, ", ")
+                        c += 1
+                    end
+                    n -= 1
+                    n == 0 && break
                 end
-                n -= 1
-                n == 0 && break
+                print(io, "]\n")
             end
-            print(io, "]\n")
+        end
+
+        i = 2
+        for cnt in status_counts[3:end]
+            i += 1
+            cnt == 0 && continue
+            print(io, RowStatus.Names[i])
+            print(io, " ($(RowStatus.Marks[i]))")
+            println(io, " rows:")
+            S = RowStatus.Flags[i]
+            for (k, (name, col)) in enumerate(zip(parsing_ctx.header, task_buf.cols))
+                c = 1
+                n = min(consume_ctx.n, cnt)
+                print(io, "\t$(name): [")
+                for j in 1:length(task_buf.row_statuses)
+                    if task_buf.row_statuses[j] & S > 0
+                        has_missing = isflagset(task_buf.row_statuses[j], 1) && isflagset(task_buf.column_indicators[c], k)
+                        write(io,has_missing ? "?" : debug(col, j, parsing_ctx, consume_ctx))
+                        n != 1 && print(io, ", ")
+                        has_missing && (c += 1)
+                    end
+                    n -= 1
+                    n == 0 && break
+                end
+                print(io, "]\n")
+            end
         end
     end
-
     # println(io, "")
     # for (name, col) in zip(parsing_ctx.header, task_buf.cols)
     #     write(io, string(name, ": ", string(debug(task_buf.row_statuses, parsing_ctx, consume_ctx) .=> debug(col, parsing_ctx, consume_ctx)), '\n'))

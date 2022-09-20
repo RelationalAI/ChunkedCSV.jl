@@ -57,6 +57,9 @@ function Base.ensureroom(buf::TaskResultBuffer, n)
     Base.ensureroom(buf.row_statuses, n)
 end
 
+initflag(::Type{T}) where {T<:Unsigned} = zero(T)
+initflag(::Type{NTuple{N,T}}) where {N,T<:Unsigned} = ntuple(_->zero(T), N)
+
 function isflagset(x::NTuple{N,T}, n) where {T,N}
     d, r = fldmod1(n, 8sizeof(T))
     @inbounds N >= d & (((x[N - d + 1] >> (r - 1)) & one(T)) == one(T))

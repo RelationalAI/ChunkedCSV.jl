@@ -12,7 +12,7 @@ function _parse_rows_forloop!(result_buf::TaskResultBuffer{N,M}, task::AbstractV
         len = length(row_bytes)
         code = Parsers.OK
         row_status = RowStatus.Ok
-        column_indicators = zero(M)
+        column_indicators = initflag(M)
         @inbounds for col_idx in 1:N
             type = schema[col_idx]
             if Parsers.eof(code)

@@ -9,8 +9,8 @@ function prepare_buffer!(io::IO, buf::Vector{UInt8}, last_chunk_newline_at)
         # We'll keep the bytes that are past the last newline, shifting them to the left
         # and refill the rest of the buffer.
         unsafe_copyto!(ptr, ptr + last_chunk_newline_at, buffersize - last_chunk_newline_at)
-        bytes_read_in = @inbounds readbytesall!(io, @view(buf[buffersize - last_chunk_newline_at + 1:end]), last_chunk_newline_at)
-        bytes_read_in += buffersize - last_chunk_newline_at
+        @inbounds readbytesall!(io, @view(buf[buffersize - last_chunk_newline_at + 1:end]), last_chunk_newline_at)
+        bytes_read_in = last_chunk_newline_at
     else
         # Last chunk was consumed entirely
         bytes_read_in = readbytesall!(io, buf, buffersize)

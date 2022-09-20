@@ -179,7 +179,7 @@ function _parse_rows_forloop!(result_buf::TaskResultBuffer{N,M}, task::AbstractV
             pos += tlen
         end # for col_idx
         if !Parsers.eof(code)
-            row_status |= RowStatus.TooManyColumnsWarn
+            row_status |= RowStatus.TooManyColumns
         end
         unsafe_push!(result_buf.row_statuses, row_status)
         # TODO: replace anyflagset with a local variable?

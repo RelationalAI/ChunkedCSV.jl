@@ -13,7 +13,7 @@ function _parse_file_singlebuffer(io, parsing_ctx::ParsingContext, consume_ctx::
         # Updates eols_buf with new newlines, byte buffer was updated either from initialization stage or at the end of the loop
         limit_eols!(parsing_ctx, row_num) && break
         eols = parsing_ctx.eols[]
-        task_size = max(1_000, cld(length(eols), parsing_ctx.maxtasks)) # TODO: explicit parameters of for number of workers and number of tasks
+        task_size = max(1_001, cld(length(eols), parsing_ctx.maxtasks)) # TODO: explicit parameters of for number of workers and number of tasks
         task_start = UInt32(1)
         ntasks = cld(length(eols), task_size)
 

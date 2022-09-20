@@ -6,7 +6,7 @@ function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingCont
         # in `parse_preamble`, or later from this function
         limit_eols!(parsing_ctx, row_num) && break
         eols = parsing_ctx.eols[] # BufferedVector -> Vector
-        task_size = max(1_000, cld(length(eols), parsing_ctx.maxtasks))
+        task_size = max(1_001, cld(length(eols), parsing_ctx.maxtasks))
         task_start = UInt32(1)
         ntasks = cld(length(eols), task_size)
 

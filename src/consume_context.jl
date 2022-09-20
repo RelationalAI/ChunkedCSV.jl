@@ -4,7 +4,7 @@ abstract type AbstractTaskLocalConsumeContext <: AbstractConsumeContext end
 maybe_deepcopy(x::AbstractConsumeContext) = x
 maybe_deepcopy(x::AbstractTaskLocalConsumeContext) = deepcopy(x)
 
-struct DebugContext <: AbstractConsumeContext;
+struct DebugContext <: AbstractConsumeContext
     n::Int
 
     DebugContext() = new(3)

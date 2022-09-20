@@ -58,7 +58,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
         else # should_parse_header
             s = parsing_ctx.eols[1]
             e = parsing_ctx.eols[2]
-            v = @view parsing_ctx.bytes[s+1:e]
+            v = @view parsing_ctx.bytes[s+1:e-1]
             pos = 1
             code = Parsers.OK
             for i in 1:length(settings.schema)
@@ -73,7 +73,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
         # infer the number of columns from the first data row
         s = parsing_ctx.eols[1]
         e = parsing_ctx.eols[2]
-        v = @view parsing_ctx.bytes[s+1:e]
+        v = @view parsing_ctx.bytes[s+1:e-1]
         pos = 1
         code = Parsers.OK
         i = 1
@@ -90,7 +90,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
         #infer the number of columns from the header row
         s = parsing_ctx.eols[1]
         e = parsing_ctx.eols[2]
-        v = view(parsing_ctx.bytes, s+1:e)
+        v = view(parsing_ctx.bytes, s+1:e-1)
         pos = 1
         code = Parsers.OK
         while !(Parsers.eof(code) || Parsers.newline(code))

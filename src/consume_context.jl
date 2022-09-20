@@ -42,7 +42,7 @@ function consume!(task_buf::TaskResultBuffer{N}, parsing_ctx::ParsingContext, ro
     write(io, "Row count by status: ")
     join(io, zip(RowStatus.Marks, status_counts), " | ")
     println(io)
-    if consume_ctx.n > 0 && length(task_buf.row_statuses) == 0
+    if consume_ctx.n > 0 && length(task_buf.row_statuses) > 0
         if status_counts[1] > 0
             c = 1
             println(io, "Ok ($(RowStatus.Marks[1])) rows:")
@@ -106,4 +106,16 @@ struct SkipContext <: AbstractConsumeContext
 end
 function consume!(task_buf::TaskResultBuffer{N}, parsing_ctx::ParsingContext, row_num::UInt32, consume_ctx::SkipContext) where {N}
     return nothing
+end
+
+function printrows(ctx::ParsingContext, n::Int=length(ctx.eols), o::Int=0)
+    for i in 2+o:min(n+o,length(ctx.eols))
+        s = ctx.eols[i-1]
+        e = ctx.eols[i]
+        @info string(i-1, '\n', String(ctx.bytes[s+1:e-1]))
+    end
+end
+
+function printrow(ctx::ParsingContext, n)
+    printrows(ctx, 2, n-1)
 end

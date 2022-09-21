@@ -85,14 +85,17 @@ function parse_file(
     input,
     schema::Union{Nothing,Vector{DataType}}=nothing,
     consume_ctx::AbstractConsumeContext=DebugContext();
-    quotechar::Union{UInt8,Char}='"',
-    delim::Union{UInt8,Char}=',',
-    escapechar::Union{UInt8,Char}='"',
     header::Union{Nothing,Vector{Symbol}}=nothing,
     hasheader::Bool=true,
     skiprows::Integer=UInt32(0),
     limit::Integer=UInt32(0),
     doublebuffer::Bool=true,
+    delim::Union{UInt8,Char}=',',
+    quotechar::Union{UInt8,Char}='"',
+    escapechar::Union{UInt8,Char}='"',
+    sentinel::Union{Missing,String,Vector{String}}=missing,
+    groupmark::Union{Char,UInt8,Nothing}=nothing,
+    stripwhitespace::Bool=false,
     # In bytes. This absolutely has to be larger than any single row.
     # Much safer if any two consecutive rows are smaller than this threshold.
     buffersize::Integer=UInt32(8 * 1024 * 1024),
@@ -110,7 +113,7 @@ function parse_file(
 
     io = _input_to_io(input)
     settings = ParserSettings(schema, header, hasheader, Int(skiprows), UInt32(limit), UInt32(buffersize), UInt8(nworkers), UInt8(maxtasks))
-    options = _create_options(delim, quotechar, escapechar)
+    options = _create_options(delim, quotechar, escapechar, sentinel, groupmark, stripwhitespace)
     byteset = Val(ByteSet((UInt8(options.e), UInt8(options.oq), UInt8('\n'), UInt8('\r'))))
     (parsing_ctx, last_chunk_newline_at, quoted, done) = init_parsing!(io, settings, options, Val(byteset))
     schema = parsing_ctx.schema

@@ -8,6 +8,7 @@ using .Threads: @spawn
 using TranscodingStreams # TODO: ditch this
 using Dates: Date, DateTime
 using FixedPointDecimals
+using Mmap
 
 # IDEA: We could make a 48bit PosLen string type (8MB -> 23 bits if we represent 8MB as 0, 2 bits for metadata)
 # IDEA: Instead of having SoA layout in TaskResultBuffer, we could try AoS using "reinterpretable bytes"
@@ -101,6 +102,7 @@ function parse_file(
     buffersize::Integer=UInt32(8 * 1024 * 1024),
     nworkers::Integer=Threads.nthreads(),
     maxtasks::Integer=2Threads.nthreads(),
+    use_mmap=false,
     _force::Symbol=:none,
 )
     @assert 0 < buffersize < typemax(UInt32)
@@ -111,7 +113,7 @@ function parse_file(
     @assert _force in (:none, :serial, :singlebuffer, :doublebuffer)
     !isnothing(header) && !isnothing(schema) && length(header) != length(schema) && error("Provided header doesn't match the number of column of schema ($(length(header)) names, $(length(schema)) types).")
 
-    io = _input_to_io(input)
+    io = _input_to_io(input, use_mmap)
     settings = ParserSettings(schema, header, hasheader, Int(skiprows), UInt32(limit), UInt32(buffersize), UInt8(nworkers), UInt8(maxtasks))
     options = _create_options(delim, quotechar, escapechar, sentinel, groupmark, stripwhitespace)
     byteset = Val(ByteSet((UInt8(options.e), UInt8(options.oq), UInt8('\n'), UInt8('\r'))))

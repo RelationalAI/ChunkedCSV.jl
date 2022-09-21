@@ -92,9 +92,29 @@ function lex_newlines_in_buffer(io::NoopStream, parsing_ctxfs::ParsingContext, o
     return lex_newlines_in_buffer(io.stream, parsing_ctxfs, options, byteset, bytes_to_search, quoted)
 end
 
-_input_to_io(input::IO) = input
-function _input_to_io(input::String)
-    io = NoopStream(open(input, "r"))
-    TranscodingStreams.changemode!(io, :read)
+mutable struct MmapStream{IO_t<:IO} <: IO
+    ios::IO_t
+    x::Vector{UInt8}
+    pos::Int
+end
+MmapStream(ios::IO) = MmapStream(ios, mmap(ios, grow=false, shared=false), 1)
+Base.close(m::MmapStream) = close(m.ios)
+Base.eof(m::MmapStream) = m.pos == length(m.x)
+function readbytesall!(io::MmapStream, buf, n)
+    bytes_to_read = min(length(io.x) - io.pos, n)
+    @inbounds buf[1:bytes_to_read] .= io.x[io.pos:io.pos+bytes_to_read-1]
+    io.pos += bytes_to_read
+    return UInt32(bytes_to_read)
+end
+
+_input_to_io(input::IO, use_mmap=false) = input
+function _input_to_io(input::String, use_mmap=false)
+    ios = open(input, "r")
+    if use_mmap
+        io = MmapStream(ios)
+    else
+        io = NoopStream(ios)
+        TranscodingStreams.changemode!(io, :read)
+    end
     return io
 end

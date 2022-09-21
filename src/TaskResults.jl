@@ -11,7 +11,7 @@ module RowStatus
     const ValueParsingError   = 0x08 # We couldn't parse some fields because we don't know how to parse that particular instance of that type
     const UnknownTypeError    = 0x10 # We couldn't parse some fields because we don't know how to parse any instance of that type
 
-    const Marks = ('✓', '?', '<', '>', 'T', '!')
+    const Marks = ('✓', '?', '<', '>', '!', 'T')
     const Names = ("Ok", "HasColumnIndicators", "TooFewColumns", "TooManyColumns", "ValueParsingError", "UnknownTypeError")
     const Flags = (0x00, 0x01, 0x02, 0x04, 0x08, 0x10)
 end

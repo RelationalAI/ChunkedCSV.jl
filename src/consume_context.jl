@@ -14,7 +14,7 @@ end
 function debug(x::BufferedVector{Parsers.PosLen}, i, parsing_ctx, consume_ctx)
     pl = x.elements[i]
     pl.missingvalue && return "missing"
-    repr(String(parsing_ctx.bytes[pl.pos+1:pl.pos+pl.len]))
+    repr(String(parsing_ctx.bytes[pl.pos:pl.pos+pl.len-1]))
 end
 debug(x::BufferedVector, i, parsing_ctx, consume_ctx) = string(x.elements[i])
 function debug_eols(x::BufferedVector{UInt32}, parsing_ctx, consume_ctx)

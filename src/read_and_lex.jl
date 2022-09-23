@@ -1,5 +1,5 @@
-readbytesall!(io::IO, buf, n) = UInt32(Base.readbytes!(io, buf, n; all = true))
-readbytesall!(io::IOBuffer, buf, n) = UInt32(Base.readbytes!(io, buf, n))
+readbytesall!(io::IOStream, buf, n) = UInt32(Base.readbytes!(io, buf, n; all = true))
+readbytesall!(io::IO, buf, n) = UInt32(Base.readbytes!(io, buf, n))
 function prepare_buffer!(io::IO, buf::Vector{UInt8}, last_chunk_newline_at)
     ptr = pointer(buf)
     buffersize = UInt32(length(buf))
@@ -92,29 +92,15 @@ function lex_newlines_in_buffer(io::NoopStream, parsing_ctxfs::ParsingContext, o
     return lex_newlines_in_buffer(io.stream, parsing_ctxfs, options, byteset, bytes_to_search, quoted)
 end
 
-mutable struct MmapStream{IO_t<:IO} <: IO
-    ios::IO_t
-    x::Vector{UInt8}
-    pos::Int
-end
-MmapStream(ios::IO) = MmapStream(ios, mmap(ios, grow=false, shared=false), 1)
-Base.close(m::MmapStream) = close(m.ios)
-Base.eof(m::MmapStream) = m.pos == length(m.x)
-function readbytesall!(io::MmapStream, buf, n)
-    bytes_to_read = min(length(io.x) - io.pos, n)
-    @inbounds buf[1:bytes_to_read] .= io.x[io.pos:io.pos+bytes_to_read-1]
-    io.pos += bytes_to_read
-    return UInt32(bytes_to_read)
-end
-
-_input_to_io(input::IO, use_mmap=false) = input
-function _input_to_io(input::String, use_mmap=false)
+_input_to_io(input::IO) = false, input
+function _input_to_io(input::String)
     ios = open(input, "r")
-    if use_mmap
-        io = MmapStream(ios)
+    if peek(ios, UInt16) == 0x8b1f
+        io = CodecZlib.GzipDecompressorStream(ios)
+        TranscodingStreams.changemode!(io, :read)
     else
-        io = NoopStream(ios)
+        io = TranscodingStreams.NoopStream(ios)
         TranscodingStreams.changemode!(io, :read)
     end
-    return io
+    return true, io
 end

@@ -6,7 +6,8 @@ using ScanByte
 import Parsers
 using .Threads: @spawn
 using TranscodingStreams # TODO: ditch this
-using Dates: Date, DateTime
+using CodecZlib
+using Dates: Date, DateTime, Time
 using FixedPointDecimals
 using Mmap
 
@@ -102,7 +103,6 @@ function parse_file(
     buffersize::Integer=UInt32(8 * 1024 * 1024),
     nworkers::Integer=Threads.nthreads(),
     maxtasks::Integer=2Threads.nthreads(),
-    use_mmap=false,
     _force::Symbol=:none,
 )
     @assert 0 < buffersize < typemax(UInt32)
@@ -113,7 +113,7 @@ function parse_file(
     @assert _force in (:none, :serial, :singlebuffer, :doublebuffer)
     !isnothing(header) && !isnothing(schema) && length(header) != length(schema) && error("Provided header doesn't match the number of column of schema ($(length(header)) names, $(length(schema)) types).")
 
-    io = _input_to_io(input, use_mmap)
+    should_close, io = _input_to_io(input)
     settings = ParserSettings(schema, header, hasheader, Int(skiprows), UInt32(limit), UInt32(buffersize), UInt8(nworkers), UInt8(maxtasks))
     options = _create_options(delim, quotechar, escapechar, sentinel, groupmark, stripwhitespace)
     byteset = Val(ByteSet((UInt8(options.e), UInt8(options.oq), UInt8('\n'), UInt8('\r'))))
@@ -131,7 +131,7 @@ function parse_file(
     else
         _parse_file_singlebuffer(io, parsing_ctx, consume_ctx, options, last_chunk_newline_at, quoted, done, Val(length(schema)), Val(_bounding_flag_type(length(schema))), Val(byteset))::Nothing
     end
-    close(io)
+    should_close && close(io)
     return nothing
 end
 

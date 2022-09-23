@@ -74,8 +74,8 @@ Threads.nthreads() == 1 && @warn "Running tests with a single thread -- won't be
                 )
                 @test testctx.header == [:a, :b]
                 @test testctx.schema == [String, String]
-                @test testctx.results[1].cols[1].elements[1:2] == [Parsers.PosLen(5, 1), Parsers.PosLen(13, 1)]
-                @test testctx.results[1].cols[2].elements[1:2] == [Parsers.PosLen(9, 1), Parsers.PosLen(17, 1)]
+                @test testctx.results[1].cols[1].elements[1:2] == [Parsers.PosLen(6, 1), Parsers.PosLen(14, 1)]
+                @test testctx.results[1].cols[2].elements[1:2] == [Parsers.PosLen(10, 1), Parsers.PosLen(18, 1)]
                 @test length(testctx.results[1].cols[1]) == 2
                 @test length(testctx.results[1].cols[2]) == 2
             end
@@ -151,10 +151,10 @@ Threads.nthreads() == 1 && @warn "Running tests with a single thread -- won't be
                 sort!(testctx.results, by=x->x.cols[1][1].pos)
                 @test testctx.header == [:a, :b]
                 @test testctx.schema == [String, String]
-                @test testctx.results[1].cols[1].elements[1] == Parsers.PosLen(1, 1)
-                @test testctx.results[1].cols[2].elements[1] == Parsers.PosLen(5, 1)
-                @test testctx.results[2].cols[1].elements[1] == Parsers.PosLen(1, 1)
-                @test testctx.results[2].cols[2].elements[1] == Parsers.PosLen(5, 1)
+                @test testctx.results[1].cols[1].elements[1] == Parsers.PosLen(2, 1)
+                @test testctx.results[1].cols[2].elements[1] == Parsers.PosLen(6, 1)
+                @test testctx.results[2].cols[1].elements[1] == Parsers.PosLen(2, 1)
+                @test testctx.results[2].cols[2].elements[1] == Parsers.PosLen(6, 1)
                 @test length(testctx.results) == 2
                 @test length(testctx.results[1].cols[1]) == 1
                 @test length(testctx.results[1].cols[2]) == 1
@@ -187,12 +187,12 @@ Threads.nthreads() == 1 && @warn "Running tests with a single thread -- won't be
                 sort!(testctx.results, by=x->x.cols[1][1].pos)
                 @test testctx.header == [:a, :b]
                 @test testctx.schema == [String, String]
-                @test testctx.results[1].cols[1].elements[1] == Parsers.PosLen(1, 1)
-                @test testctx.results[1].cols[2].elements[1] == Parsers.PosLen(5, 1)
-                @test testctx.results[2].cols[1].elements[1] == Parsers.PosLen(1, 1)
-                @test testctx.results[2].cols[2].elements[1] == Parsers.PosLen(5, 1)
-                @test testctx.results[3].cols[1].elements[1] == Parsers.PosLen(1, 1)
-                @test testctx.results[3].cols[2].elements[1] == Parsers.PosLen(5, 1)
+                @test testctx.results[1].cols[1].elements[1] == Parsers.PosLen(2, 1)
+                @test testctx.results[1].cols[2].elements[1] == Parsers.PosLen(6, 1)
+                @test testctx.results[2].cols[1].elements[1] == Parsers.PosLen(2, 1)
+                @test testctx.results[2].cols[2].elements[1] == Parsers.PosLen(6, 1)
+                @test testctx.results[3].cols[1].elements[1] == Parsers.PosLen(2, 1)
+                @test testctx.results[3].cols[2].elements[1] == Parsers.PosLen(6, 1)
                 @test length(testctx.results) == 3
                 @test length(testctx.results[1].cols[1]) == 1
                 @test length(testctx.results[1].cols[2]) == 1
@@ -288,8 +288,8 @@ Threads.nthreads() == 1 && @warn "Running tests with a single thread -- won't be
                 )
                 @test testctx.header == [:COL_1, :COL_2]
                 @test testctx.schema == [String, String]
-                @test testctx.results[1].cols[1].elements[1:2] == [Parsers.PosLen(0, 1), Parsers.PosLen(4, 1)]
-                @test testctx.results[1].cols[2].elements[1:2] == [Parsers.PosLen(2, 1), Parsers.PosLen(6, 1)]
+                @test testctx.results[1].cols[1].elements[1:2] == [Parsers.PosLen(1, 1), Parsers.PosLen(5, 1)]
+                @test testctx.results[1].cols[2].elements[1:2] == [Parsers.PosLen(3, 1), Parsers.PosLen(7, 1)]
                 @test length(testctx.results[1].cols[1]) == 2
                 @test length(testctx.results[1].cols[2]) == 2
 
@@ -308,8 +308,8 @@ Threads.nthreads() == 1 && @warn "Running tests with a single thread -- won't be
                 )
                 @test testctx.header == [:COL_1, :COL_2]
                 @test testctx.schema == [String, String]
-                @test testctx.results[1].cols[1].elements[1:2] == [Parsers.PosLen(8, 1), Parsers.PosLen(12, 1)]
-                @test testctx.results[1].cols[2].elements[1:2] == [Parsers.PosLen(10, 1), Parsers.PosLen(14, 1)]
+                @test testctx.results[1].cols[1].elements[1:2] == [Parsers.PosLen(9, 1), Parsers.PosLen(13, 1)]
+                @test testctx.results[1].cols[2].elements[1:2] == [Parsers.PosLen(11, 1), Parsers.PosLen(15, 1)]
                 @test length(testctx.results[1].cols[1]) == 2
                 @test length(testctx.results[1].cols[2]) == 2
             end

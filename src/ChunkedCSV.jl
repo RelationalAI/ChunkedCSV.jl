@@ -117,19 +117,19 @@ function parse_file(
     settings = ParserSettings(schema, header, hasheader, Int(skiprows), UInt32(limit), UInt32(buffersize), UInt8(nworkers), UInt8(maxtasks))
     options = _create_options(delim, quotechar, escapechar, sentinel, groupmark, stripwhitespace)
     byteset = Val(ByteSet((UInt8(options.e), UInt8(options.oq), UInt8('\n'), UInt8('\r'))))
-    (parsing_ctx, last_chunk_newline_at, quoted, done) = init_parsing!(io, settings, options, Val(byteset))
+    (parsing_ctx, last_newline_at, quoted, done) = init_parsing!(io, settings, options, Val(byteset))
     schema = parsing_ctx.schema
 
     if _force === :doublebuffer
-        _parse_file_doublebuffer(io, parsing_ctx, consume_ctx, options, last_chunk_newline_at, quoted, done, Val(length(schema)), Val(_bounding_flag_type(length(schema))), Val(byteset))::Nothing
+        _parse_file_doublebuffer(io, parsing_ctx, consume_ctx, options, last_newline_at, quoted, done, Val(length(schema)), Val(_bounding_flag_type(length(schema))), Val(byteset))::Nothing
     elseif _force === :singlebuffer
-        _parse_file_singlebuffer(io, parsing_ctx, consume_ctx, options, last_chunk_newline_at, quoted, done, Val(length(schema)), Val(_bounding_flag_type(length(schema))), Val(byteset))::Nothing
-    elseif _force === :serial || Threads.nthreads() == 1 || settings.nworkers == 1 || settings.maxtasks == 1 || buffersize < 32 * 1024 || last_chunk_newline_at < 32 * 1024
-              _parse_file_serial(io, parsing_ctx, consume_ctx, options, last_chunk_newline_at, quoted, done, Val(length(schema)), Val(_bounding_flag_type(length(schema))), Val(byteset))::Nothing
+        _parse_file_singlebuffer(io, parsing_ctx, consume_ctx, options, last_newline_at, quoted, done, Val(length(schema)), Val(_bounding_flag_type(length(schema))), Val(byteset))::Nothing
+    elseif _force === :serial || Threads.nthreads() == 1 || settings.nworkers == 1 || settings.maxtasks == 1 || buffersize < 32 * 1024 || last_newline_at < 32 * 1024
+              _parse_file_serial(io, parsing_ctx, consume_ctx, options, last_newline_at, quoted, done, Val(length(schema)), Val(_bounding_flag_type(length(schema))), Val(byteset))::Nothing
     elseif doublebuffer && !done
-        _parse_file_doublebuffer(io, parsing_ctx, consume_ctx, options, last_chunk_newline_at, quoted, done, Val(length(schema)), Val(_bounding_flag_type(length(schema))), Val(byteset))::Nothing
+        _parse_file_doublebuffer(io, parsing_ctx, consume_ctx, options, last_newline_at, quoted, done, Val(length(schema)), Val(_bounding_flag_type(length(schema))), Val(byteset))::Nothing
     else
-        _parse_file_singlebuffer(io, parsing_ctx, consume_ctx, options, last_chunk_newline_at, quoted, done, Val(length(schema)), Val(_bounding_flag_type(length(schema))), Val(byteset))::Nothing
+        _parse_file_singlebuffer(io, parsing_ctx, consume_ctx, options, last_newline_at, quoted, done, Val(length(schema)), Val(_bounding_flag_type(length(schema))), Val(byteset))::Nothing
     end
     should_close && close(io)
     return nothing

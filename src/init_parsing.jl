@@ -18,27 +18,15 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
         settings.maxtasks,
         TaskCondition(0, Threads.Condition(ReentrantLock()))
     )
-    # We always end on a newline when processing a chunk, so we're inserting a dummy variable to
-    # signal that. This works out even for the very first chunk.
-    push!(parsing_ctx.eols, UInt32(0))
-
-    bytes_read_in = prepare_buffer!(io, parsing_ctx.bytes, UInt32(0)) # fill the buffer for the first time
-    if bytes_read_in > 2 && hasBOM(parsing_ctx.bytes)
-        bytes_read_in -= prepare_buffer!(io, parsing_ctx.bytes, UInt32(3)) - UInt32(3)
-    end
-
-    # lex the entire buffer for newlines
-    (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(io, parsing_ctx, options, byteset, bytes_read_in, false)
+    # read and lex the entire buffer for the first time
+    (last_newline_at, quoted, done) = read_and_lex!(io, parsing_ctx, options, byteset, UInt32(0), false)
 
     skiprows = Int(settings.skiprows)
     while !done && skiprows >= length(parsing_ctx.eols) - 1
         skiprows -= length(parsing_ctx.eols) - 1
-        empty!(parsing_ctx.eols)
-        push!(parsing_ctx.eols, UInt32(0))
-        bytes_read_in = prepare_buffer!(io, parsing_ctx.bytes, last_chunk_newline_at)
-        (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(io, parsing_ctx, options, byteset, bytes_read_in, quoted)
+        (last_newline_at, quoted, done) = read_and_lex!(io, parsing_ctx, options, byteset, last_newline_at, quoted)
         # TODO: Special path for the case where we skipped the entire file
-        # done && (return (parsing_ctx, last_chunk_newline_at, quoted, done))
+        # done && (return (parsing_ctx, last_newline_at, quoted, done))
     end
     shiftleft!(parsing_ctx.eols, skiprows)
 
@@ -107,11 +95,8 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
     should_parse_header && shiftleft!(parsing_ctx.eols, 1)
     # Refill the buffer if if contained a single line and we consumed it to get the header
     if should_parse_header && length(parsing_ctx.eols) == 1
-        empty!(parsing_ctx.eols)
-        unsafe_push!(parsing_ctx.eols, UInt32(0))
-        bytes_read_in = prepare_buffer!(io, parsing_ctx.bytes, last_chunk_newline_at)
-        (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(io, parsing_ctx, options, byteset, bytes_read_in, quoted)
+        (last_newline_at, quoted, done) = read_and_lex!(io, parsing_ctx, options, byteset, last_newline_at, quoted)
     end
 
-    return (parsing_ctx, last_chunk_newline_at, quoted, done)
+    return (parsing_ctx, last_newline_at, quoted, done)
 end

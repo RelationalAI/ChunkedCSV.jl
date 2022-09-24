@@ -1,4 +1,4 @@
-function _parse_file_singlebuffer(io, parsing_ctx::ParsingContext, consume_ctx::AbstractConsumeContext, options::Parsers.Options, last_chunk_newline_at::UInt32, quoted::Bool, done::Bool, ::Val{N}, ::Val{M}, byteset::Val{B}) where {N,M,B}
+function _parse_file_singlebuffer(io, parsing_ctx::ParsingContext, consume_ctx::AbstractConsumeContext, options::Parsers.Options, last_newline_at::UInt32, quoted::Bool, done::Bool, ::Val{N}, ::Val{M}, byteset::Val{B}) where {N,M,B}
     row_num = UInt32(1)
     queue = Channel{Tuple{UInt32,UInt32,UInt32}}(Inf)
     parser_tasks = Task[]
@@ -34,13 +34,8 @@ function _parse_file_singlebuffer(io, parsing_ctx::ParsingContext, consume_ctx::
             end
         end
 
+        (last_newline_at, quoted, done) = read_and_lex!(io, parsing_ctx, options, byteset, last_newline_at, quoted)
         done && break
-        empty!(parsing_ctx.eols)
-        # We always end on a newline when processing a chunk, so we're inserting a dummy variable to
-        # signal that. This works out even for the very first chunk.
-        push!(parsing_ctx.eols, UInt32(0))
-        bytes_read_in = prepare_buffer!(io, parsing_ctx.bytes, last_chunk_newline_at)
-        (last_chunk_newline_at, quoted, done) = lex_newlines_in_buffer(io, parsing_ctx, options, byteset, bytes_read_in, quoted)
     end # while !done
     # Cleanup
     for _ in 1:parsing_ctx.nworkers

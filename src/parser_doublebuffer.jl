@@ -1,4 +1,4 @@
-function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingContext, parsing_ctx_next::ParsingContext, options::Parsers.Options, byteset, last_chunk_newline_at, quoted, done)
+function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingContext, parsing_ctx_next::ParsingContext, options::Parsers.Options, byteset, last_newline_at, quoted, done)
     row_num = UInt32(1)
     parsers_should_use_current_context = true
     @inbounds while true
@@ -23,11 +23,8 @@ function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingCont
 
         # Start parsing _next_ chunk of input
         if !done
-            empty!(parsing_ctx_next.eols)
-            push!(parsing_ctx_next.eols, UInt32(0))
-            parsing_ctx_next.bytes[last_chunk_newline_at:end] .= parsing_ctx.bytes[last_chunk_newline_at:end]
-            bytes_read_in = prepare_buffer!(io, parsing_ctx_next.bytes, last_chunk_newline_at)
-            (last_chunk_newline_at, quoted, next_done) = lex_newlines_in_buffer(io, parsing_ctx_next, options, byteset, bytes_read_in, quoted)
+            parsing_ctx_next.bytes[last_newline_at:end] .= parsing_ctx.bytes[last_newline_at:end]
+            (last_newline_at, quoted, next_done) = read_and_lex!(io, parsing_ctx_next, options, byteset, last_newline_at, quoted)
         end
         # Wait for parsers to finish processing current chunk
         @lock parsing_ctx.cond.cond_wait begin
@@ -36,12 +33,12 @@ function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingCont
                 wait(parsing_ctx.cond.cond_wait)
             end
         end
-        done && break
 
         # Switch contexts
         parsing_ctx, parsing_ctx_next = parsing_ctx_next, parsing_ctx
         parsers_should_use_current_context = !parsers_should_use_current_context
         done = next_done
+        done && break
     end
 end
 
@@ -59,7 +56,7 @@ function process_and_consume_task(parsing_queue::Threads.Channel{T}, parsing_ctx
     end
 end
 
-function _parse_file_doublebuffer(io, parsing_ctx::ParsingContext, consume_ctx::AbstractConsumeContext, options::Parsers.Options, last_chunk_newline_at::UInt32, quoted::Bool, done::Bool, ::Val{N}, ::Val{M}, byteset::Val{B}) where {N,M,B}
+function _parse_file_doublebuffer(io, parsing_ctx::ParsingContext, consume_ctx::AbstractConsumeContext, options::Parsers.Options, last_newline_at::UInt32, quoted::Bool, done::Bool, ::Val{N}, ::Val{M}, byteset::Val{B}) where {N,M,B}
     parsing_queue = Channel{Tuple{UInt32,UInt32,UInt32,Bool}}(Inf)
     parsing_ctx_next = ParsingContext(
         parsing_ctx.schema,
@@ -79,7 +76,7 @@ function _parse_file_doublebuffer(io, parsing_ctx::ParsingContext, consume_ctx::
             consume_ctx = maybe_deepcopy(consume_ctx)
         end
     end
-    io_task = errormonitor(Threads.@spawn read_and_lex_task!(parsing_queue, io, parsing_ctx, parsing_ctx_next, options, byteset, last_chunk_newline_at, quoted, done))
+    io_task = errormonitor(Threads.@spawn read_and_lex_task!(parsing_queue, io, parsing_ctx, parsing_ctx_next, options, byteset, last_newline_at, quoted, done))
     wait(io_task)
     for _ in 1:parsing_ctx.nworkers
         put!(parsing_queue, (UInt32(0), UInt32(0), UInt32(0), true))

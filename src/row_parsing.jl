@@ -32,12 +32,12 @@ function _parse_rows_forloop!(result_buf::TaskResultBuffer{N,M}, task::AbstractV
             elseif type === Float64
                 (;val, tlen, code) = Parsers.xparse(Float64, row_bytes, pos, len, options)::Parsers.Result{Float64}
                 unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{Float64}, val)
-            elseif type === Date
-                (;val, tlen, code) = Parsers.xparse(Date, row_bytes, pos, len, options)::Parsers.Result{Date}
-                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{Date}, val)
-            elseif type === DateTime
-                (;val, tlen, code) = Parsers.xparse(DateTime, row_bytes, pos, len, options)::Parsers.Result{DateTime}
-                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{DateTime}, val)
+            elseif type === Dates.Date
+                (;val, tlen, code) = Parsers.xparse(Dates.Date, row_bytes, pos, len, options)::Parsers.Result{Dates.Date}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{Dates.Date}, val)
+            elseif type === Dates.DateTime
+                (;val, tlen, code) = Parsers.xparse(_GuessDateTime, row_bytes, pos, len, options, Dates.DateTime)::Parsers.Result{Dates.DateTime}
+                unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{Dates.DateTime}, val)
             elseif type === String
                 (;val, tlen, code) = Parsers.xparse(String, row_bytes, pos, len, options)::Parsers.Result{Parsers.PosLen}
                 unsafe_push!(getindex(result_buf.cols, col_idx)::BufferedVector{Parsers.PosLen}, Parsers.PosLen(prev_newline+val.pos, val.len, val.missingvalue, val.escapedvalue))

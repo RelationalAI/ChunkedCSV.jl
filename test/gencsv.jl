@@ -1,7 +1,11 @@
 using Random: randstring
+using Dates
+using TimeZones
 
-csvrand(::Type{Int}, quotechar, escapechar, delim) = rand((1, 22, 333, 4444, 55555, 666666, 7777777, 88888888, 999999999, -1, -22, -333, -4444, -55555, -666666, -7777777, -88888888, -999999999))
-csvrand(::Type{Float64}, quotechar, escapechar, delim) = rand((1.1, 22.2, 333.3, 4444.4, 55555.5, 666666.6, 7777777.7, 88888888.8, 999999999.9, -1.1, -22.2, -333.3, -4444.4, -55555.5, -666666.6, -7777777.7, -88888888.8, -999999999.9))
+csvrand(::Type{DateTime}, quotechar, escapechar, delim) = rand(("9999-12-31T23:59:59.999", "0100-01-01T00:00:00", "9999-12-31T23:59:59.999UTC", "0100-01-01T00:00:00+0700", "0100-01-01T00:00:00Z"))
+csvrand(::Type{Date}, quotechar, escapechar, delim) = rand((Date(100, 1, 1), Date(9999, 12, 31), Date(2020, 2, 29)))
+csvrand(::Type{Int}, quotechar, escapechar, delim) = rand((typemin(Int64), typemax(Int64), 0, -1, 1))
+csvrand(::Type{Float64}, quotechar, escapechar, delim) = rand((typemin(Float64), typemax(Float64), nextfloat(typemin(Float64)), prevfloat(typemax(Float64)), 0.0, -1.0, 1.0))
 csvrand(::Type{String}, quotechar, escapechar, delim) = rand(Bool) ?
     string(quotechar, 'S', randstring(['\n', delim, 'a', 'z'], rand(4:27)), quotechar, escapechar, quotechar, escapechar, 'E', quotechar) :
     string('S', randstring(['a', 'z'], rand(4:27)), 'E')
@@ -13,6 +17,10 @@ function csvrand!(::Type{T}, buf::AbstractVector{String}, quotechar, escapechar,
         map!(x->string(csvrand(Float64, quotechar, escapechar, delim)), buf, 1:length(buf))
     elseif T === String
         map!(x->csvrand(String, quotechar, escapechar, delim), buf, 1:length(buf))
+    elseif T === Date
+        map!(x->string(csvrand(Date, quotechar, escapechar, delim)), buf, 1:length(buf))
+    elseif T === DateTime
+        map!(x->csvrand(DateTime, quotechar, escapechar, delim), buf, 1:length(buf))
     end
 end
 

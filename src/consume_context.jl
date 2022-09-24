@@ -6,9 +6,11 @@ maybe_deepcopy(x::AbstractTaskLocalConsumeContext) = deepcopy(x)
 
 struct DebugContext <: AbstractConsumeContext
     n::Int
+    error_only::Bool
+    show_values::Bool
 
-    DebugContext() = new(3)
-    DebugContext(n::Int) = new(n)
+    DebugContext() = new(3, true)
+    DebugContext(n::Int, error_only::Bool=true, show_values::Bool=false) = new(n, error_only, show_values)
 end
 
 function debug(x::BufferedVector{Parsers.PosLen}, i, parsing_ctx, consume_ctx)
@@ -43,7 +45,7 @@ function consume!(task_buf::TaskResultBuffer{N}, parsing_ctx::ParsingContext, ro
     join(io, zip(RowStatus.Marks, status_counts), " | ")
     println(io)
     if consume_ctx.n > 0 && length(task_buf.row_statuses) > 0
-        if status_counts[1] > 0
+        if !consume_ctx.error_only && status_counts[1] > 0
             c = 1
             println(io, "Ok ($(RowStatus.Marks[1])) rows:")
             for (k, (name, col)) in enumerate(zip(parsing_ctx.header, task_buf.cols))
@@ -69,33 +71,45 @@ function consume!(task_buf::TaskResultBuffer{N}, parsing_ctx::ParsingContext, ro
         for cnt in status_counts[3:end]
             i += 1
             cnt == 0 && continue
-            print(io, RowStatus.Names[i])
-            print(io, " ($(RowStatus.Marks[i]))")
-            println(io, " rows:")
+            consume_ctx.show_values && print(io, RowStatus.Names[i])
+            consume_ctx.show_values && print(io, " ($(RowStatus.Marks[i]))")
+            consume_ctx.show_values && println(io, " rows:")
             S = RowStatus.Flags[i]
             for (k, (name, col)) in enumerate(zip(parsing_ctx.header, task_buf.cols))
                 c = 1
                 n = min(consume_ctx.n, cnt)
-                print(io, "\t$(name): [")
+                consume_ctx.show_values && print(io, "\t$(name): [")
                 for j in 1:length(task_buf.row_statuses)
                     if task_buf.row_statuses[j] & S > 0
                         has_missing = isflagset(task_buf.row_statuses[j], 1) && isflagset(task_buf.column_indicators[c], k)
-                        write(io,has_missing ? "?" : debug(col, j, parsing_ctx, consume_ctx))
-                        n != 1 && print(io, ", ")
+                        consume_ctx.show_values && write(io, has_missing ? "?" : debug(col, j, parsing_ctx, consume_ctx))
+                        consume_ctx.show_values && n != 1 && print(io, ", ")
                         has_missing && (c += 1)
                     end
                     n -= 1
                     n == 0 && break
                 end
-                print(io, "]\n")
+                consume_ctx.show_values && print(io, "]\n")
             end
         end
     end
-    # println(io, "")
-    # for (name, col) in zip(parsing_ctx.header, task_buf.cols)
-    #     write(io, string(name, ": ", string(debug(task_buf.row_statuses, parsing_ctx, consume_ctx) .=> debug(col, parsing_ctx, consume_ctx)), '\n'))
-    # end
-    # write(io, string("Rows samples:\n\t", join(debug_eols(parsing_ctx.eols, parsing_ctx, consume_ctx), "\n\t")))
+    errcnt = 0
+    println(io, "Example rows with errors:")
+    for i in 1:length(task_buf.row_statuses)
+        if Int(task_buf.row_statuses[i]) > 2
+            write(io, "\t($(row_num+i-1)): ")
+            s = parsing_ctx.eols.elements[i]+1
+            e = parsing_ctx.eols.elements[i+1]-1
+            l = 256
+            if e - s > l
+                println(io, repr(String(parsing_ctx.bytes[s:s+l-3])), "...")
+            else
+                println(io, repr(String(parsing_ctx.bytes[s:e])))
+            end
+            errcnt += 1
+            errcnt > consume_ctx.n && break
+        end
+    end
     @info String(take!(io))
     return nothing
 end
@@ -112,7 +126,7 @@ function printrows(ctx::ParsingContext, n::Int=length(ctx.eols), o::Int=0)
     for i in 2+o:min(n+o,length(ctx.eols))
         s = ctx.eols[i-1]
         e = ctx.eols[i]
-        @info string(i-1, '\n', String(ctx.bytes[s+1:e-1]))
+        string(i-1, '\n', String(ctx.bytes[s+1:e-1]))
     end
 end
 

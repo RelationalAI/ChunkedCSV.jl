@@ -1,11 +1,10 @@
 """ A Vector that doesn't call `_growend!` quite as often (copy-pasted from ProtoBuf.jl) """
-mutable struct BufferedVector{T}
+mutable struct BufferedVector{T} <: AbstractArray{T,1}
     elements::Vector{T}
     occupied::Int
 end
 BufferedVector{T}() where {T} = BufferedVector(T[], 0)
 BufferedVector(v::Vector{T}) where {T} = BufferedVector{T}(v, length(v))
-Base.getindex(x::BufferedVector) = resize!(x.elements, x.occupied)
 
 Base.length(x::BufferedVector) = x.occupied
 Base.size(x::BufferedVector) = (x.occupied,)
@@ -26,6 +25,7 @@ Base.isempty(x::BufferedVector) = x.occupied == 0
 Base.IndexStyle(::BufferedVector) = Base.IndexLinear()
 Base.IteratorSize(::BufferedVector) = Base.HasLength()
 Base.IteratorEltype(::BufferedVector) = Base.HasEltype()
+Base.iterate(A::BufferedVector, i=1) = (@inline; (i % UInt) - 1 < length(A) ? (@inbounds A[i], i + 1) : nothing)
 Base.eltype(::BufferedVector{T}) where T = T
 @inline function Base.push!(buffer::BufferedVector{T}, x::T) where {T}
     if length(buffer.elements) == buffer.occupied

@@ -5,16 +5,16 @@ function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingCont
         # We start with a parsing_ctx that was already lexed
         # in `parse_preamble`, or later from this function
         limit_eols!(parsing_ctx, row_num) && break
-        eols = parsing_ctx.eols[] # BufferedVector -> Vector
-        task_size = max(1_001, cld(length(eols), parsing_ctx.maxtasks))
-        task_start = UInt32(1)
-        ntasks = cld(length(eols), task_size)
+        task_size = estimate_task_size(parsing_ctx)
+        ntasks = cld(length(parsing_ctx.eols), task_size)
 
         # Spawn parsing tasks
         @lock parsing_ctx.cond.cond_wait begin
             parsing_ctx.cond.ntasks = ntasks
         end
-        for task in Iterators.partition(eols, task_size)
+
+        task_start = UInt32(1)
+        for task in Iterators.partition(parsing_ctx.eols, task_size)
             task_end = task_start + UInt32(length(task)) - UInt32(1)
             put!(parsing_queue, (task_start, task_end, row_num, parsers_should_use_current_context))
             row_num += UInt32(length(task) - 1)
@@ -62,7 +62,7 @@ function _parse_file_doublebuffer(io, parsing_ctx::ParsingContext, consume_ctx::
         parsing_ctx.schema,
         parsing_ctx.header,
         Vector{UInt8}(undef, length(parsing_ctx.bytes)),
-        BufferedVector{UInt32}(Vector{UInt32}(undef, parsing_ctx.eols.occupied), 0),
+        BufferedVector{UInt32}(Vector{UInt32}(undef, length(parsing_ctx.eols)), 0),
         parsing_ctx.limit,
         parsing_ctx.nworkers,
         parsing_ctx.maxtasks,

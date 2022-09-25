@@ -14,6 +14,8 @@ using TimeZones
 # IDEA: We could make a 48bit PosLen string type (8MB -> 23 bits if we represent 8MB as 0, 2 bits for metadata)
 # IDEA: Instead of having SoA layout in TaskResultBuffer, we could try AoS using "reinterpretable bytes"
 
+const MIN_TASK_SIZE_IN_BYTES = 16 * 1024
+
 include("BufferedVectors.jl")
 include("TaskResults.jl")
 
@@ -41,7 +43,10 @@ struct ParsingContext
     maxtasks::UInt8
     cond::TaskCondition
 end
-
+function estimate_task_size(parsing_ctx::ParsingContext)
+    min_rows = max(2, cld(MIN_TASK_SIZE_IN_BYTES, ceil(Int, last(parsing_ctx.eols)  / length(parsing_ctx.eols))))
+    return max(min_rows, cld(ceil(Int, length(parsing_ctx.eols) * ((1 + length(parsing_ctx.bytes)) / (1 + last(parsing_ctx.eols)))), parsing_ctx.maxtasks))
+end
 struct ParserSettings
     schema::Union{Nothing,Vector{DataType}}
     header::Union{Nothing,Vector{Symbol}}
@@ -131,7 +136,7 @@ function parse_file(
         _parse_file_doublebuffer(io, parsing_ctx, consume_ctx, options, last_newline_at, quoted, done, Val(length(schema)), Val(_bounding_flag_type(length(schema))), Val(byteset))::Nothing
     elseif _force === :singlebuffer
         _parse_file_singlebuffer(io, parsing_ctx, consume_ctx, options, last_newline_at, quoted, done, Val(length(schema)), Val(_bounding_flag_type(length(schema))), Val(byteset))::Nothing
-    elseif _force === :serial || Threads.nthreads() == 1 || settings.nworkers == 1 || settings.maxtasks == 1 || buffersize < 32 * 1024 || last_newline_at < 32 * 1024
+    elseif _force === :serial || Threads.nthreads() == 1 || settings.nworkers == 1 || settings.maxtasks == 1 || buffersize < MIN_TASK_SIZE_IN_BYTES || last_newline_at < MIN_TASK_SIZE_IN_BYTES
               _parse_file_serial(io, parsing_ctx, consume_ctx, options, last_newline_at, quoted, done, Val(length(schema)), Val(_bounding_flag_type(length(schema))), Val(byteset))::Nothing
     elseif doublebuffer && !done
         _parse_file_doublebuffer(io, parsing_ctx, consume_ctx, options, last_newline_at, quoted, done, Val(length(schema)), Val(_bounding_flag_type(length(schema))), Val(byteset))::Nothing

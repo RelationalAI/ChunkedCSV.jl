@@ -107,17 +107,17 @@ Base.@propagate_inbounds function _default_tryparse_timestamp(buf, pos, len, cod
                 return DateTime(0), code, pos
             end
         end
-        b = buf[pos += 1]
+        b += 0x30
     end
     b == UInt8(' ') && pos < len && (b = buf[pos += 1])
     if b == UInt8('z') || b == UInt8('Z')
         tz = "Z"
+        pos == len ? (code |= Parsers.EOF) : (pos += 1)
     elseif b == UInt('+') || b == UInt8('-')
         tz, pos, b, code = Parsers.tryparsenext(Dates.DatePart{'z'}(4, false), buf, pos, len, b, code)
     else
         tz, pos, b, code = Parsers.tryparsenext(Dates.DatePart{'Z'}(3, false), buf, pos, len, b, code)
     end
-    pos == len && (code |= Parsers.EOF)
     Parsers.invalid(code) && (return DateTime(year, month, day, hour, minute, second, millisecond), code , pos)
     if isnothing(Dates.validargs(ZonedDateTime, year, month, day, hour, minute, second, millisecond, tz))
         ztd = TimeZones.ZonedDateTime(year, month, day, hour, minute, second, millisecond, tz)

@@ -10,7 +10,7 @@ function _parse_rows_forloop!(result_buf::TaskResultBuffer{N,M}, task::AbstractV
 
         pos = 1
         len = length(row_bytes)
-        code = Parsers.OK
+        code = Int16(0)
         row_status = RowStatus.Ok
         column_indicators = initflag(M)
         @inbounds for col_idx in 1:N

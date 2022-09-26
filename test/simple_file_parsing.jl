@@ -18,8 +18,6 @@ function ChunkedCSV.consume!(task_buf::TaskResultBuffer{N}, parsing_ctx::Parsing
     end
 end
 
-Threads.nthreads() == 1 && @warn "Running tests with a single thread -- won't be able to spot concurency issues"
-
 @testset "Simple file parsing" begin
     @testset "simple file, single chunk" begin
         for alg in [:serial, :singlebuffer, :doublebuffer]

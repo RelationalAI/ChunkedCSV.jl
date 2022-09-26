@@ -4,7 +4,8 @@ function _parse_file_singlebuffer(io, parsing_ctx::ParsingContext, consume_ctx::
     parser_tasks = Task[]
     for i in 1:parsing_ctx.nworkers
         result_buf = TaskResultBuffer{N}(parsing_ctx.schema, cld(length(parsing_ctx.eols), parsing_ctx.maxtasks))
-        push!(parser_tasks, errormonitor(Threads.@spawn process_and_consume_task(queue, parsing_ctx, options, result_buf, consume_ctx)))
+        t = Threads.@spawn process_and_consume_task(queue, parsing_ctx, options, result_buf, consume_ctx)
+        push!(parser_tasks, t)
         if i < parsing_ctx.nworkers
             consume_ctx = maybe_deepcopy(consume_ctx)
         end
@@ -46,14 +47,25 @@ function _parse_file_singlebuffer(io, parsing_ctx::ParsingContext, consume_ctx::
 end
 
 function process_and_consume_task(parsing_queue::Threads.Channel, parsing_ctx::ParsingContext, options::Parsers.Options, result_buf::TaskResultBuffer, consume_ctx::AbstractConsumeContext)
-    @inbounds while true
-        task_start, task_end, row_num = take!(parsing_queue)::Tuple{UInt32,UInt32,UInt32}
-        iszero(task_end) && break
-        _parse_rows_forloop!(result_buf, @view(parsing_ctx.eols.elements[task_start:task_end]), parsing_ctx.bytes, parsing_ctx.schema, options)
-        consume!(result_buf, parsing_ctx, row_num, consume_ctx)
+    try
+        @inbounds while true
+            task_start, task_end, row_num = take!(parsing_queue)::Tuple{UInt32,UInt32,UInt32}
+            iszero(task_end) && break
+            _parse_rows_forloop!(result_buf, @view(parsing_ctx.eols.elements[task_start:task_end]), parsing_ctx.bytes, parsing_ctx.schema, options)
+            consume!(result_buf, parsing_ctx, row_num, consume_ctx)
+            @lock parsing_ctx.cond.cond_wait begin
+                parsing_ctx.cond.ntasks -= 1
+                notify(parsing_ctx.cond.cond_wait)
+            end
+        end
+    catch e
+        @error "Task failed" exception=(e, catch_backtrace())
+        # If there was an exception, immediately stop processing the queue
+        close(parsing_queue, e)
+
+        # if the io/lexing was waiting for work to finish, it we'll interrupt it here
         @lock parsing_ctx.cond.cond_wait begin
-            parsing_ctx.cond.ntasks -= 1
-            notify(parsing_ctx.cond.cond_wait)
+            notify(parsing_ctx.cond.cond_wait, e, all=true, error=true)
         end
     end
 end

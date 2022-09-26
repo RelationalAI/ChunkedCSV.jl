@@ -2,17 +2,16 @@ function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingCont
     row_num = UInt32(1)
     parsers_should_use_current_context = true
     @inbounds while true
-        # We start with a parsing_ctx that was already lexed
-        # in `parse_preamble`, or later from this function
         limit_eols!(parsing_ctx, row_num) && break
         task_size = estimate_task_size(parsing_ctx)
         ntasks = cld(length(parsing_ctx.eols), task_size)
 
-        # Spawn parsing tasks
+        # Set the expected number of parsing tasks
         @lock parsing_ctx.cond.cond_wait begin
             parsing_ctx.cond.ntasks = ntasks
         end
 
+        # Send task definitions (segmenf of `eols` to process) to the queue
         task_start = UInt32(1)
         for task in Iterators.partition(parsing_ctx.eols, task_size)
             task_end = task_start + UInt32(length(task)) - UInt32(1)
@@ -91,8 +90,14 @@ function _parse_file_doublebuffer(io, parsing_ctx::ParsingContext, consume_ctx::
             consume_ctx = maybe_deepcopy(consume_ctx)
         end
     end
-    io_task = Threads.@spawn read_and_lex_task!(parsing_queue, io, parsing_ctx, parsing_ctx_next, options, byteset, last_newline_at, quoted, done)
-    wait(io_task)
+    try
+        io_task = Threads.@spawn read_and_lex_task!(parsing_queue, io, parsing_ctx, parsing_ctx_next, options, byteset, last_newline_at, quoted, done)
+        wait(io_task)
+    catch e
+        close(parsing_queue, e)
+        rethrow()
+    end
+    # Cleanup
     for _ in 1:parsing_ctx.nworkers
         put!(parsing_queue, (UInt32(0), UInt32(0), UInt32(0), true))
     end

@@ -59,7 +59,7 @@ function process_and_consume_task(parsing_queue::Threads.Channel{T}, parsing_ctx
         # If there was an exception, immediately stop processing the queue
         close(parsing_queue, e)
 
-        # if the io_task was waiting for work to finish, it we'll interrupt it here
+        # if the io_task was waiting for work to finish, we'll interrupt it here
         @lock parsing_ctx.cond.cond_wait begin
             notify(parsing_ctx.cond.cond_wait, e, all=true, error=true)
         end

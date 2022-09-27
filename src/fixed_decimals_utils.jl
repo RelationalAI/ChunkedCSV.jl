@@ -122,7 +122,10 @@ _typemaxbytes(::Type{Int128}, i, is_neg) = @inbounds NTuple{39,UInt8}((0x31, 0x3
 const _NonNumericBytes = Val(~ByteSet((UInt8('+'), UInt8('0'), UInt8('1'), UInt8('2'), UInt8('3'), UInt8('4'), UInt8('5'), UInt8('6'), UInt8('7'), UInt8('8'), UInt8('9'))))
 
 # Parsers.jl typically process a byte at a time but for Decimals we want to know
-# where the decimal point and `e`. 123456789123456789.1e-10
+# where the decimal point and `e` is so we can avoid overflows. E.g. in 123456789123456789.1e-10
+# we don't have to materialize the whole 123456789123456789 since we know
+# that there are 12345679 digits before the decimal point, the rest of the digits can be
+# rounded if needed.
 function _dec_exp_end(buf, pos, len, b, code, options)
     decimal_position = 0
     exp_position = 0

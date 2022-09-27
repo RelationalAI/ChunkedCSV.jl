@@ -2,7 +2,7 @@ function _parse_file_serial(io, parsing_ctx::ParsingContext, consume_ctx::Abstra
     row_num = UInt32(1)
     limit_eols!(parsing_ctx, row_num)
     result_buf = TaskResultBuffer{N}(parsing_ctx.schema, cld(length(parsing_ctx.eols), parsing_ctx.maxtasks))
-    while !done
+    while true
         task_size = estimate_task_size(parsing_ctx)
         for task in Iterators.partition(parsing_ctx.eols, task_size)
             _parse_rows_forloop!(result_buf, task, parsing_ctx.bytes, parsing_ctx.schema, options)

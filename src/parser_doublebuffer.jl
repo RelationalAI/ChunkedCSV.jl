@@ -33,12 +33,12 @@ function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingCont
                 wait(parsing_ctx.cond.cond_wait)
             end
         end
+        done && break
 
         # Switch contexts
         parsing_ctx, parsing_ctx_next = parsing_ctx_next, parsing_ctx
         parsers_should_use_current_context = !parsers_should_use_current_context
         done = next_done
-        done && break
     end
 end
 

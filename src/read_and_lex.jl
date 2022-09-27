@@ -35,20 +35,22 @@ function read_and_lex!(io::IO, parsing_ctx::ParsingContext, options, byteset::Va
     ptr = pointer(parsing_ctx.bytes) # We never resize the buffer, the array shouldn't need to relocate
     e, q = options.e, options.cq
     buf = parsing_ctx.bytes
-    iseof = eof(io)
 
     empty!(parsing_ctx.eols)
     push!(parsing_ctx.eols, UInt32(0))
     eols = parsing_ctx.eols
 
     bytes_read_in = prepare_buffer!(io, parsing_ctx.bytes, last_newline_at)
+    iseof = eof(io)
 
     bytes_to_search = UInt(bytes_read_in)
     if last_newline_at == UInt(0) # first time populating the buffer
-        offset = UInt32(0)
+        bytes_carried_over_from_previous_chunk = UInt32(0)
+        offset = bytes_carried_over_from_previous_chunk
     else
-        # First length(buf) - bytes_read_in bytes we've already seen in the previous round
-        offset = (UInt32(length(buf)) - bytes_read_in) - (last_newline_at - bytes_read_in)
+        # First length(buf) - last_newline_at bytes we've already seen in the previous round
+        bytes_carried_over_from_previous_chunk = UInt32(length(buf)) - last_newline_at
+        offset = bytes_carried_over_from_previous_chunk
         ptr += offset
     end
     @inbounds while bytes_to_search > UInt(0)
@@ -86,13 +88,12 @@ function read_and_lex!(io::IO, parsing_ctx::ParsingContext, options, byteset::Va
         done = true
         # Insert a newline at the end of the file if there wasn't one
         # This is just to make `eols` contain both start and end `pos` of every single line
-        last(eols) != bytes_read_in && push!(eols, bytes_read_in + UInt32(1))
-        last_newline_at = bytes_read_in
+        last_byte = bytes_carried_over_from_previous_chunk + bytes_read_in
+        last(eols) != last_byte && push!(eols, last_byte + UInt32(1))
     else
         done = false
-        last_newline_at = last(eols)
     end
-    return last_newline_at, quoted, done
+    return last(eols), quoted, done
 end
 function read_and_lex!(io::NoopStream, parsing_ctx::ParsingContext, options::Parsers.Options, byteset::Val{B}, last_newline_at::UInt32, quoted::Bool) where B
     return read_and_lex!(io.stream, parsing_ctx, options, byteset, last_newline_at, quoted)

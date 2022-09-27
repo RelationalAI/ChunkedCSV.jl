@@ -33,9 +33,8 @@ function _parse_file_singlebuffer(io, parsing_ctx::ParsingContext, consume_ctx::
                 wait(parsing_ctx.cond.cond_wait)
             end
         end
-
-        (last_newline_at, quoted, done) = read_and_lex!(io, parsing_ctx, options, byteset, last_newline_at, quoted)
         done && break
+        (last_newline_at, quoted, done) = read_and_lex!(io, parsing_ctx, options, byteset, last_newline_at, quoted)
     end # while !done
     # Cleanup
     for _ in 1:parsing_ctx.nworkers

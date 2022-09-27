@@ -12,6 +12,6 @@ function _parse_file_serial(io, parsing_ctx::ParsingContext, consume_ctx::Abstra
         done && break
         (last_newline_at, quoted, done) = read_and_lex!(io, parsing_ctx, options, byteset, last_newline_at, quoted)
         limit_eols!(parsing_ctx, row_num) && break
-    end # while !done
+    end # while true
     return nothing
 end

@@ -28,7 +28,7 @@ function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingCont
         end
         done && break
         (last_newline_at, quoted, done) = read_and_lex!(io, parsing_ctx, options, byteset, last_newline_at, quoted)
-    end # while !done
+    end # while true
 end
 
 function process_and_consume_task(parsing_queue::Threads.Channel, parsing_ctx::ParsingContext, options::Parsers.Options, result_buf::TaskResultBuffer, consume_ctx::AbstractConsumeContext)

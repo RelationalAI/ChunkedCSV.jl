@@ -9,7 +9,7 @@ struct ThrowingIO <: IO
     io::IOBuffer
 end
 ThrowingIO(s::String) = ThrowingIO(IOBuffer(s))
-ChunkedCSV.readbytesall!(io::ThrowingIO, buf, n) = io.io.ptr > 3 ? error("That should be enough data for everyone") : ChunkedCSV.readbytesall!(io.io, buf, n)
+ChunkedCSV.readbytesall!(io::ThrowingIO, buf, n) = io.io.ptr > 6 ? error("That should be enough data for everyone") : ChunkedCSV.readbytesall!(io.io, buf, n)
 Base.eof(io::ThrowingIO) = Base.eof(io.io)
 
 
@@ -88,6 +88,7 @@ end
                     [Int,Int],
                     ChunkedCSV.SkipContext(),
                     _force=:serial,
+                    buffersize=4,
                 )
             end
         end
@@ -104,6 +105,7 @@ end
                     ChunkedCSV.SkipContext(),
                     nworkers=nthreads(),
                     _force=:singlebuffer,
+                    buffersize=4,
                 )
                 sleep(0.2)
             end
@@ -124,6 +126,7 @@ end
                     ChunkedCSV.SkipContext(),
                     nworkers=nthreads(),
                     _force=:doublebuffer,
+                    buffersize=4,
                 )
                 sleep(0.2)
             end

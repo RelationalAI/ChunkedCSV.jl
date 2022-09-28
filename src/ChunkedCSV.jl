@@ -11,7 +11,6 @@ using Dates
 using FixedPointDecimals
 using TimeZones
 
-# IDEA: We could make a 48bit PosLen string type (8MB -> 23 bits if we represent 8MB as 0, 2 bits for metadata)
 # IDEA: Instead of having SoA layout in TaskResultBuffer, we could try AoS using "reinterpretable bytes"
 
 const MIN_TASK_SIZE_IN_BYTES = 16 * 1024
@@ -22,7 +21,7 @@ include("TaskResults.jl")
 include("fixed_decimals_utils.jl")
 include("datetime_utils.jl")
 
-# Temporaty hack to register new DateTime
+# Temporary hack to register new DateTime
 function __init__()
     Dates.CONVERSION_TRANSLATIONS[_GuessDateTime] = Dates.CONVERSION_TRANSLATIONS[Dates.DateTime]
     nothing

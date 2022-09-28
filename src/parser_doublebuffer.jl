@@ -2,17 +2,16 @@ function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingCont
     row_num = UInt32(1)
     parsers_should_use_current_context = true
     @inbounds while true
-        # We start with a parsing_ctx that was already lexed
-        # in `parse_preamble`, or later from this function
         limit_eols!(parsing_ctx, row_num) && break
         task_size = estimate_task_size(parsing_ctx)
         ntasks = cld(length(parsing_ctx.eols), task_size)
 
-        # Spawn parsing tasks
+        # Set the expected number of parsing tasks
         @lock parsing_ctx.cond.cond_wait begin
             parsing_ctx.cond.ntasks = ntasks
         end
 
+        # Send task definitions (segmenf of `eols` to process) to the queue
         task_start = UInt32(1)
         for task in Iterators.partition(parsing_ctx.eols, task_size)
             task_end = task_start + UInt32(length(task)) - UInt32(1)
@@ -43,15 +42,29 @@ function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingCont
 end
 
 function process_and_consume_task(parsing_queue::Threads.Channel{T}, parsing_ctx::ParsingContext, parsing_ctx_next::ParsingContext, options::Parsers.Options, result_buf::TaskResultBuffer, consume_ctx::AbstractConsumeContext) where {T}
-    @inbounds while true
-        task_start, task_end, row_num, use_current_context = take!(parsing_queue)::T
-        ctx = use_current_context ? parsing_ctx : parsing_ctx_next
-        iszero(task_end) && break
-        _parse_rows_forloop!(result_buf, @view(ctx.eols.elements[task_start:task_end]), ctx.bytes, ctx.schema, options)
-        consume!(result_buf, ctx, row_num, consume_ctx)
-        @lock ctx.cond.cond_wait begin
-            ctx.cond.ntasks -= 1
-            notify(ctx.cond.cond_wait)
+    try
+        @inbounds while true
+            task_start, task_end, row_num, use_current_context = take!(parsing_queue)::T
+            ctx = use_current_context ? parsing_ctx : parsing_ctx_next
+            iszero(task_end) && break
+            _parse_rows_forloop!(result_buf, @view(ctx.eols.elements[task_start:task_end]), ctx.bytes, ctx.schema, options)
+            consume!(result_buf, ctx, row_num, consume_ctx)
+            @lock ctx.cond.cond_wait begin
+                ctx.cond.ntasks -= 1
+                notify(ctx.cond.cond_wait)
+            end
+        end
+    catch e
+        @error "Task failed" exception=(e, catch_backtrace())
+        # If there was an exception, immediately stop processing the queue
+        close(parsing_queue, e)
+
+        # if the io_task was waiting for work to finish, we'll interrupt it here
+        @lock parsing_ctx.cond.cond_wait begin
+            notify(parsing_ctx.cond.cond_wait, e, all=true, error=true)
+        end
+        @lock parsing_ctx_next.cond.cond_wait begin
+            notify(parsing_ctx_next.cond.cond_wait, e, all=true, error=true)
         end
     end
 end
@@ -71,13 +84,20 @@ function _parse_file_doublebuffer(io, parsing_ctx::ParsingContext, consume_ctx::
     parser_tasks = Task[]
     for i in 1:parsing_ctx.nworkers
         result_buf = TaskResultBuffer{N}(parsing_ctx.schema, cld(length(parsing_ctx.eols), parsing_ctx.maxtasks))
-        push!(parser_tasks, errormonitor(Threads.@spawn process_and_consume_task(parsing_queue, parsing_ctx, parsing_ctx_next, options, result_buf, consume_ctx)))
+        t = Threads.@spawn process_and_consume_task(parsing_queue, parsing_ctx, parsing_ctx_next, options, result_buf, consume_ctx)
+        push!(parser_tasks, t)
         if i < parsing_ctx.nworkers
             consume_ctx = maybe_deepcopy(consume_ctx)
         end
     end
-    io_task = errormonitor(Threads.@spawn read_and_lex_task!(parsing_queue, io, parsing_ctx, parsing_ctx_next, options, byteset, last_newline_at, quoted, done))
-    wait(io_task)
+    try
+        io_task = Threads.@spawn read_and_lex_task!(parsing_queue, io, parsing_ctx, parsing_ctx_next, options, byteset, last_newline_at, quoted, done)
+        wait(io_task)
+    catch e
+        close(parsing_queue, e)
+        rethrow()
+    end
+    # Cleanup
     for _ in 1:parsing_ctx.nworkers
         put!(parsing_queue, (UInt32(0), UInt32(0), UInt32(0), true))
     end

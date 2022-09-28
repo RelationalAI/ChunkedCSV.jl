@@ -23,7 +23,7 @@ struct TaskResultBuffer{N,M}
     column_indicators::BufferedVector{M}
 end
 
-@inline _bounding_flag_type(N) = N > 128 ? NTuple{N>>6,UInt64} :
+@inline _bounding_flag_type(N) = N > 128 ? NTuple{1+((N-1)>>6),UInt64} :
     N > 64 ? UInt128 :
     N > 32 ? UInt64 :
     N > 16 ? UInt32 :
@@ -77,3 +77,32 @@ end
 
 anyflagset(x::Unsigned) = !iszero(x)
 anyflagset(x::NTuple{N,UInt64}) where {N} = any(anyflagset, x)
+
+flagpadding(ncolumns) = 8sizeof(ChunkedCSV._bounding_flag_type(ncolumns)) - ncolumns
+
+firstflagset(x::Unsigned) = 8sizeof(typeof(x)) - leading_zeros(x)
+lastflagset(x::Unsigned) = trailing_zeros(x) + 1
+function firstflagset(xs::NTuple{N,UInt64}) where {N}
+    out = 0
+    @inbounds for i in 1:N
+        x = xs[i]
+        out += 8sizeof(typeof(x))
+        if x > 0
+            out -= firstflagset(x) - 1
+            break
+        end
+    end
+    return out
+end
+function lastflagset(xs::NTuple{N,UInt64}) where {N}
+    out = 8sizeof(typeof(xs))
+    @inbounds for i in N:-1:1
+        x = xs[i]
+        if x > 0
+            out -= lastflagset(x) - 1
+            break
+        end
+        out -= 8sizeof(typeof(x))
+    end
+    return out
+end

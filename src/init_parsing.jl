@@ -16,7 +16,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
         settings.limit,
         settings.nworkers,
         settings.maxtasks,
-        TaskCondition(0, Threads.Condition(ReentrantLock()))
+        TaskCondition(),
     )
     # read and lex the entire buffer for the first time
     (last_newline_at, quoted, done) = read_and_lex!(io, parsing_ctx, options, byteset, UInt32(0), false)

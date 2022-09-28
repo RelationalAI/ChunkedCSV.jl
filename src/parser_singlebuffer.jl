@@ -1,4 +1,4 @@
-function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingContext, options::Parsers.Options, byteset, last_newline_at, quoted, done)
+function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingContext, consume_ctx::AbstractConsumeContext, options::Parsers.Options, byteset, last_newline_at, quoted, done)
     row_num = UInt32(1)
     @inbounds while true
         limit_eols!(parsing_ctx, row_num) && break
@@ -10,6 +10,7 @@ function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingCont
             parsing_ctx.cond.ntasks = ntasks
         end
 
+        preconsume!(consume_ctx, parsing_ctx, ntasks)
         # Send task definitions (segmenf of `eols` to process) to the queue
         task_start = UInt32(1)
         for task in Iterators.partition(parsing_ctx.eols, task_size)
@@ -26,6 +27,7 @@ function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingCont
                 wait(parsing_ctx.cond.cond_wait)
             end
         end
+        postconsume!(consume_ctx, parsing_ctx, ntasks)
         done && break
         (last_newline_at, quoted, done) = read_and_lex!(io, parsing_ctx, options, byteset, last_newline_at, quoted)
     end # while true
@@ -67,7 +69,7 @@ function _parse_file_singlebuffer(io, parsing_ctx::ParsingContext, consume_ctx::
         end
     end
     try
-        io_task = Threads.@spawn read_and_lex_task!(parsing_queue, io, parsing_ctx, options, byteset, last_newline_at, quoted, done)
+        io_task = Threads.@spawn read_and_lex_task!(parsing_queue, io, parsing_ctx, consume_ctx, options, byteset, last_newline_at, quoted, done)
         wait(io_task)
     catch e
         close(parsing_queue, e)

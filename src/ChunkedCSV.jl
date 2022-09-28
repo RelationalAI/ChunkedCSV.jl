@@ -31,6 +31,7 @@ mutable struct TaskCondition
     ntasks::Int
     cond_wait::Threads.Condition
 end
+TaskCondition() = TaskCondition(0, Threads.Condition(ReentrantLock()))
 
 struct ParsingContext
     schema::Vector{DataType}
@@ -111,7 +112,7 @@ function parse_file(
     stripwhitespace::Bool=false,
     # In bytes. This absolutely has to be larger than any single row.
     # Much safer if any two consecutive rows are smaller than this threshold.
-    buffersize::Integer=UInt32(8 * 1024 * 1024),
+    buffersize::Integer=UInt32(Threads.nthreads() * 1024 * 1024),
     nworkers::Integer=Threads.nthreads(),
     maxtasks::Integer=2Threads.nthreads(),
     _force::Symbol=:none,

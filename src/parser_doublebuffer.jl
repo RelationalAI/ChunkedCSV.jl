@@ -1,4 +1,4 @@
-function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingContext, parsing_ctx_next::ParsingContext, options::Parsers.Options, byteset, last_newline_at, quoted, done)
+function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingContext, parsing_ctx_next::ParsingContext, consume_ctx::AbstractConsumeContext, options::Parsers.Options, byteset, last_newline_at, quoted, done)
     row_num = UInt32(1)
     parsers_should_use_current_context = true
     @inbounds while true
@@ -11,6 +11,7 @@ function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingCont
             parsing_ctx.cond.ntasks = ntasks
         end
 
+        preconsume!(consume_ctx, parsing_ctx, ntasks)
         # Send task definitions (segmenf of `eols` to process) to the queue
         task_start = UInt32(1)
         for task in Iterators.partition(parsing_ctx.eols, task_size)
@@ -32,6 +33,7 @@ function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingCont
                 wait(parsing_ctx.cond.cond_wait)
             end
         end
+        postconsume!(consume_ctx, parsing_ctx, ntasks)
         done && break
 
         # Switch contexts
@@ -79,7 +81,7 @@ function _parse_file_doublebuffer(io, parsing_ctx::ParsingContext, consume_ctx::
         parsing_ctx.limit,
         parsing_ctx.nworkers,
         parsing_ctx.maxtasks,
-        TaskCondition(0, Threads.Condition(ReentrantLock())),
+        TaskCondition(),
     )
     parser_tasks = Task[]
     for i in 1:parsing_ctx.nworkers
@@ -90,8 +92,9 @@ function _parse_file_doublebuffer(io, parsing_ctx::ParsingContext, consume_ctx::
             consume_ctx = maybe_deepcopy(consume_ctx)
         end
     end
+
     try
-        io_task = Threads.@spawn read_and_lex_task!(parsing_queue, io, parsing_ctx, parsing_ctx_next, options, byteset, last_newline_at, quoted, done)
+        io_task = Threads.@spawn read_and_lex_task!(parsing_queue, io, parsing_ctx, parsing_ctx_next, consume_ctx, options, byteset, last_newline_at, quoted, done)
         wait(io_task)
     catch e
         close(parsing_queue, e)

@@ -1,8 +1,19 @@
 abstract type AbstractConsumeContext end
 abstract type AbstractTaskLocalConsumeContext <: AbstractConsumeContext end
 
+function preconsume! end
+function consume! end
+function postconsume! end
+
 maybe_deepcopy(x::AbstractConsumeContext) = x
 maybe_deepcopy(x::AbstractTaskLocalConsumeContext) = deepcopy(x)
+
+function preconsume!(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext, ntasks::Int)
+    return nothing
+end
+function postconsume!(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext, ntasks::Int)
+    return nothing
+end
 
 struct DebugContext <: AbstractConsumeContext
     n::Int

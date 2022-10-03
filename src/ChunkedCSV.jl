@@ -12,6 +12,7 @@ using FixedPointDecimals
 using TimeZones
 
 # IDEA: Instead of having SoA layout in TaskResultBuffer, we could try AoS using "reinterpretable bytes"
+# IDEA: For result_buffers, and possibly elsewhere, use "PreallocatedChannels" that don't call popfirst! and push!, but getindex and setindex! + index
 
 const MIN_TASK_SIZE_IN_BYTES = 16 * 1024
 

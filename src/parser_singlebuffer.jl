@@ -13,11 +13,13 @@ function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingCont
         preconsume!(consume_ctx, parsing_ctx, ntasks)
         # Send task definitions (segmenf of `eols` to process) to the queue
         task_start = UInt32(1)
+        task_num = UInt32(1)
         for task in Iterators.partition(parsing_ctx.eols, task_size)
             task_end = task_start + UInt32(length(task)) - UInt32(1)
-            put!(parsing_queue, (task_start, task_end, row_num))
+            put!(parsing_queue, (task_start, task_end, row_num, task_num))
             row_num += UInt32(length(task) - 1)
             task_start = task_end + UInt32(1)
+            task_num += UInt32(1)
         end
 
         # Wait for parsers to finish processing current chunk
@@ -33,11 +35,12 @@ function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingCont
     end # while true
 end
 
-function process_and_consume_task(parsing_queue::Threads.Channel, parsing_ctx::ParsingContext, options::Parsers.Options, result_buf::TaskResultBuffer, consume_ctx::AbstractConsumeContext)
+function process_and_consume_task(parsing_queue::Channel{T}, parsing_ctx::ParsingContext, options::Parsers.Options, result_buffers::Vector, consume_ctx::AbstractConsumeContext) where {T}
     try
         @inbounds while true
-            task_start, task_end, row_num = take!(parsing_queue)::Tuple{UInt32,UInt32,UInt32}
+            task_start, task_end, row_num, task_num = take!(parsing_queue)::T
             iszero(task_end) && break
+            result_buf = result_buffers[task_num]
             _parse_rows_forloop!(result_buf, @view(parsing_ctx.eols.elements[task_start:task_end]), parsing_ctx.bytes, parsing_ctx.schema, options)
             consume!(result_buf, parsing_ctx, row_num, consume_ctx)
             @lock parsing_ctx.cond.cond_wait begin
@@ -58,11 +61,11 @@ function process_and_consume_task(parsing_queue::Threads.Channel, parsing_ctx::P
 end
 
 function _parse_file_singlebuffer(io, parsing_ctx::ParsingContext, consume_ctx::AbstractConsumeContext, options::Parsers.Options, last_newline_at::UInt32, quoted::Bool, done::Bool, ::Val{N}, ::Val{M}, byteset::Val{B}) where {N,M,B}
-    parsing_queue = Channel{Tuple{UInt32,UInt32,UInt32}}(Inf)
+    parsing_queue = Channel{Tuple{UInt32,UInt32,UInt32,UInt32}}(Inf)
+    result_buffers = TaskResultBuffer{N}[TaskResultBuffer{N}(parsing_ctx.schema, cld(length(parsing_ctx.eols), parsing_ctx.maxtasks)) for _ in 1:parsing_ctx.maxtasks]
     parser_tasks = Task[]
     for i in 1:parsing_ctx.nworkers
-        result_buf = TaskResultBuffer{N}(parsing_ctx.schema, cld(length(parsing_ctx.eols), parsing_ctx.maxtasks))
-        t = Threads.@spawn process_and_consume_task(parsing_queue, parsing_ctx, options, result_buf, consume_ctx)
+        t = Threads.@spawn process_and_consume_task(parsing_queue, parsing_ctx, options, result_buffers, consume_ctx)
         push!(parser_tasks, t)
         if i < parsing_ctx.nworkers
             consume_ctx = maybe_deepcopy(consume_ctx)
@@ -77,7 +80,7 @@ function _parse_file_singlebuffer(io, parsing_ctx::ParsingContext, consume_ctx::
     end
     # Cleanup
     for _ in 1:parsing_ctx.nworkers
-        put!(parsing_queue, (UInt32(0), UInt32(0), UInt32(0)))
+        put!(parsing_queue, (UInt32(0), UInt32(0), UInt32(0), UInt32(0)))
     end
     foreach(wait, parser_tasks)
     close(parsing_queue)

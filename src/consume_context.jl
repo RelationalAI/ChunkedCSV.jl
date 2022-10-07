@@ -39,7 +39,7 @@ function debug_eols(x::BufferedVector{UInt32}, parsing_ctx, consume_ctx)
 end
 
 
-function consume!(task_buf::TaskResultBuffer{N}, parsing_ctx::ParsingContext, row_num::UInt32, consume_ctx::DebugContext) where {N}
+function consume!(task_buf::TaskResultBuffer{N,M}, parsing_ctx::ParsingContext, row_num::UInt32, eol_idx::UInt32, consume_ctx::DebugContext) where {N,M}
     status_counts = zeros(Int, length(RowStatus.Marks))
     io = IOBuffer()
     @inbounds for i in 1:length(task_buf.row_statuses)
@@ -105,12 +105,12 @@ function consume!(task_buf::TaskResultBuffer{N}, parsing_ctx::ParsingContext, ro
         end
     end
     errcnt = 0
-    println(io, "Example rows with errors:")
+    sum(status_counts[3:end]) > 0 && println(io, "Example rows with errors:")
     for i in 1:length(task_buf.row_statuses)
-        if Int(task_buf.row_statuses[i]) > 2
+        if Int(task_buf.row_statuses[i]) >= 2
             write(io, "\t($(row_num+i-1)): ")
-            s = parsing_ctx.eols.elements[i]+1
-            e = parsing_ctx.eols.elements[i+1]-1
+            s = parsing_ctx.eols[eol_idx + i - 1]+1
+            e = parsing_ctx.eols[eol_idx + i]-1
             l = 256
             if e - s > l
                 println(io, repr(String(parsing_ctx.bytes[s:s+l-3])), "...")
@@ -129,7 +129,7 @@ end
 struct SkipContext <: AbstractConsumeContext
     SkipContext() = new()
 end
-function consume!(task_buf::TaskResultBuffer{N}, parsing_ctx::ParsingContext, row_num::UInt32, consume_ctx::SkipContext) where {N}
+function consume!(task_buf::TaskResultBuffer{N,M}, parsing_ctx::ParsingContext, row_num::UInt32, eol_idx::UInt32, consume_ctx::SkipContext) where {N,M}
     return nothing
 end
 

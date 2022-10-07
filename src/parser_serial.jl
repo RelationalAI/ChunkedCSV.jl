@@ -1,15 +1,16 @@
 function _parse_file_serial(io, parsing_ctx::ParsingContext, consume_ctx::AbstractConsumeContext, options::Parsers.Options, last_newline_at::UInt32, quoted::Bool, done::Bool, ::Val{N}, ::Val{M}, byteset::Val{B}) where {N,M,B}
-    row_num = UInt32(1)
-    limit_eols!(parsing_ctx, row_num)
+    row_num = UInt32(2)
     result_buf = TaskResultBuffer{N}(parsing_ctx.schema, cld(length(parsing_ctx.eols), parsing_ctx.maxtasks))
     while true
+        row_num -= UInt32(1)
+        limit_eols!(parsing_ctx, row_num)
         task_size = estimate_task_size(parsing_ctx)
         ntasks = cld(length(parsing_ctx.eols), task_size)
         preconsume!(consume_ctx, parsing_ctx, ntasks)
         for task in Iterators.partition(parsing_ctx.eols, task_size)
             _parse_rows_forloop!(result_buf, task, parsing_ctx.bytes, parsing_ctx.schema, options)
-            consume!(result_buf, parsing_ctx, row_num, consume_ctx)
-            row_num += UInt32(length(task) - 1)
+            consume!(result_buf, parsing_ctx, row_num, UInt32(1), consume_ctx)
+            row_num += UInt32(length(task))
         end
         postconsume!(consume_ctx, parsing_ctx, ntasks)
         done && break

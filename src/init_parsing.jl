@@ -16,6 +16,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
         settings.limit,
         settings.nworkers,
         settings.maxtasks,
+        settings.nresults,
         TaskCondition(),
     )
     # read and lex the entire buffer for the first time

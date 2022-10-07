@@ -89,7 +89,7 @@ function read_and_lex!(io::IO, parsing_ctx::ParsingContext, options, byteset::Va
         # Insert a newline at the end of the file if there wasn't one
         # This is just to make `eols` contain both start and end `pos` of every single line
         last_byte = bytes_carried_over_from_previous_chunk + bytes_read_in
-        last(eols) != last_byte && push!(eols, last_byte + UInt32(1))
+        last(eols) < last_byte && push!(eols, last_byte + UInt32(1))
     else
         done = false
     end

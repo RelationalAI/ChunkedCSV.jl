@@ -42,6 +42,7 @@ struct ParsingContext
     limit::UInt32
     nworkers::UInt8
     maxtasks::UInt8
+    nresults::UInt8
     cond::TaskCondition
 end
 function estimate_task_size(parsing_ctx::ParsingContext)
@@ -57,6 +58,7 @@ struct ParserSettings
     buffersize::UInt32
     nworkers::UInt8
     maxtasks::UInt8
+    nresults::UInt8
 end
 
 function limit_eols!(parsing_ctx::ParsingContext, row_num)
@@ -116,6 +118,7 @@ function parse_file(
     buffersize::Integer=UInt32(Threads.nthreads() * 1024 * 1024),
     nworkers::Integer=Threads.nthreads(),
     maxtasks::Integer=2Threads.nthreads(),
+    nresults::Integer=maxtasks,
     _force::Symbol=:none,
 )
     @assert 0 < buffersize < typemax(UInt32)
@@ -123,11 +126,12 @@ function parse_file(
     @assert limit >= 0
     @assert nworkers > 0
     @assert maxtasks >= nworkers
+    @assert nresults == maxtasks # otherwise not implemented; implementation postponed once we know why take!/wait from channel allocates
     @assert _force in (:none, :serial, :singlebuffer, :doublebuffer)
     !isnothing(header) && !isnothing(schema) && length(header) != length(schema) && error("Provided header doesn't match the number of column of schema ($(length(header)) names, $(length(schema)) types).")
 
     should_close, io = _input_to_io(input)
-    settings = ParserSettings(schema, header, hasheader, Int(skiprows), UInt32(limit), UInt32(buffersize), UInt8(nworkers), UInt8(maxtasks))
+    settings = ParserSettings(schema, header, hasheader, Int(skiprows), UInt32(limit), UInt32(buffersize), UInt8(nworkers), UInt8(maxtasks), UInt8(nresults))
     options = _create_options(delim, quotechar, escapechar, sentinel, groupmark, stripwhitespace)
     byteset = Val(ByteSet((UInt8(options.e), UInt8(options.oq), UInt8('\n'), UInt8('\r'))))
     (parsing_ctx, last_newline_at, quoted, done) = init_parsing!(io, settings, options, Val(byteset))

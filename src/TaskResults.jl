@@ -45,6 +45,11 @@ TaskResultBuffer{N}(schema::Vector{DataType}, n::Int) where N = TaskResultBuffer
     BufferedVector{RowStatus.T}(Vector{RowStatus.T}(undef, n), 0),
     BufferedVector{_bounding_flag_type(N)}(),
 )
+TaskResultBuffer{N,M}(schema::Vector{DataType}, n::Int) where {N,M} = TaskResultBuffer{N, M}(
+    [BufferedVector{_translate_to_buffer_type(schema[i])}(Vector{_translate_to_buffer_type(schema[i])}(undef, n), 0) for i in 1:N],
+    BufferedVector{RowStatus.T}(Vector{RowStatus.T}(undef, n), 0),
+    BufferedVector{_bounding_flag_type(N)}(),
+)
 
 function Base.empty!(buf::TaskResultBuffer)
     foreach(empty!, buf.cols)

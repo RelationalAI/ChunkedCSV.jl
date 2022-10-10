@@ -51,10 +51,15 @@ function consume!(task_buf::TaskResultBuffer{N,M}, parsing_ctx::ParsingContext, 
         status_counts[5] += 0x08 & s > 0
         status_counts[6] += 0x10 & s > 0
     end
-    write(io, string("Start row: ", row_num, ", nrows: ", length(task_buf.cols[1]), ", $(Base.current_task())\n"))
-    write(io, "Row count by status: ")
-    join(io, zip(RowStatus.Marks, status_counts), " | ")
+    write(io, string("Start row: ", row_num, ", nrows: ", length(task_buf.cols[1]), ", $(Base.current_task()) "))
+    printstyled(IOContext(io, :color => true), "❚", color=Int(hash(Base.current_task()) % UInt8))
     println(io)
+    anyerrs = sum(status_counts[3:end]) > 0
+    if anyerrs
+        write(io, "Row count by status: ")
+        join(io, zip(RowStatus.Marks, status_counts), " | ")
+        println(io)
+    end
     if consume_ctx.n > 0 && length(task_buf.row_statuses) > 0
         if !consume_ctx.error_only && status_counts[1] > 0
             c = 1
@@ -105,20 +110,22 @@ function consume!(task_buf::TaskResultBuffer{N,M}, parsing_ctx::ParsingContext, 
         end
     end
     errcnt = 0
-    sum(status_counts[3:end]) > 0 && println(io, "Example rows with errors:")
-    for i in 1:length(task_buf.row_statuses)
-        if Int(task_buf.row_statuses[i]) >= 2
-            write(io, "\t($(row_num+i-1)): ")
-            s = parsing_ctx.eols[eol_idx + i - 1]+1
-            e = parsing_ctx.eols[eol_idx + i]-1
-            l = 256
-            if e - s > l
-                println(io, repr(String(parsing_ctx.bytes[s:s+l-3])), "...")
-            else
-                println(io, repr(String(parsing_ctx.bytes[s:e])))
+    if anyerrs
+        println(io, "Example rows with errors:")
+        for i in 1:length(task_buf.row_statuses)
+            if Int(task_buf.row_statuses[i]) >= 2
+                write(io, "\t($(row_num+i-1)): ")
+                s = parsing_ctx.eols[eol_idx + i - 1]+1
+                e = parsing_ctx.eols[eol_idx + i]-1
+                l = 256
+                if e - s > l
+                    println(io, repr(String(parsing_ctx.bytes[s:s+l-3])), "...")
+                else
+                    println(io, repr(String(parsing_ctx.bytes[s:e])))
+                end
+                errcnt += 1
+                errcnt > consume_ctx.n && break
             end
-            errcnt += 1
-            errcnt > consume_ctx.n && break
         end
     end
     @info String(take!(io))

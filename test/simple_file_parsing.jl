@@ -8,13 +8,15 @@ struct TestContext <: AbstractConsumeContext
     header::Vector{Symbol}
     schema::Vector{DataType}
     lock::ReentrantLock
+    rownums::Vector{UInt32}
 end
-TestContext() = TestContext([], [], [], ReentrantLock())
+TestContext() = TestContext([], [], [], ReentrantLock(), [])
 function ChunkedCSV.consume!(task_buf::TaskResultBuffer{N,M}, parsing_ctx::ParsingContext, row_num::UInt32, eol_idx::UInt32, ctx::TestContext) where {N,M}
     @lock ctx.lock begin
         push!(ctx.results, deepcopy(task_buf))
         isempty(ctx.header) && append!(ctx.header, copy(parsing_ctx.header))
         isempty(ctx.schema) && append!(ctx.schema, copy(parsing_ctx.schema))
+        push!(ctx.rownums, row_num)
     end
 end
 

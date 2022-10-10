@@ -1,8 +1,7 @@
 function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingContext, parsing_ctx_next::ParsingContext, consume_ctx::AbstractConsumeContext, options::Parsers.Options, byteset, last_newline_at, quoted, done)
-    row_num = UInt32(2)
+    row_num = UInt32(1)
     parsers_should_use_current_context = true
     @inbounds while true
-        row_num -= UInt32(1)
         limit_eols!(parsing_ctx, row_num) && break
         task_size = estimate_task_size(parsing_ctx)
         ntasks = cld(length(parsing_ctx.eols), task_size)
@@ -16,11 +15,11 @@ function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingCont
         # Send task definitions (segmenf of `eols` to process) to the queue
         task_start = UInt32(1)
         task_num = UInt32(1)
-        for task in Iterators.partition(parsing_ctx.eols, task_size)
-            task_end = task_start + UInt32(length(task)) - UInt32(1)
+        for task in Iterators.partition(eachindex(parsing_ctx.eols), task_size)
+            task_end = UInt32(last(task))
             put!(parsing_queue, (task_start, task_end, row_num, task_num, parsers_should_use_current_context))
-            row_num += UInt32(length(task))
-            task_start = task_end + UInt32(1)
+            row_num += task_end - task_start
+            task_start = task_end
             task_num += UInt32(1)
         end
 

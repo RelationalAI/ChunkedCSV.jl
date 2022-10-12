@@ -19,11 +19,6 @@ function prepare_buffer!(io::IO, buf::Vector{UInt8}, last_newline_at)
     end
     return bytes_read_in
 end
-function prepare_buffer!(io::NoopStream, buf::Vector{UInt8}, last_newline_at)
-    bytes_read_in = prepare_buffer!(io.stream, buf, last_newline_at)
-    TranscodingStreams.supplied!(io.state.buffer1, bytes_read_in)
-    return bytes_read_in
-end
 
 # We process input data iteratively by populating a buffer from IO.
 # In each iteration we first lex the newlines and then parse them in parallel.
@@ -59,7 +54,7 @@ function read_and_lex!(io::IO, parsing_ctx::ParsingContext, options, byteset::Va
         if pos_to_check == UInt(0)
             if (length(eols) == 0 || (length(eols) == 1 && first(eols) == 0)) && !iseof
                 close(io)
-                error("CSV parse job failed on lexing newlines. There was no linebreak in the entire buffer of $(length(buf)) bytes. \n")
+                error("CSV parse job failed on lexing newlines. There was no linebreak in the entire buffer of $(length(buf)) bytes.")
             end
             break
         else
@@ -93,18 +88,52 @@ function read_and_lex!(io::IO, parsing_ctx::ParsingContext, options, byteset::Va
     else
         done = false
     end
+    # @info (last(eols), quoted, done, iseof, io.stream.pos, length(io.stream.x))
     return last(eols), quoted, done
 end
 function read_and_lex!(io::NoopStream, parsing_ctx::ParsingContext, options::Parsers.Options, byteset::Val{B}, last_newline_at::UInt32, quoted::Bool) where B
     return read_and_lex!(io.stream, parsing_ctx, options, byteset, last_newline_at, quoted)
 end
 
-_input_to_io(input::IO) = false, input
-function _input_to_io(input::String)
+mutable struct MmapStream{IO_t<:IO} <: IO
+    ios::IO_t
+    x::Vector{UInt8}
+    pos::Int
+end
+MmapStream(ios::IO) = MmapStream(ios, mmap(ios, grow=false, shared=false), 1)
+Base.close(m::MmapStream) = close(m.ios)
+Base.eof(m::MmapStream) = m.pos == length(m.x)
+function readbytesall!(io::MmapStream, buf, n)
+    bytes_to_read = min(bytesavailable(io), n)
+    unsafe_copyto!(pointer(buf), pointer(io.x) + io.pos - 1, bytes_to_read)
+    io.pos += bytes_to_read
+    return UInt32(bytes_to_read)
+end
+# Interop with GzipDecompressorStream
+Base.bytesavailable(m::MmapStream) = length(m.x) - m.pos
+Base.isopen(m::MmapStream) = isopen(m.ios) && !eof(m)
+function Base.unsafe_read(from::MmapStream, p::Ptr{UInt8}, nb::UInt)
+    avail = bytesavailable(from)
+    adv = min(avail, nb)
+    @info (nb, avail, adv, from.pos, length(from.x), eof(from))
+    GC.@preserve from unsafe_copyto!(p, pointer(from.x) + from.pos - 1, adv)
+    from.pos += adv
+    if nb > avail
+        throw(EOFError())
+    end
+    nothing
+end
+
+_input_to_io(input::IO, use_mmap::Bool) = false, input
+function _input_to_io(input::String, use_mmap::Bool)
     ios = open(input, "r")
     if peek(ios, UInt16) == 0x8b1f
+        # TODO: GzipDecompressorStream doesn't respect MmapStream reaching EOF for some reason
+        # io = CodecZlib.GzipDecompressorStream(use_mmap ? MmapStream(ios) : ios, stop_on_end=use_mmap)
         io = CodecZlib.GzipDecompressorStream(ios)
         TranscodingStreams.changemode!(io, :read)
+    elseif use_mmap
+        io = MmapStream(ios)
     else
         io = TranscodingStreams.NoopStream(ios)
         TranscodingStreams.changemode!(io, :read)

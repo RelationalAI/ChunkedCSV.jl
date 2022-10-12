@@ -10,6 +10,7 @@ using CodecZlib
 using Dates
 using FixedPointDecimals
 using TimeZones
+using Mmap
 
 # IDEA: Instead of having SoA layout in TaskResultBuffer, we could try AoS using "reinterpretable bytes"
 # IDEA: For result_buffers, and possibly elsewhere, use "PreallocatedChannels" that don't call popfirst! and push!, but getindex and setindex! + index
@@ -66,7 +67,7 @@ function limit_eols!(parsing_ctx::ParsingContext, row_num)
     if row_num > parsing_ctx.limit
         return true
     elseif row_num <= parsing_ctx.limit < row_num + UInt32(length(parsing_ctx.eols) - 1)
-        parsing_ctx.eols.occupied -= ((UInt32(parsing_ctx.eols.occupied) + row_num) - parsing_ctx.limit - UInt32(2))
+        parsing_ctx.eols.occupied -= (row_num + UInt32(length(parsing_ctx.eols) - 1) - parsing_ctx.limit - UInt32(1))
     end
     return false
 end
@@ -120,6 +121,7 @@ function parse_file(
     maxtasks::Integer=2Threads.nthreads(),
     nresults::Integer=maxtasks,
     _force::Symbol=:none,
+    use_mmap::Bool=false,
 )
     @assert 0 < buffersize < typemax(UInt32)
     @assert skiprows >= 0
@@ -130,7 +132,7 @@ function parse_file(
     @assert _force in (:none, :serial, :singlebuffer, :doublebuffer)
     !isnothing(header) && !isnothing(schema) && length(header) != length(schema) && error("Provided header doesn't match the number of column of schema ($(length(header)) names, $(length(schema)) types).")
 
-    should_close, io = _input_to_io(input)
+    should_close, io = _input_to_io(input, use_mmap)
     settings = ParserSettings(schema, header, hasheader, Int(skiprows), UInt32(limit), UInt32(buffersize), UInt8(nworkers), UInt8(maxtasks), UInt8(nresults))
     options = _create_options(delim, quotechar, escapechar, sentinel, groupmark, stripwhitespace)
     byteset = Val(ByteSet((UInt8(options.e), UInt8(options.oq), UInt8('\n'), UInt8('\r'))))

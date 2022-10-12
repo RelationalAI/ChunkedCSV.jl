@@ -4,7 +4,8 @@ using ChunkedCSV: _typeparser
 
 
 const DEFAULT_OPTIONS = Parsers.Options(delim=',', quoted=true)
-_typeparser2(::Type{T}, f, buf, r=RoundNearest) where {T} = _typeparser(T, f, buf, 1, length(buf), UInt8(first(buf)), Int16(0), DEFAULT_OPTIONS, r)
+const DEFAULT_OPTIONS_GROUPMARK = Parsers.Options(delim=',', quoted=true, groupmark=' ')
+_typeparser2(::Type{T}, f, buf, r=RoundNearest, options=DEFAULT_OPTIONS) where {T} = _typeparser(T, f, buf, 1, length(buf), UInt8(first(buf)), Int16(0), options, r)
 
 @testset "decimals" begin
     function exhaustive_tests()
@@ -133,6 +134,26 @@ _typeparser2(::Type{T}, f, buf, r=RoundNearest) where {T} = _typeparser(T, f, bu
             @test _typeparser2(T, 2, "-0.009")[1] == -0_01
 
             @test _typeparser2(T, 4, "1.5e-4")[1] == 0_0002
+        end
+
+        @testset "groupmark" begin
+            @test _typeparser2(T, 4, "-1 000.0", RoundNearest, DEFAULT_OPTIONS_GROUPMARK)[1] == -10000000
+            @test _typeparser2(T, 2, "1 0 0.444", RoundNearest, DEFAULT_OPTIONS_GROUPMARK)[1] == 100_44
+            @test _typeparser2(T, 2, "1 0 0.445", RoundNearest, DEFAULT_OPTIONS_GROUPMARK)[1] == 100_44
+            @test _typeparser2(T, 2, "1 0 0.446", RoundNearest, DEFAULT_OPTIONS_GROUPMARK)[1] == 100_45
+            @test _typeparser2(T, 2, "1 0 0.454", RoundNearest, DEFAULT_OPTIONS_GROUPMARK)[1] == 100_45
+            @test _typeparser2(T, 2, "1 0 0.455", RoundNearest, DEFAULT_OPTIONS_GROUPMARK)[1] == 100_46
+            @test _typeparser2(T, 2, "1 0 0.456", RoundNearest, DEFAULT_OPTIONS_GROUPMARK)[1] == 100_46
+
+            @test _typeparser2(T, 2, "-9 9 00.444", RoundNearest, DEFAULT_OPTIONS_GROUPMARK)[1] == -9900_44
+            @test _typeparser2(T, 2, "-9 9 00.445", RoundNearest, DEFAULT_OPTIONS_GROUPMARK)[1] == -9900_44
+            @test _typeparser2(T, 2, "-9 9 00.446", RoundNearest, DEFAULT_OPTIONS_GROUPMARK)[1] == -9900_45
+            @test _typeparser2(T, 2, "-9 9 00.454", RoundNearest, DEFAULT_OPTIONS_GROUPMARK)[1] == -9900_45
+            @test _typeparser2(T, 2, "-9 9 00.455", RoundNearest, DEFAULT_OPTIONS_GROUPMARK)[1] == -9900_46
+            @test _typeparser2(T, 2, "-9 9 00.456", RoundNearest, DEFAULT_OPTIONS_GROUPMARK)[1] == -9900_46
+
+            @test _typeparser2(T, 2, "9 9 9 9.009", RoundNearest, DEFAULT_OPTIONS_GROUPMARK)[1]  ==  9999_01
+            @test _typeparser2(T, 2, "-9 9 9 9.009", RoundNearest, DEFAULT_OPTIONS_GROUPMARK)[1] == -9999_01
         end
 
         @testset "round to zero" begin

@@ -126,9 +126,13 @@ const _NonNumericBytes = Val(~ByteSet((UInt8('+'), UInt8('0'), UInt8('1'), UInt8
 # we don't have to materialize the whole 123456789123456789 since we know
 # that there are 12345679 digits before the decimal point, the rest of the digits can be
 # rounded if needed.
-function _dec_exp_end(buf, pos, len, b, code, options)
+function _dec_grp_exp_end(buf, pos, len, b, code, options)
     decimal_position = 0
     exp_position = 0
+    has_groupmark = !isnothing(options.groupmark)
+    groupmark = options.groupmark
+    ngroupmarks = 0
+
     ptr = pointer(buf)
     @inbounds while true
         if b == options.delim
@@ -136,7 +140,7 @@ function _dec_exp_end(buf, pos, len, b, code, options)
         elseif options.quoted && b == options.cq
             break
         elseif b == UInt8('e') || b == UInt8('E')
-            if exp_position != 0
+            if exp_position != 0 || ngroupmarks > 0
                 code |= Parsers.INVALID
                 break
             end
@@ -150,7 +154,7 @@ function _dec_exp_end(buf, pos, len, b, code, options)
                     code |= Parsers.EOF | Parsers.INVALID
                     break
                 elseif buf[pos+1] - 0x30 > 0x09
-                    code |= Parsers.EOF | Parsers.INVALID
+                    code |= Parsers.INVALID
                     break
                 end
             end
@@ -166,6 +170,14 @@ function _dec_exp_end(buf, pos, len, b, code, options)
                 break
             end
             pos += Int(something(memchr(ptr+pos, UInt(len-pos), _NonNumericBytes), 1))::Int
+        elseif has_groupmark && b == groupmark
+            ngroupmarks += 1
+            adv = Int(something(memchr(ptr+pos, UInt(len-pos), _NonNumericBytes), 1))::Int
+            if (adv == 1 && len != pos + adv) || (decimal_position > 0) || (exp_position > 0)
+                code |= Parsers.INVALID
+                break
+            end
+            pos += adv
         elseif pos == len || b == UInt8('\n') || b == UInt8('\r')
             code |= Parsers.EOF
             break
@@ -177,7 +189,7 @@ function _dec_exp_end(buf, pos, len, b, code, options)
         end
         b = buf[pos]
     end
-    return decimal_position, exp_position, pos, code
+    return decimal_position, ngroupmarks, exp_position, pos, code
 end
 
 Base.@propagate_inbounds _typeparser(::Type{T}, f, buf::AbstractString, pos, len, b, code, options::Parsers.Options, mode::Base.RoundingMode=Base.RoundNearest) where {T<:Union{Int8,Int16,Int32,Int64,Int128}} =
@@ -190,8 +202,10 @@ Base.@propagate_inbounds function _typeparser(::Type{T}, f, buf::AbstractVector{
     end
     int_sign = T(is_neg ? -1 : 1)
 
-    decimal_position, exp_position, field_end, code = _dec_exp_end(buf, pos, len, b, code, options)
+    decimal_position, ngroupmarks, exp_position, field_end, code = _dec_grp_exp_end(buf, pos, len, b, code, options)
     Parsers.invalid(code) && return (T(0), code, field_end)
+    # if we got here, we can safely ignore all bytes that == groupmark, these also must appear before decimal_position and exp_position
+    groupmark = something(options.groupmark, 0xff)
 
     last_byte_to_parse = max(pos, exp_position == 0 ? field_end - !Parsers.eof(code) - Parsers.quoted(code) : exp_position - 1)
     if exp_position != 0
@@ -252,7 +266,7 @@ Base.@propagate_inbounds function _typeparser(::Type{T}, f, buf::AbstractVector{
 
     decimal_shift = f - number_of_fractional_digits
 
-    backing_integer_digits = number_of_digits - number_of_fractional_digits + f
+    backing_integer_digits = number_of_digits - number_of_fractional_digits + f - ngroupmarks
     digits_to_iter = min(backing_integer_digits, number_of_digits)
 
     if backing_integer_digits < 0 # All digits are past our precision, no overflow possible
@@ -265,26 +279,28 @@ Base.@propagate_inbounds function _typeparser(::Type{T}, f, buf::AbstractVector{
         end
     elseif backing_integer_digits < maxdigits(T) # The number of digits to accumulate is smaller than the capacity of T, no overflow possible
         out = zero(T)
-        for i in (pos:pos - 1 + digits_to_iter + parse_through_decimal)
+        for i in (pos:pos - 1 + digits_to_iter + parse_through_decimal + ngroupmarks)
             (i == decimal_position) && continue
-            b = buf[i] - 0x30
-            out = T(10) * out + T(b)
+            b = buf[i]
+            b == groupmark && continue
+            out = T(10) * out + T(b - 0x30)
         end
         out *= int_sign
         if number_of_fractional_digits < f
             out = _shift(out, decimal_shift)
         elseif number_of_fractional_digits != f
-            round_val, code = _parse_round(T, buf, pos - 1 + digits_to_iter + parse_through_decimal, last_byte_to_parse, decimal_position, code, mode)
+            round_val, code = _parse_round(T, buf, pos + digits_to_iter + parse_through_decimal + ngroupmarks, last_byte_to_parse, decimal_position, code, mode)
             out += int_sign * round_val
         end
     elseif backing_integer_digits == maxdigits(T) # The number of digits to accumulate is the same as the capacity of T, overflow may happen
         out = zero(T)
         j = 0
         check_next = true
-        for i in (pos:pos - 1 + digits_to_iter + parse_through_decimal)
+        for i in (pos:pos - 1 + digits_to_iter + parse_through_decimal + ngroupmarks)
             (i == decimal_position) && continue
-            j += 1
             b = buf[i]
+            b == groupmark && continue
+            j += 1
             if check_next
                 maxbyte = _typemaxbytes(T, j, is_neg)
                 if b == maxbyte
@@ -302,7 +318,7 @@ Base.@propagate_inbounds function _typeparser(::Type{T}, f, buf::AbstractVector{
         if number_of_fractional_digits < f
             out = _shift(out, decimal_shift)
         elseif number_of_fractional_digits != f
-            round_val, code = _parse_round(T, buf, pos - 1 + digits_to_iter + parse_through_decimal, last_byte_to_parse, decimal_position, code, mode)
+            round_val, code = _parse_round(T, buf, pos - 1 + digits_to_iter + parse_through_decimal + ngroupmarks, last_byte_to_parse, decimal_position, code, mode)
             out += int_sign * round_val
         end
     else # Always overflows
@@ -319,28 +335,27 @@ function _parse_round(::Type{T}, buf, s, e, d, code, ::RoundingMode{:Nearest}) w
     @assert s <= length(buf) "$s $e"
     @assert 1 < s <= e || 1 <= s < e  "$s $length(buf)"
     @inbounds begin
+        if e == s
+            b = buf[e] - 0x30
+            b > 0x09 && (return (T(0), code | Parsers.INVALID))
+            b > 0x05 && (return (T(1), code))
+            b == 0x05 && isodd(buf[e-1-((e-1)==d)]) && (return (T(1), code))
+            return (T(0), code)
+        end
         carries_over = false
-        b = buf[e] - 0x30
-        b > 0x09 && (return (T(0), code | Parsers.INVALID))
-        s >= e && return (T(b > 0x05 || (b == 0x05 && buf[s-1])), code)
-        for i in e:-1:s+1
+        prev_b = 0x00
+        for i in e:-1:s
             i == d && continue
-            i == d + 1 && (i += 1)
-            pb = buf[i-1] - 0x30 + carries_over
-            pb > (0x09 + carries_over) && (return (T(0), code | Parsers.INVALID))
-            carries_over = false
-            if b > 0x05 || (b == 0x05 && isodd(pb))
-                if i - 1 == s
-                    return (T(1), code)
-                else
-                    carries_over = true
-                end
-            end
-            b = pb
+            b = buf[i] - 0x30
+            b > 0x09 && (return (T(0), code | Parsers.INVALID))
+            b += carries_over
+            (b > 0x05 || (b == 0x05 && isodd(prev_b))) && (carries_over = true)
+            prev_b = b
         end
         return (T(carries_over), code)
     end
 end
+
 
 # FixedDecimal is not a subtype of Integer or AbstractFloat, so xparse won't put it on the fast path
 struct _FixedDecimal{T<:Integer,f} <: Integer

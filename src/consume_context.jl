@@ -9,10 +9,19 @@ maybe_deepcopy(x::AbstractConsumeContext) = x
 maybe_deepcopy(x::AbstractTaskLocalConsumeContext) = deepcopy(x)
 
 function preconsume!(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext, ntasks::Int)
-    return nothing
+    ntasks == 0 && return nothing
+    @lock parsing_ctx.cond.cond_wait begin
+        parsing_ctx.cond.ntasks = ntasks
+    end
 end
 function postconsume!(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext, ntasks::Int)
-    return nothing
+    ntasks == 0 && return nothing
+    @lock parsing_ctx.cond.cond_wait begin
+        while true
+            parsing_ctx.cond.ntasks == 0 && break
+            wait(parsing_ctx.cond.cond_wait)
+        end
+    end
 end
 
 struct DebugContext <: AbstractConsumeContext

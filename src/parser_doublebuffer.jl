@@ -7,10 +7,6 @@ function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingCont
         ntasks = cld(length(parsing_ctx.eols), task_size)
 
         # Set the expected number of parsing tasks
-        @lock parsing_ctx.cond.cond_wait begin
-            parsing_ctx.cond.ntasks = ntasks
-        end
-
         preconsume!(consume_ctx, parsing_ctx, ntasks)
         # Send task definitions (segmenf of `eols` to process) to the queue
         task_start = UInt32(1)
@@ -29,12 +25,6 @@ function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingCont
             (last_newline_at, quoted, next_done) = read_and_lex!(io, parsing_ctx_next, options, byteset, last_newline_at, quoted)
         end
         # Wait for parsers to finish processing current chunk
-        @lock parsing_ctx.cond.cond_wait begin
-            while true
-                parsing_ctx.cond.ntasks == 0 && break
-                wait(parsing_ctx.cond.cond_wait)
-            end
-        end
         postconsume!(consume_ctx, parsing_ctx, ntasks)
         done && break
 

@@ -19,13 +19,14 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
         settings.nresults,
         TaskCondition(),
     )
+    lexer_state = LexerState{byteset}(io)
     # read and lex the entire buffer for the first time
-    (last_newline_at, quoted, done) = read_and_lex!(io, parsing_ctx, options, byteset, UInt32(0), false)
+    read_and_lex!(lexer_state, parsing_ctx, options)
 
     skiprows = Int(settings.skiprows)
-    while !done && skiprows >= length(parsing_ctx.eols) - 1
+    while !lexer_state.done && skiprows >= length(parsing_ctx.eols) - 1
         skiprows -= length(parsing_ctx.eols) - 1
-        (last_newline_at, quoted, done) = read_and_lex!(io, parsing_ctx, options, byteset, last_newline_at, quoted)
+        read_and_lex!(lexer_state, parsing_ctx, options)
         # TODO: Special path for the case where we skipped the entire file
         # done && (return (parsing_ctx, last_newline_at, quoted, done))
     end
@@ -96,8 +97,8 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
     should_parse_header && shiftleft!(parsing_ctx.eols, 1)
     # Refill the buffer if if contained a single line and we consumed it to get the header
     if should_parse_header && length(parsing_ctx.eols) == 1
-        (last_newline_at, quoted, done) = read_and_lex!(io, parsing_ctx, options, byteset, last_newline_at, quoted)
+       read_and_lex!(lexer_state, parsing_ctx, options)
     end
 
-    return (parsing_ctx, last_newline_at, quoted, done)
+    return (parsing_ctx, lexer_state)
 end

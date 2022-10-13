@@ -82,6 +82,7 @@ include("parser_singlebuffer.jl")
 include("parser_doublebuffer.jl")
 
 function _create_options(delim::Char=',', quotechar::Char='"', escapechar::Char='"', sentinel::Union{Missing,String,Vector{String}}=missing, groupmark::Union{Char,UInt8,Nothing}=nothing, stripwhitespace::Bool=false)
+    (UInt8(quotechar) == 0xff || UInt8(escapechar) == 0xff) && error("`escapechar` and/or `quotechar` must not be a `0xff` byte.")
     return Parsers.Options(
         sentinel=sentinel,
         wh1=delim ==  ' ' ? '\v' : ' ',
@@ -128,7 +129,7 @@ function parse_file(
     @assert limit >= 0
     @assert nworkers > 0
     @assert maxtasks >= nworkers
-    @assert nresults == maxtasks # otherwise not implemented; implementation postponed once we know why take!/wait from channel allocates
+    @assert nresults == maxtasks # otherwise not implemented; implementation postponed once we know why take!/wait allocates
     @assert _force in (:none, :serial, :singlebuffer, :doublebuffer)
     !isnothing(header) && !isnothing(schema) && length(header) != length(schema) && error("Provided header doesn't match the number of column of schema ($(length(header)) names, $(length(schema)) types).")
 
@@ -136,19 +137,19 @@ function parse_file(
     settings = ParserSettings(schema, header, hasheader, Int(skiprows), UInt32(limit), UInt32(buffersize), UInt8(nworkers), UInt8(maxtasks), UInt8(nresults))
     options = _create_options(delim, quotechar, escapechar, sentinel, groupmark, stripwhitespace)
     byteset = Val(ByteSet((UInt8(options.e), UInt8(options.oq), UInt8('\n'), UInt8('\r'))))
-    (parsing_ctx, last_newline_at, quoted, done) = init_parsing!(io, settings, options, Val(byteset))
+    (parsing_ctx, lexer_state) = init_parsing!(io, settings, options, Val(byteset))
     schema = parsing_ctx.schema
 
     if _force === :doublebuffer
-        _parse_file_doublebuffer(io, parsing_ctx, consume_ctx, options, last_newline_at, quoted, done, Val(length(schema)), Val(_bounding_flag_type(length(schema))), Val(byteset))::Nothing
+        _parse_file_doublebuffer(lexer_state, parsing_ctx, consume_ctx, options, Val(length(schema)), Val(_bounding_flag_type(length(schema))))::Nothing
     elseif _force === :singlebuffer
-        _parse_file_singlebuffer(io, parsing_ctx, consume_ctx, options, last_newline_at, quoted, done, Val(length(schema)), Val(_bounding_flag_type(length(schema))), Val(byteset))::Nothing
-    elseif _force === :serial || Threads.nthreads() == 1 || settings.nworkers == 1 || settings.maxtasks == 1 || buffersize < MIN_TASK_SIZE_IN_BYTES || last_newline_at < MIN_TASK_SIZE_IN_BYTES
-              _parse_file_serial(io, parsing_ctx, consume_ctx, options, last_newline_at, quoted, done, Val(length(schema)), Val(_bounding_flag_type(length(schema))), Val(byteset))::Nothing
+        _parse_file_singlebuffer(lexer_state, parsing_ctx, consume_ctx, options, Val(length(schema)), Val(_bounding_flag_type(length(schema))))::Nothing
+    elseif _force === :serial || Threads.nthreads() == 1 || settings.nworkers == 1 || settings.maxtasks == 1 || buffersize < MIN_TASK_SIZE_IN_BYTES || lexer_statelast_newline_at < MIN_TASK_SIZE_IN_BYTES
+              _parse_file_serial(lexer_state, parsing_ctx, consume_ctx, options, Val(length(schema)), Val(_bounding_flag_type(length(schema))))::Nothing
     elseif doublebuffer && !done
-        _parse_file_doublebuffer(io, parsing_ctx, consume_ctx, options, last_newline_at, quoted, done, Val(length(schema)), Val(_bounding_flag_type(length(schema))), Val(byteset))::Nothing
+        _parse_file_doublebuffer(lexer_state, parsing_ctx, consume_ctx, options, Val(length(schema)), Val(_bounding_flag_type(length(schema))))::Nothing
     else
-        _parse_file_singlebuffer(io, parsing_ctx, consume_ctx, options, last_newline_at, quoted, done, Val(length(schema)), Val(_bounding_flag_type(length(schema))), Val(byteset))::Nothing
+        _parse_file_singlebuffer(lexer_state, parsing_ctx, consume_ctx, options, Val(length(schema)), Val(_bounding_flag_type(length(schema))))::Nothing
     end
     should_close && close(io)
     return nothing

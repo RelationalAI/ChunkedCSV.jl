@@ -1,3 +1,12 @@
+mutable struct LexerState{B, IO_t<:IO}
+    io::IO_t
+    last_newline_at::UInt32
+    quoted::Bool
+    done::Bool
+
+    LexerState{B}(input::IO) where {B} = new{B, typeof(input)}(input, UInt32(0), false, false)
+end
+
 readbytesall!(io::IOStream, buf, n) = UInt32(Base.readbytes!(io, buf, n; all = true))
 readbytesall!(io::IO, buf, n) = UInt32(Base.readbytes!(io, buf, n))
 function prepare_buffer!(io::IO, buf::Vector{UInt8}, last_newline_at)
@@ -24,9 +33,8 @@ end
 # In each iteration we first lex the newlines and then parse them in parallel.
 # Assumption: we can find all valid endlines only by observing quotes (currently hardcoded to double quote)
 #             and newline characters.
-# TODO: '\n\r' currently produces 2 newlines... but we skip empty lines, so no biggie?
 findmark(ptr, bytes_to_search, ::Val{B}) where B = something(memchr(ptr, bytes_to_search, B), zero(UInt))
-function read_and_lex!(io::IO, parsing_ctx::ParsingContext, options, byteset::Val{B}, last_newline_at::UInt32, quoted::Bool) where B
+function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, options) where B
     ptr = pointer(parsing_ctx.bytes) # We never resize the buffer, the array shouldn't need to relocate
     e, q = options.e, options.cq
     buf = parsing_ctx.bytes
@@ -34,26 +42,27 @@ function read_and_lex!(io::IO, parsing_ctx::ParsingContext, options, byteset::Va
     empty!(parsing_ctx.eols)
     push!(parsing_ctx.eols, UInt32(0))
     eols = parsing_ctx.eols
+    quoted = lexer_state.quoted
 
-    bytes_read_in = prepare_buffer!(io, parsing_ctx.bytes, last_newline_at)
-    iseof = eof(io)
+    bytes_read_in = prepare_buffer!(lexer_state.io, parsing_ctx.bytes, lexer_state.last_newline_at)
+    iseof = eof(lexer_state.io)
 
     bytes_to_search = UInt(bytes_read_in)
-    if last_newline_at == UInt(0) # first time populating the buffer
+    if lexer_state.last_newline_at == UInt(0) # first time populating the buffer
         bytes_carried_over_from_previous_chunk = UInt32(0)
         offset = bytes_carried_over_from_previous_chunk
     else
         # First length(buf) - last_newline_at bytes we've already seen in the previous round
-        bytes_carried_over_from_previous_chunk = UInt32(length(buf)) - last_newline_at
+        bytes_carried_over_from_previous_chunk = UInt32(length(buf)) - lexer_state.last_newline_at
         offset = bytes_carried_over_from_previous_chunk
         ptr += offset
     end
     @inbounds while bytes_to_search > UInt(0)
-        pos_to_check = findmark(ptr, bytes_to_search, byteset)
+        pos_to_check = findmark(ptr, bytes_to_search, B)
         offset += UInt32(pos_to_check)
         if pos_to_check == UInt(0)
             if (length(eols) == 0 || (length(eols) == 1 && first(eols) == 0)) && !iseof
-                close(io)
+                close(lexer_state.io)
                 error("CSV parse job failed on lexing newlines. There was no linebreak in the entire buffer of $(length(buf)) bytes.")
             end
             break
@@ -79,20 +88,18 @@ function read_and_lex!(io::IO, parsing_ctx::ParsingContext, options, byteset::Va
     end
 
     @inbounds if iseof
-        quoted && (close(io); error("CSV parse job failed on lexing newlines. There file has ended with an unmatched quote."))
-        done = true
+        quoted && (close(lexer_state.io); error("CSV parse job failed on lexing newlines. There file has ended with an unmatched quote."))
+        lexer_state.done = true
         # Insert a newline at the end of the file if there wasn't one
         # This is just to make `eols` contain both start and end `pos` of every single line
         last_byte = bytes_carried_over_from_previous_chunk + bytes_read_in
         last(eols) < last_byte && push!(eols, last_byte + UInt32(1))
     else
-        done = false
+        lexer_state.done = false
     end
-    # @info (last(eols), quoted, done, iseof, io.stream.pos, length(io.stream.x))
-    return last(eols), quoted, done
-end
-function read_and_lex!(io::NoopStream, parsing_ctx::ParsingContext, options::Parsers.Options, byteset::Val{B}, last_newline_at::UInt32, quoted::Bool) where B
-    return read_and_lex!(io.stream, parsing_ctx, options, byteset, last_newline_at, quoted)
+    lexer_state.quoted = quoted
+    lexer_state.last_newline_at = last(eols)
+    return nothing
 end
 
 mutable struct MmapStream{IO_t<:IO} <: IO

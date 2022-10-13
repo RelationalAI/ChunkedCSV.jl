@@ -139,17 +139,19 @@ function parse_file(
     byteset = Val(ByteSet((UInt8(options.e), UInt8(options.oq), UInt8('\n'), UInt8('\r'))))
     (parsing_ctx, lexer_state) = init_parsing!(io, settings, options, Val(byteset))
     schema = parsing_ctx.schema
+    N = length(schema)
+    M = _bounding_flag_type(N)
 
     if _force === :doublebuffer
-        _parse_file_doublebuffer(lexer_state, parsing_ctx, consume_ctx, options, Val(length(schema)), Val(_bounding_flag_type(length(schema))))::Nothing
+        _parse_file_doublebuffer(lexer_state, parsing_ctx, consume_ctx, options, Val(N), Val(M))::Nothing
     elseif _force === :singlebuffer
-        _parse_file_singlebuffer(lexer_state, parsing_ctx, consume_ctx, options, Val(length(schema)), Val(_bounding_flag_type(length(schema))))::Nothing
-    elseif _force === :serial || Threads.nthreads() == 1 || settings.nworkers == 1 || settings.maxtasks == 1 || buffersize < MIN_TASK_SIZE_IN_BYTES || lexer_statelast_newline_at < MIN_TASK_SIZE_IN_BYTES
-              _parse_file_serial(lexer_state, parsing_ctx, consume_ctx, options, Val(length(schema)), Val(_bounding_flag_type(length(schema))))::Nothing
-    elseif doublebuffer && !done
-        _parse_file_doublebuffer(lexer_state, parsing_ctx, consume_ctx, options, Val(length(schema)), Val(_bounding_flag_type(length(schema))))::Nothing
+        _parse_file_singlebuffer(lexer_state, parsing_ctx, consume_ctx, options, Val(N), Val(M))::Nothing
+    elseif _force === :serial || Threads.nthreads() == 1 || nworkers == 1 || maxtasks == 1 || lexer_state.last_newline_at < MIN_TASK_SIZE_IN_BYTES
+              _parse_file_serial(lexer_state, parsing_ctx, consume_ctx, options, Val(N), Val(M))::Nothing
+    elseif doublebuffer && !lexer_state.done
+        _parse_file_doublebuffer(lexer_state, parsing_ctx, consume_ctx, options, Val(N), Val(M))::Nothing
     else
-        _parse_file_singlebuffer(lexer_state, parsing_ctx, consume_ctx, options, Val(length(schema)), Val(_bounding_flag_type(length(schema))))::Nothing
+        _parse_file_singlebuffer(lexer_state, parsing_ctx, consume_ctx, options, Val(N), Val(M))::Nothing
     end
     should_close && close(io)
     return nothing

@@ -14,7 +14,7 @@ Base.eof(io::ThrowingIO) = Base.eof(io.io)
 
 
 const throw_ctx = TestThrowingContext()
-function ChunkedCSV.consume!(task_buf::TaskResultBuffer{N,M}, parsing_ctx::ParsingContext, row_num::UInt32, eol_idx::UInt32, ctx::TestThrowingContext) where {N,M}
+function ChunkedCSV.consume!(ctx::TestThrowingContext, parsing_ctx::ParsingContext, task_buf::TaskResultBuffer{N,M}, row_num::UInt32, eol_idx::UInt32) where {N,M}
     error("These contexts are for throwing, and that's all what they do")
 end
 

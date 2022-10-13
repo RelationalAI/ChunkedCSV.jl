@@ -18,6 +18,7 @@ end
 
 
 struct TaskResultBuffer{N,M}
+    id::Int
     cols::Vector{BufferedVector}
     row_statuses::BufferedVector{RowStatus.T}
     column_indicators::BufferedVector{M}
@@ -31,21 +32,24 @@ end
 _translate_to_buffer_type(::Type{String}) = Parsers.PosLen
 _translate_to_buffer_type(::Type{T}) where {T} = T
 
-TaskResultBuffer(schema) = TaskResultBuffer{length(schema)}(schema)
-TaskResultBuffer{N}(schema::Vector{DataType}) where N = TaskResultBuffer{N, _bounding_flag_type(N)}(
+TaskResultBuffer(id, schema) = TaskResultBuffer{length(schema)}(id, schema)
+TaskResultBuffer{N}(id, schema::Vector{DataType}) where N = TaskResultBuffer{N, _bounding_flag_type(N)}(
+    id,
     [BufferedVector{_translate_to_buffer_type(schema[i])}() for i in 1:N],
     BufferedVector{RowStatus.T}(),
     BufferedVector{_bounding_flag_type(N)}(),
 )
 
 # Prealocate BufferedVectors with `n` values
-TaskResultBuffer(schema, n) = TaskResultBuffer{length(schema)}(schema, n)
-TaskResultBuffer{N}(schema::Vector{DataType}, n::Int) where N = TaskResultBuffer{N, _bounding_flag_type(N)}(
+TaskResultBuffer(id, schema, n) = TaskResultBuffer{length(schema)}(id, schema, n)
+TaskResultBuffer{N}(id, schema::Vector{DataType}, n::Int) where N = TaskResultBuffer{N, _bounding_flag_type(N)}(
+    id,
     [BufferedVector{_translate_to_buffer_type(schema[i])}(Vector{_translate_to_buffer_type(schema[i])}(undef, n), 0) for i in 1:N],
     BufferedVector{RowStatus.T}(Vector{RowStatus.T}(undef, n), 0),
     BufferedVector{_bounding_flag_type(N)}(),
 )
-TaskResultBuffer{N,M}(schema::Vector{DataType}, n::Int) where {N,M} = TaskResultBuffer{N, M}(
+TaskResultBuffer{N,M}(id, schema::Vector{DataType}, n::Int) where {N,M} = TaskResultBuffer{N, M}(
+    id,
     [BufferedVector{_translate_to_buffer_type(schema[i])}(Vector{_translate_to_buffer_type(schema[i])}(undef, n), 0) for i in 1:N],
     BufferedVector{RowStatus.T}(Vector{RowStatus.T}(undef, n), 0),
     BufferedVector{_bounding_flag_type(N)}(),

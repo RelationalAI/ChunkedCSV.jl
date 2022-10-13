@@ -7,7 +7,7 @@ function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingCont
         ntasks = cld(length(parsing_ctx.eols), task_size)
 
         # Set the expected number of parsing tasks
-        preconsume!(consume_ctx, parsing_ctx, ntasks)
+        setup_tasks!(consume_ctx, parsing_ctx, ntasks)
         # Send task definitions (segmenf of `eols` to process) to the queue
         task_start = UInt32(1)
         task_num = UInt32(1)
@@ -25,7 +25,7 @@ function read_and_lex_task!(parsing_queue::Channel, io, parsing_ctx::ParsingCont
             (last_newline_at, quoted, next_done) = read_and_lex!(io, parsing_ctx_next, options, byteset, last_newline_at, quoted)
         end
         # Wait for parsers to finish processing current chunk
-        postconsume!(consume_ctx, parsing_ctx, ntasks)
+        sync_tasks(consume_ctx, parsing_ctx, ntasks)
         done && break
 
         # Switch contexts
@@ -43,11 +43,8 @@ function process_and_consume_task(parsing_queue::Channel{T}, parsing_ctx::Parsin
             result_buf = result_buffers[task_num]
             ctx = ifelse(use_current_context, parsing_ctx, parsing_ctx_next)
             _parse_rows_forloop!(result_buf, @view(ctx.eols.elements[task_start:task_end]), ctx.bytes, ctx.schema, options)
-            consume!(result_buf, ctx, row_num, task_start, consume_ctx)
-            @lock ctx.cond.cond_wait begin
-                ctx.cond.ntasks -= 1
-                notify(ctx.cond.cond_wait)
-            end
+            consume!(consume_ctx, ctx, result_buf, row_num, task_start)
+            task_done!(consume_ctx, ctx, result_buf)
         end
     catch e
         @error "Task failed" exception=(e, catch_backtrace())
@@ -66,7 +63,7 @@ end
 
 function _parse_file_doublebuffer(io, parsing_ctx::ParsingContext, consume_ctx::AbstractConsumeContext, options::Parsers.Options, last_newline_at::UInt32, quoted::Bool, done::Bool, ::Val{N}, ::Val{M}, byteset::Val{B}) where {N,M,B}
     parsing_queue = Channel{Tuple{UInt32,UInt32,UInt32,UInt32,Bool}}(Inf)
-    result_buffers = TaskResultBuffer{N,M}[TaskResultBuffer{N,M}(parsing_ctx.schema, cld(length(parsing_ctx.eols), parsing_ctx.maxtasks)) for _ in 1:parsing_ctx.nresults]
+    result_buffers = TaskResultBuffer{N,M}[TaskResultBuffer{N,M}(id, parsing_ctx.schema, cld(length(parsing_ctx.eols), parsing_ctx.maxtasks)) for id in 1:parsing_ctx.nresults]
     parsing_ctx_next = ParsingContext(
         parsing_ctx.schema,
         parsing_ctx.header,

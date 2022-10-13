@@ -1,21 +1,29 @@
 abstract type AbstractConsumeContext end
 abstract type AbstractTaskLocalConsumeContext <: AbstractConsumeContext end
 
-function preconsume! end
+function setup_tasks! end
 function consume! end
-function postconsume! end
+function task_done! end
+function sync_tasks end
 
 maybe_deepcopy(x::AbstractConsumeContext) = x
 maybe_deepcopy(x::AbstractTaskLocalConsumeContext) = deepcopy(x)
 
-function preconsume!(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext, ntasks::Int)
-    ntasks == 0 && return nothing
+function setup_tasks!(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext, ntasks::Int)
+    ntasks == 0 && return nothing # opt-out for :serial
     @lock parsing_ctx.cond.cond_wait begin
         parsing_ctx.cond.ntasks = ntasks
     end
 end
-function postconsume!(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext, ntasks::Int)
-    ntasks == 0 && return nothing
+function task_done!(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext, result_buf::TaskResultBuffer{N,M}) where {N,M}
+    result_buf.id == 0 && return nothing # opt-out for :serial
+    @lock parsing_ctx.cond.cond_wait begin
+        parsing_ctx.cond.ntasks -= 1
+        notify(parsing_ctx.cond.cond_wait)
+    end
+end
+function sync_tasks(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext, ntasks::Int)
+    ntasks == 0 && return nothing # opt-out for :serial
     @lock parsing_ctx.cond.cond_wait begin
         while true
             parsing_ctx.cond.ntasks == 0 && break
@@ -48,7 +56,7 @@ function debug_eols(x::BufferedVector{UInt32}, parsing_ctx, consume_ctx)
 end
 
 
-function consume!(task_buf::TaskResultBuffer{N,M}, parsing_ctx::ParsingContext, row_num::UInt32, eol_idx::UInt32, consume_ctx::DebugContext) where {N,M}
+function consume!(consume_ctx::DebugContext, parsing_ctx::ParsingContext, task_buf::TaskResultBuffer{N,M}, row_num::UInt32, eol_idx::UInt32) where {N,M}
     status_counts = zeros(Int, length(RowStatus.Marks))
     io = IOBuffer()
     @inbounds for i in 1:length(task_buf.row_statuses)
@@ -145,18 +153,6 @@ end
 struct SkipContext <: AbstractConsumeContext
     SkipContext() = new()
 end
-function consume!(task_buf::TaskResultBuffer{N,M}, parsing_ctx::ParsingContext, row_num::UInt32, eol_idx::UInt32, consume_ctx::SkipContext) where {N,M}
+function consume!(consume_ctx::SkipContext, parsing_ctx::ParsingContext, task_buf::TaskResultBuffer{N,M}, row_num::UInt32, eol_idx::UInt32) where {N,M}
     return nothing
-end
-
-function printrows(ctx::ParsingContext, n::Int=length(ctx.eols), o::Int=0)
-    for i in 2+o:min(n+o,length(ctx.eols))
-        s = ctx.eols[i-1]
-        e = ctx.eols[i]
-        string(i-1, '\n', String(ctx.bytes[s+1:e-1]))
-    end
-end
-
-function printrow(ctx::ParsingContext, n)
-    printrows(ctx, 2, n-1)
 end

@@ -16,7 +16,7 @@ function _parse_rows_forloop!(result_buf::TaskResultBuffer{N,M}, task::AbstractV
         cols = result_buf.cols
         @inbounds for col_idx in 1:N
             type = schema[col_idx]
-            if Parsers.eof(code) && col_idx < N
+            if Parsers.eof(code) && !(col_idx == N && Parsers.delimited(code))
                 row_status |= RowStatus.TooFewColumns
                 row_status |= RowStatus.HasColumnIndicators
                 skip_element!(cols[col_idx])

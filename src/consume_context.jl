@@ -38,9 +38,7 @@ struct DebugContext <: AbstractConsumeContext
     error_only::Bool
     show_values::Bool
 
-    DebugContext() = new(3, 256, true, false)
-    DebugContext(n::Int, error_only::Bool=true, show_values::Bool=false) = new(n, 256, error_only, show_values)
-    DebugContext(n::Int, err_len::Int=255, error_only::Bool=true, show_values::Bool=false) = new(n, err_len, error_only, show_values)
+    DebugContext(n::Int=3, err_len::Int=255, error_only::Bool=true, show_values::Bool=false) = new(n, err_len, error_only, show_values)
 end
 
 function debug(x::BufferedVector{Parsers.PosLen}, i, parsing_ctx, consume_ctx)
@@ -115,13 +113,13 @@ function consume!(consume_ctx::DebugContext, parsing_ctx::ParsingContext, task_b
                 n = min(consume_ctx.n, cnt)
                 consume_ctx.show_values && print(io, "\t$(name): [")
                 for j in 1:length(task_buf.row_statuses)
-                    if task_buf.row_statuses[j] & S > 0
+                    if (task_buf.row_statuses[j] & S) > 0
                         has_missing = isflagset(task_buf.row_statuses[j], 1) && isflagset(task_buf.column_indicators[c], k)
                         consume_ctx.show_values && write(io, has_missing ? "?" : debug(col, j, parsing_ctx, consume_ctx))
                         consume_ctx.show_values && n != 1 && print(io, ", ")
                         has_missing && (c += 1)
+                        n -= 1
                     end
-                    n -= 1
                     n == 0 && break
                 end
                 consume_ctx.show_values && print(io, "]\n")

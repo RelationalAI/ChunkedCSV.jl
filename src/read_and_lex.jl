@@ -7,6 +7,9 @@ mutable struct LexerState{B, IO_t<:IO}
     LexerState{B}(input::IO) where {B} = new{B, typeof(input)}(input, UInt32(0), false, false)
 end
 
+end_of_stream(io::IO) = eof(io)
+end_of_stream(io::GzipDecompressorStream) = eof(io)
+
 readbytesall!(io::IOStream, buf, n) = UInt32(Base.readbytes!(io, buf, n; all = true))
 readbytesall!(io::IO, buf, n) = UInt32(Base.readbytes!(io, buf, n))
 function prepare_buffer!(io::IO, buf::Vector{UInt8}, last_newline_at)
@@ -45,7 +48,7 @@ function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, 
     quoted = lexer_state.quoted
 
     bytes_read_in = prepare_buffer!(lexer_state.io, parsing_ctx.bytes, lexer_state.last_newline_at)
-    iseof = eof(lexer_state.io)
+    reached_end_of_file = end_of_stream(lexer_state.io)
 
     bytes_to_search = UInt(bytes_read_in)
     if lexer_state.last_newline_at == UInt(0) # first time populating the buffer
@@ -61,7 +64,7 @@ function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, 
         pos_to_check = findmark(ptr, bytes_to_search, B)
         offset += UInt32(pos_to_check)
         if pos_to_check == UInt(0)
-            if (length(eols) == 0 || (length(eols) == 1 && first(eols) == 0)) && !iseof
+            if (length(eols) == 0 || (length(eols) == 1 && first(eols) == 0)) && !reached_end_of_file
                 close(lexer_state.io)
                 error("CSV parse job failed on lexing newlines. There was no linebreak in the entire buffer of $(length(buf)) bytes.")
             end
@@ -87,7 +90,7 @@ function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, 
         end
     end
 
-    @inbounds if iseof
+    @inbounds if reached_end_of_file
         quoted && (close(lexer_state.io); error("CSV parse job failed on lexing newlines. There file has ended with an unmatched quote."))
         lexer_state.done = true
         # Insert a newline at the end of the file if there wasn't one
@@ -122,7 +125,6 @@ Base.isopen(m::MmapStream) = isopen(m.ios) && !eof(m)
 function Base.unsafe_read(from::MmapStream, p::Ptr{UInt8}, nb::UInt)
     avail = bytesavailable(from)
     adv = min(avail, nb)
-    @info (nb, avail, adv, from.pos, length(from.x), eof(from))
     GC.@preserve from unsafe_copyto!(p, pointer(from.x) + from.pos - 1, adv)
     from.pos += adv
     if nb > avail
@@ -137,13 +139,13 @@ function _input_to_io(input::String, use_mmap::Bool)
     if peek(ios, UInt16) == 0x8b1f
         # TODO: GzipDecompressorStream doesn't respect MmapStream reaching EOF for some reason
         # io = CodecZlib.GzipDecompressorStream(use_mmap ? MmapStream(ios) : ios, stop_on_end=use_mmap)
+        use_mmap && @warn "`use_mmap=true` is currently unsupported when reading gzipped files, using file io."
         io = CodecZlib.GzipDecompressorStream(ios)
         TranscodingStreams.changemode!(io, :read)
     elseif use_mmap
         io = MmapStream(ios)
     else
-        io = TranscodingStreams.NoopStream(ios)
-        TranscodingStreams.changemode!(io, :read)
+        io = ios
     end
     return true, io
 end

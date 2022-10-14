@@ -6,7 +6,7 @@ function _parse_rows_forloop!(result_buf::TaskResultBuffer{N,M}, task::AbstractV
         @inbounds curr_newline = task[chunk_row_idx]
         (curr_newline - prev_newline) == 1 && continue # ignore empty lines
         # +1 -1 to exclude newline chars
-        @inbounds row_bytes = view(buf, prev_newline+1:curr_newline-1)
+        @inbounds row_bytes = view(buf, prev_newline+UInt32(1):curr_newline-UInt32(1))
 
         pos = 1
         len = length(row_bytes)
@@ -15,7 +15,7 @@ function _parse_rows_forloop!(result_buf::TaskResultBuffer{N,M}, task::AbstractV
         column_indicators = initflag(M)
         @inbounds for col_idx in 1:N
             type = schema[col_idx]
-            if Parsers.eof(code)
+            if Parsers.eof(code) && col_idx < N
                 row_status |= RowStatus.TooFewColumns
                 row_status |= RowStatus.HasColumnIndicators
                 skip_element!(getindex(result_buf.cols, col_idx))

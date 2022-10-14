@@ -3,9 +3,6 @@ _GuessDateTime(vals...) = _GuessDateTime(DateTime(vals...))
 Base.convert(::Type{DateTime}, x::_GuessDateTime) = x.x
 Base.convert(::Type{_GuessDateTime}, x::DateTime) = _GuessDateTime(x)
 
-
-const DATETIME_WITH_TIMEZONE = Dates.dateformat"y-m-dTHH:MM:SSzzzz"
-
 Dates.default_format(::Type{_GuessDateTime}) = Dates.default_format(Dates.DateTime)
 Parsers.default_format(::Type{_GuessDateTime}) = Parsers.default_format(Dates.DateTime)
 Dates.validargs(::Type{_GuessDateTime}, vals...) = Dates.validargs(Dates.DateTime, vals...)

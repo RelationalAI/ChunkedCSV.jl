@@ -22,6 +22,12 @@ struct TaskResultBuffer{N,M}
     cols::Vector{BufferedVector}
     row_statuses::BufferedVector{RowStatus.T}
     column_indicators::BufferedVector{M}
+
+    function TaskResultBuffer{N,M}(id, cols, row_statuses, column_indicators) where {N,M}
+        @assert N isa Integer
+        @assert M isa DataType
+        return new{N,M}(id, cols, row_statuses, column_indicators)
+    end
 end
 
 @inline _bounding_flag_type(N) = N > 128 ? NTuple{1+((N-1)>>6),UInt64} :
@@ -35,7 +41,7 @@ _translate_to_buffer_type(::Type{T}) where {T} = T
 TaskResultBuffer(id, schema) = TaskResultBuffer{length(schema)}(id, schema)
 TaskResultBuffer{N}(id, schema::Vector{DataType}) where N = TaskResultBuffer{N, _bounding_flag_type(N)}(
     id,
-    [BufferedVector{_translate_to_buffer_type(schema[i])}() for i in 1:N],
+    BufferedVector[BufferedVector{_translate_to_buffer_type(schema[i])}() for i in 1:N],
     BufferedVector{RowStatus.T}(),
     BufferedVector{_bounding_flag_type(N)}(),
 )
@@ -44,15 +50,15 @@ TaskResultBuffer{N}(id, schema::Vector{DataType}) where N = TaskResultBuffer{N, 
 TaskResultBuffer(id, schema, n) = TaskResultBuffer{length(schema)}(id, schema, n)
 TaskResultBuffer{N}(id, schema::Vector{DataType}, n::Int) where N = TaskResultBuffer{N, _bounding_flag_type(N)}(
     id,
-    [BufferedVector{_translate_to_buffer_type(schema[i])}(Vector{_translate_to_buffer_type(schema[i])}(undef, n), 0) for i in 1:N],
+    BufferedVector[BufferedVector{_translate_to_buffer_type(schema[i])}(Vector{_translate_to_buffer_type(schema[i])}(undef, n), 0) for i in 1:N],
     BufferedVector{RowStatus.T}(Vector{RowStatus.T}(undef, n), 0),
     BufferedVector{_bounding_flag_type(N)}(),
 )
 TaskResultBuffer{N,M}(id, schema::Vector{DataType}, n::Int) where {N,M} = TaskResultBuffer{N, M}(
     id,
-    [BufferedVector{_translate_to_buffer_type(schema[i])}(Vector{_translate_to_buffer_type(schema[i])}(undef, n), 0) for i in 1:N],
+    BufferedVector[BufferedVector{_translate_to_buffer_type(schema[i])}(Vector{_translate_to_buffer_type(schema[i])}(undef, n), 0) for i in 1:N],
     BufferedVector{RowStatus.T}(Vector{RowStatus.T}(undef, n), 0),
-    BufferedVector{_bounding_flag_type(N)}(),
+    BufferedVector{M}(),
 )
 
 function Base.empty!(buf::TaskResultBuffer)

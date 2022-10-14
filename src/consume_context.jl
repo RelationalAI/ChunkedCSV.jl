@@ -34,11 +34,13 @@ end
 
 struct DebugContext <: AbstractConsumeContext
     n::Int
+    err_len::Int
     error_only::Bool
     show_values::Bool
 
-    DebugContext() = new(3, true)
-    DebugContext(n::Int, error_only::Bool=true, show_values::Bool=false) = new(n, error_only, show_values)
+    DebugContext() = new(3, 256, true, false)
+    DebugContext(n::Int, error_only::Bool=true, show_values::Bool=false) = new(n, 256, error_only, show_values)
+    DebugContext(n::Int, err_len::Int=255, error_only::Bool=true, show_values::Bool=false) = new(n, err_len, error_only, show_values)
 end
 
 function debug(x::BufferedVector{Parsers.PosLen}, i, parsing_ctx, consume_ctx)
@@ -85,10 +87,10 @@ function consume!(consume_ctx::DebugContext, parsing_ctx::ParsingContext, task_b
                 n = min(consume_ctx.n, status_counts[1])
                 print(io, "\t$(name): [")
                 for j in 1:length(task_buf.row_statuses)
-                    if task_buf.row_statuses[j] == 0x00
+                    if task_buf.row_statuses[j] == RowStatus.Ok
                         write(io, debug(col, j, parsing_ctx, consume_ctx))
                         n != 1 && print(io, ", ")
-                    elseif task_buf.row_statuses[j] == 0x01
+                    elseif task_buf.row_statuses[j] == RowStatus.HasColumnIndicators
                         write(io, isflagset(task_buf.column_indicators[c], k) ? "?" : debug(col, j, parsing_ctx, consume_ctx))
                         n != 1 && print(io, ", ")
                         c += 1
@@ -134,7 +136,7 @@ function consume!(consume_ctx::DebugContext, parsing_ctx::ParsingContext, task_b
                 write(io, "\t($(row_num+i-1)): ")
                 s = parsing_ctx.eols[eol_idx + i - 1]+1
                 e = parsing_ctx.eols[eol_idx + i]-1
-                l = 256
+                l = consume_ctx.err_len
                 if e - s > l
                     println(io, repr(String(parsing_ctx.bytes[s:s+l-3])), "...")
                 else

@@ -121,6 +121,9 @@ _typemaxbytes(::Type{Int128}, i, is_neg) = @inbounds NTuple{39,UInt8}((0x31, 0x3
 
 const _NonNumericBytes = Val(~ByteSet((UInt8('+'), UInt8('0'), UInt8('1'), UInt8('2'), UInt8('3'), UInt8('4'), UInt8('5'), UInt8('6'), UInt8('7'), UInt8('8'), UInt8('9'))))
 
+pointer_from_buffer(x::AbstractArray{UInt8}) = pointer(x)
+pointer_from_buffer(x::SubArray{UInt8, 1, Vector{UInt8}, Tuple{UnitRange{UInt32}}, true}) = pointer(parent(x)) + Int(first(first(parentindices(x)))) - 1
+
 # Parsers.jl typically process a byte at a time but for Decimals we want to know
 # where the decimal point and `e` is so we can avoid overflows. E.g. in 123456789123456789.1e-10
 # we don't have to materialize the whole 123456789123456789 since we know
@@ -133,7 +136,7 @@ function _dec_grp_exp_end(buf, pos, len, b, code, options)
     groupmark = options.groupmark
     ngroupmarks = 0
 
-    ptr = pointer(buf)
+    ptr = pointer_from_buffer(buf)
     @inbounds while true
         if b == options.delim
             break

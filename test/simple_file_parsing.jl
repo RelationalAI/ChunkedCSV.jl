@@ -450,6 +450,59 @@ end
             end
         end
     end
+
+    @testset "Empty string field" begin
+        for alg in [:serial, :singlebuffer, :doublebuffer]
+            @testset "$alg" begin
+                testctx = TestContext()
+                parse_file(IOBuffer("""
+                    a,b,c
+                    "","",""
+                    """),
+                    [String,String,String],
+                    testctx,
+                    _force=alg,
+                )
+                @test testctx.header == [:a, :b, :c]
+                @test testctx.schema == [String, String, String]
+                # https://github.com/JuliaData/Parsers.jl/issues/138
+                @test testctx.results[1].cols[1].elements[1] == Parsers.PosLen(8,0) broken=true 
+                @test testctx.results[1].cols[2].elements[1] == Parsers.PosLen(11,0) broken=true 
+                @test testctx.results[1].cols[3].elements[1] == Parsers.PosLen(14,0) broken=true 
+                @test length(testctx.results[1].cols[1]) == 1
+                @test length(testctx.results[1].cols[2]) == 1
+                @test length(testctx.results[1].cols[3]) == 1
+            end
+        end
+    end
+
+    @testset "Char field" begin
+        for alg in [:serial, :singlebuffer, :doublebuffer]
+            @testset "$alg" begin
+                testctx = TestContext()
+                parse_file(IOBuffer("""
+                    a,b,c
+                    "a","b","c"
+                    a,b,c
+                    """),
+                    [Char,Char,Char],
+                    testctx,
+                    _force=alg,
+                )
+                @test testctx.header == [:a, :b, :c]
+                @test testctx.schema == [Char, Char, Char]
+                @test testctx.results[1].cols[1].elements[1] == 'a'
+                @test testctx.results[1].cols[2].elements[1] == 'b'
+                @test testctx.results[1].cols[3].elements[1] == 'c'
+                @test testctx.results[1].cols[1].elements[2] == 'a'
+                @test testctx.results[1].cols[2].elements[2] == 'b'
+                @test testctx.results[1].cols[3].elements[2] == 'c'
+                @test length(testctx.results[1].cols[1]) == 2
+                @test length(testctx.results[1].cols[2]) == 2
+                @test length(testctx.results[1].cols[3]) == 2
+            end
+        end
+    end
 end
 
 @testset "RFC4180" begin

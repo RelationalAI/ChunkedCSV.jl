@@ -39,6 +39,9 @@ function _parse_rows_forloop!(result_buf::TaskResultBuffer{N,M}, task::AbstractV
             elseif type === Dates.DateTime
                 (;val, tlen, code) = Parsers.xparse(_GuessDateTime, row_bytes, pos, len, options, Dates.DateTime)::Parsers.Result{Dates.DateTime}
                 unsafe_push!(cols[col_idx]::BufferedVector{Dates.DateTime}, val)
+            elseif type === Char
+                (;val, tlen, code) = Parsers.xparse(Char, row_bytes, pos, len, options)::Parsers.Result{Char}
+                unsafe_push!(cols[col_idx]::BufferedVector{Char}, val)
             elseif type === String
                 (;val, tlen, code) = Parsers.xparse(String, row_bytes, pos, len, options)::Parsers.Result{Parsers.PosLen}
                 unsafe_push!(cols[col_idx]::BufferedVector{Parsers.PosLen}, Parsers.PosLen(prev_newline+val.pos, val.len, val.missingvalue, val.escapedvalue))

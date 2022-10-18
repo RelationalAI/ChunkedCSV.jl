@@ -44,6 +44,7 @@ struct ParsingContext
     nworkers::UInt8
     maxtasks::UInt8
     nresults::UInt8
+    escapechar::UInt8
     cond::TaskCondition
 end
 function estimate_task_size(parsing_ctx::ParsingContext)

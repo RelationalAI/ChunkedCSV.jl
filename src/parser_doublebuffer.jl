@@ -72,6 +72,7 @@ function _parse_file_doublebuffer(lexer_state::LexerState, parsing_ctx::ParsingC
         parsing_ctx.nworkers,
         parsing_ctx.maxtasks,
         parsing_ctx.nresults,
+        parsing_ctx.escapechar,
         TaskCondition(),
     )
     parser_tasks = Task[]

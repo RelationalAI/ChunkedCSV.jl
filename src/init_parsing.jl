@@ -25,6 +25,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
         settings.nworkers,
         settings.maxtasks,
         settings.nresults,
+        options.e,
         TaskCondition(),
     )
     lexer_state = LexerState{byteset}(io)

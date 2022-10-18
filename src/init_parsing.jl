@@ -4,7 +4,7 @@ function hasBOM(bytes::Vector{UInt8})
 end
 
 function apply_types_from_mapping!(schema, header, mapping, header_provided)
-    @assert header_provided || issubset(keys(mapping), header) "Unknown columns from schema mapping: $(setdiff(keys(mapping), header)), header: $(header)"
+    @assert header_provided || issubset(keys(mapping), header) "Unknown columns from schema mapping: $(setdiff(keys(mapping), header)), parsed header: $(header)"
     @inbounds for (i, (colname, default_type)) in enumerate(zip(header, schema))
         schema[i] = get(mapping, colname, default_type)
     end

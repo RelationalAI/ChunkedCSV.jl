@@ -136,3 +136,41 @@ end
         end
     end
 end
+
+@testset "Schema and header validation" begin
+    @test_throws "Provided header and schema lengths don't match. Header has 3 columns, schema has 2." parse_file(IOBuffer("""
+        a,b,c
+        1,2,3
+        3,4,5
+        """),
+        [Int,Int],
+        header=[:a, :b, :c],
+    )
+
+    @test_throws "Error parsing header, there are more columns that provided types in schema" parse_file(IOBuffer("""
+        a,b,c
+        1,2,3
+        3,4,5
+        """),
+        [Int,Int],
+        header=nothing,
+    )
+
+    @test_throws "Provided header and schema names don't match. In schema, not in header: Set([:q])). In header, not in schema: [:a, :b, :c]" parse_file(IOBuffer("""
+        a,b,c
+        1,2,3
+        3,4,5
+        """),
+        Dict(:q => Int),
+        header=[:a, :b, :c],
+    )
+
+    @test_throws "Unknown columns from schema mapping: Set([:q]), parsed header: [:a, :b, :c]" parse_file(IOBuffer("""
+        a,b,c
+        1,2,3
+        3,4,5
+        """),
+        Dict(:q => Int),
+        header=nothing,
+    )
+end

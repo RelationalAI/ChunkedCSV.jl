@@ -100,8 +100,8 @@ function _create_options(delim::Char=',', quotechar::Char='"', escapechar::Char=
     )
 end
 
-_validate(header::Vector, schema::Vector) = length(header) == length(schema)
-_validate(header::Vector, schema::Dict) = issubset(keys(schema), header)
+_validate(header::Vector, schema::Vector) = length(header) == length(schema) || error("Provided header and schema lengths don't match. Header has $(length(header)) columns, schema has $(length(schema)).")
+_validate(header::Vector, schema::Dict) = issubset(keys(schema), header) || error("Provided header and schema names don't match. In schema, not in header: $(setdiff(keys(schema), header))). In header, not in schema: $(setdiff(header, keys(schema)))")
 _validate(header, schema) = true
 
 function setup_parser(
@@ -131,7 +131,7 @@ function setup_parser(
     @assert nworkers > 0
     @assert maxtasks >= nworkers
     @assert nresults == maxtasks # otherwise not implemented; implementation postponed once we know why take!/wait allocates
-    !_validate(header, schema) && error("Provided header doesn't match the number of column of schema ($(length(header)) names, $(length(schema)) types).")
+    _validate(header, schema)
 
     should_close, io = _input_to_io(input, use_mmap)
     settings = ParserSettings(schema, header, hasheader, Int(skiprows), UInt32(limit), UInt32(buffersize), UInt8(nworkers), UInt8(maxtasks), UInt8(nresults))

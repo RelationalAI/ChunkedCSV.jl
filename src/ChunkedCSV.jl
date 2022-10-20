@@ -95,8 +95,8 @@ function _create_options(delim::Char=',', quotechar::Char='"', escapechar::Char=
         quoted=true,
         ignoreemptylines=true,
         stripwhitespace=stripwhitespace,
-        trues=["true", "1", "True", "t"],
-        falses=["false", "0", "False", "f"],
+        trues=["true", "1", "True", "t", "T"],
+        falses=["false", "0", "False", "f", "F"],
         groupmark=groupmark,
     )
 end

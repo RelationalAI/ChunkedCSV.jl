@@ -33,12 +33,12 @@ function sync_tasks(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingCon
 end
 
 struct DebugContext <: AbstractConsumeContext
+    error_only::Bool
     n::Int
     err_len::Int
-    error_only::Bool
     show_values::Bool
 
-    DebugContext(n::Int=3, err_len::Int=255, error_only::Bool=true, show_values::Bool=false) = new(n, err_len, error_only, show_values)
+    DebugContext(error_only::Bool=true, n::Int=3, err_len::Int=255, show_values::Bool=false) = new(error_only, n, err_len, show_values)
 end
 
 function debug(x::BufferedVector{Parsers.PosLen}, i, parsing_ctx, consume_ctx)

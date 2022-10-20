@@ -503,6 +503,37 @@ end
             end
         end
     end
+
+    @testset "Bool field" begin
+        for alg in [:serial, :singlebuffer, :doublebuffer]
+            @testset "$alg" begin
+                testctx = TestContext()
+                parse_file(IOBuffer("""
+                    a,b
+                    true,false
+                    True,False
+                    t,f
+                    T,F
+                    1,0
+                    "true","false"
+                    "True","False"
+                    "t","f"
+                    "T","F"
+                    "1","0"
+                    """),
+                    [Bool,Bool],
+                    testctx,
+                    _force=alg,
+                )
+                @test testctx.header == [:a, :b]
+                @test testctx.schema == [Bool, Bool]
+                @test testctx.results[1].cols[1] == fill(true, 10)
+                @test testctx.results[1].cols[2] == fill(false, 10)
+                @test length(testctx.results[1].cols[1]) == 10
+                @test length(testctx.results[1].cols[2]) == 10
+            end
+        end
+    end
 end
 
 @testset "RFC4180" begin

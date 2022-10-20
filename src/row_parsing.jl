@@ -30,6 +30,9 @@ function _parse_rows_forloop!(result_buf::TaskResultBuffer{N,M}, task::AbstractV
             if type === Int
                 (;val, tlen, code) = Parsers.xparse(Int, row_bytes, pos, len, options)::Parsers.Result{Int}
                 unsafe_push!(cols[col_idx]::BufferedVector{Int}, val)
+            elseif type === Bool
+                (;val, tlen, code) = Parsers.xparse(Bool, row_bytes, pos, len, options)::Parsers.Result{Bool}
+                unsafe_push!(cols[col_idx]::BufferedVector{Bool}, val)
             elseif type === Float64
                 (;val, tlen, code) = Parsers.xparse(Float64, row_bytes, pos, len, options)::Parsers.Result{Float64}
                 unsafe_push!(cols[col_idx]::BufferedVector{Float64}, val)

@@ -3,8 +3,9 @@ function hasBOM(bytes::Vector{UInt8})
     return @inbounds bytes[1] == 0xef && bytes[2] == 0xbb && bytes[3] == 0xbf
 end
 
-function apply_types_from_mapping!(schema, header, mapping, header_provided)
-    @assert header_provided || issubset(keys(mapping), header) "Unknown columns from schema mapping: $(setdiff(keys(mapping), header)), parsed header: $(header)"
+function apply_types_from_mapping!(schema, header, settings, header_provided)
+    mapping = settings.schema::Dict{Symbol,DataType}
+    @assert !settings.validate_type_map || header_provided || issubset(keys(mapping), header) "Unknown columns from schema mapping: $(setdiff(keys(mapping), header)), parsed header: $(header), row $(Int(settings.skiprows)+1)"
     @inbounds for (i, (colname, default_type)) in enumerate(zip(header, schema))
         schema[i] = get(mapping, colname, default_type)
     end
@@ -48,7 +49,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
         append!(parsing_ctx.header, settings.header)
         resize!(schema, length(parsing_ctx.header))
         fill!(schema, String)
-        schema_is_dict && apply_types_from_mapping!(schema, parsing_ctx.header, settings.schema, header_provided)
+        schema_is_dict && apply_types_from_mapping!(schema, parsing_ctx.header, settings, header_provided)
     elseif schema_provided & !header_provided
         append!(schema, settings.schema)
         if !should_parse_header
@@ -63,7 +64,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
             code = Parsers.OK
             for i in 1:length(settings.schema)
                 (;val, tlen, code) = Parsers.xparse(String, v, pos, length(v), options)
-                !Parsers.ok(code) && (close(io); error("Error parsing header for column $i at $(skiprows+1):$(pos)."))
+                !Parsers.ok(code) && (close(io); error("Error parsing header for column $i at $(Int(settings.skiprows)+1):$(pos) (row:col)."))
                 push!(parsing_ctx.header, Symbol(strip(String(v[val.pos:val.pos+val.len-1]))))
                 pos += tlen
             end
@@ -79,14 +80,14 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
         i = 1
         while !(Parsers.eof(code) || Parsers.newline(code))
             (;val, tlen, code) = Parsers.xparse(String, v, pos, length(v), options)
-            !Parsers.ok(code) && (close(io); error("Error parsing header for column $i at $(skiprows+1):$(pos)."))
+            !Parsers.ok(code) && (close(io); error("Error parsing header for column $i at $(Int(settings.skiprows)+1):$(pos) (row:col)."))
             pos += tlen
             push!(parsing_ctx.header, Symbol(string("COL_", i)))
             i += 1
         end
         resize!(schema, length(parsing_ctx.header))
         fill!(schema, String)
-        schema_is_dict && apply_types_from_mapping!(schema, parsing_ctx.header, settings.schema, header_provided)
+        schema_is_dict && apply_types_from_mapping!(schema, parsing_ctx.header, settings, header_provided)
     else
         #infer the number of columns from the header row
         s = parsing_ctx.eols[1]
@@ -96,14 +97,14 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
         code = Parsers.OK
         while !(Parsers.eof(code) || Parsers.newline(code))
             (;val, tlen, code) = Parsers.xparse(String, v, pos, length(v), options)
-            !Parsers.ok(code) && (close(io); error("Error parsing header for column $i at $(skiprows+1):$(pos)."))
+            !Parsers.ok(code) && (close(io); error("Error parsing header for column $i at $(Int(settings.skiprows)+1):$(pos) (row:col)."))
             @inbounds push!(parsing_ctx.header, Symbol(strip(String(v[val.pos:val.pos+val.len-1]))))
             pos += tlen
         end
 
         resize!(schema, length(parsing_ctx.header))
         fill!(schema, String)
-        schema_is_dict && apply_types_from_mapping!(schema, parsing_ctx.header, settings.schema, header_provided)
+        schema_is_dict && apply_types_from_mapping!(schema, parsing_ctx.header, settings, header_provided)
     end
 
     should_parse_header && shiftleft!(parsing_ctx.eols, 1)

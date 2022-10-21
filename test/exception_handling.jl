@@ -163,6 +163,7 @@ end
         """),
         Dict(:q => Int),
         header=[:a, :b, :c],
+        validate_type_map=true,
     )
 
     @test_throws "Unknown columns from schema mapping: Set([:q]), parsed header: [:a, :b, :c]" parse_file(IOBuffer("""
@@ -172,5 +173,6 @@ end
         """),
         Dict(:q => Int),
         header=nothing,
+        validate_type_map=true,
     )
 end

@@ -55,6 +55,7 @@ struct ParserSettings
     schema::Union{Nothing,Vector{DataType},Dict{Symbol,DataType}}
     header::Union{Nothing,Vector{Symbol}}
     hasheader::Bool
+    validate_type_map::Bool
     skiprows::Int
     limit::UInt32
     buffersize::UInt32
@@ -95,15 +96,15 @@ function _create_options(delim::Char=',', quotechar::Char='"', escapechar::Char=
         quoted=true,
         ignoreemptylines=true,
         stripwhitespace=stripwhitespace,
-        trues=["true", "1", "True", "t", "T"],
-        falses=["false", "0", "False", "f", "F"],
+        trues=["true", "True", "1", "t", "T"],
+        falses=["false", "False", "0", "f", "F"],
         groupmark=groupmark,
     )
 end
 
-_validate(header::Vector, schema::Vector) = length(header) == length(schema) || error("Provided header and schema lengths don't match. Header has $(length(header)) columns, schema has $(length(schema)).")
-_validate(header::Vector, schema::Dict) = issubset(keys(schema), header) || error("Provided header and schema names don't match. In schema, not in header: $(setdiff(keys(schema), header))). In header, not in schema: $(setdiff(header, keys(schema)))")
-_validate(header, schema) = true
+_validate(header::Vector, schema::Vector, validate_type_map) = length(header) == length(schema) || error("Provided header and schema lengths don't match. Header has $(length(header)) columns, schema has $(length(schema)).")
+_validate(header::Vector, schema::Dict, validate_type_map) = !validate_type_map || issubset(keys(schema), header) || error("Provided header and schema names don't match. In schema, not in header: $(setdiff(keys(schema), header))). In header, not in schema: $(setdiff(header, keys(schema)))")
+_validate(header, schema, validate_type_map) = true
 
 function setup_parser(
     input,
@@ -118,6 +119,7 @@ function setup_parser(
     sentinel::Union{Missing,String,Vector{String}}=missing,
     groupmark::Union{Char,UInt8,Nothing}=nothing,
     stripwhitespace::Bool=false,
+    validate_type_map::Bool=true,
     # In bytes. This absolutely has to be larger than any single row.
     # Much safer if any two consecutive rows are smaller than this threshold.
     buffersize::Integer=UInt32(Threads.nthreads() * 1024 * 1024),
@@ -132,10 +134,10 @@ function setup_parser(
     @assert nworkers > 0
     @assert maxtasks >= nworkers
     @assert nresults == maxtasks # otherwise not implemented; implementation postponed once we know why take!/wait allocates
-    _validate(header, schema)
+    _validate(header, schema, validate_type_map)
 
     should_close, io = _input_to_io(input, use_mmap)
-    settings = ParserSettings(schema, header, hasheader, Int(skiprows), UInt32(limit), UInt32(buffersize), UInt8(nworkers), UInt8(maxtasks), UInt8(nresults))
+    settings = ParserSettings(schema, header, hasheader, validate_type_map, Int(skiprows), UInt32(limit), UInt32(buffersize), UInt8(nworkers), UInt8(maxtasks), UInt8(nresults))
     options = _create_options(delim, quotechar, escapechar, sentinel, groupmark, stripwhitespace)
     byteset = Val(ByteSet((UInt8(options.e), UInt8(options.oq), UInt8('\n'), UInt8('\r'))))
     (parsing_ctx, lexer_state) = init_parsing!(io, settings, options, Val(byteset))
@@ -181,6 +183,7 @@ function parse_file(
     sentinel::Union{Missing,String,Vector{String}}=missing,
     groupmark::Union{Char,UInt8,Nothing}=nothing,
     stripwhitespace::Bool=false,
+    validate_type_map::Bool=true,
     # In bytes. This absolutely has to be larger than any single row.
     # Much safer if any two consecutive rows are smaller than this threshold.
     buffersize::Integer=UInt32(Threads.nthreads() * 1024 * 1024),
@@ -193,7 +196,7 @@ function parse_file(
     (should_close, parsing_ctx, lexer_state, options) = setup_parser(
         input, schema; 
         header, hasheader, skiprows, delim, quotechar, limit, escapechar, sentinel, groupmark, stripwhitespace, 
-        buffersize, nworkers, maxtasks, nresults, use_mmap
+        validate_type_map, buffersize, nworkers, maxtasks, nresults, use_mmap
     )
     parse_file(lexer_state, parsing_ctx, consume_ctx, options, _force)
     should_close && close(lexer_state.io)

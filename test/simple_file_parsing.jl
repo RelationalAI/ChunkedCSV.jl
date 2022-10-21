@@ -19,6 +19,7 @@ function ChunkedCSV.consume!(ctx::TestContext, parsing_ctx::ParsingContext, task
         push!(ctx.rownums, row_num)
     end
 end
+alg=:serial
 
 @testset "Simple file parsing" begin
     @testset "simple file, single chunk" begin
@@ -451,6 +452,37 @@ end
         end
     end
 
+
+    @testset "Opt out of validation" begin
+        testctx = TestContext()
+        parse_file(IOBuffer("""
+            a,b,c
+            1,2,3
+            3,4,5
+            """),
+            Dict(:q => Int, :b => Int),
+            testctx,
+            header=[:a, :b, :c],
+            validate_type_map=false,
+        )
+        @test testctx.header == [:a, :b, :c]
+        @test testctx.schema == [String, Int, String]
+
+        testctx = TestContext()
+        parse_file(IOBuffer("""
+            a,b,c
+            1,2,3
+            3,4,5
+            """),
+            Dict(:q => Int, :b => Int),
+            testctx,
+            header=nothing,
+            validate_type_map=false,
+        )
+        @test testctx.header == [:a, :b, :c]
+        @test testctx.schema == [String, Int, String]
+    end
+
     @testset "Empty string field" begin
         for alg in [:serial, :singlebuffer, :doublebuffer]
             @testset "$alg" begin
@@ -469,6 +501,24 @@ end
                 @test testctx.results[1].cols[1].elements[1] == Parsers.PosLen(8,0) broken=true 
                 @test testctx.results[1].cols[2].elements[1] == Parsers.PosLen(11,0) broken=true 
                 @test testctx.results[1].cols[3].elements[1] == Parsers.PosLen(14,0) broken=true 
+                @test length(testctx.results[1].cols[1]) == 1
+                @test length(testctx.results[1].cols[2]) == 1
+                @test length(testctx.results[1].cols[3]) == 1
+
+                testctx = TestContext()
+                parse_file(IOBuffer("""
+                    a,b,c
+                    ,,"""),
+                    [String,String,String],
+                    testctx,
+                    _force=alg,
+                )
+                @test testctx.header == [:a, :b, :c]
+                @test testctx.schema == [String, String, String]
+                # https://github.com/JuliaData/Parsers.jl/issues/138
+                @test testctx.results[1].cols[1].elements[1] == Parsers.PosLen(7,0) broken=true 
+                @test testctx.results[1].cols[2].elements[1] == Parsers.PosLen(8,0) broken=true 
+                @test testctx.results[1].cols[3].elements[1] == Parsers.PosLen(9,0) broken=true 
                 @test length(testctx.results[1].cols[1]) == 1
                 @test length(testctx.results[1].cols[2]) == 1
                 @test length(testctx.results[1].cols[3]) == 1

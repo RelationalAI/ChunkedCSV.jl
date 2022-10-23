@@ -119,10 +119,15 @@ _typemaxbytes(::Type{Int32}, i, is_neg) = @inbounds NTuple{10,UInt8}((0x32, 0x31
 _typemaxbytes(::Type{Int64}, i, is_neg) = @inbounds NTuple{19,UInt8}((0x39, 0x32, 0x32, 0x33, 0x33, 0x37, 0x32, 0x30, 0x33, 0x36, 0x38, 0x35, 0x34, 0x37, 0x37, 0x35, 0x38, 0x30, 0x37))[i] + ((i == 19) * is_neg)
 _typemaxbytes(::Type{Int128}, i, is_neg) = @inbounds NTuple{39,UInt8}((0x31, 0x37, 0x30, 0x31, 0x34, 0x31, 0x31, 0x38, 0x33, 0x34, 0x36, 0x30, 0x34, 0x36, 0x39, 0x32, 0x33, 0x31, 0x37, 0x33, 0x31, 0x36, 0x38, 0x37, 0x33, 0x30, 0x33, 0x37, 0x31, 0x35, 0x38, 0x38, 0x34, 0x31, 0x30, 0x35, 0x37, 0x32, 0x37))[i] + ((i == 39) * is_neg)
 
-const _NonNumericBytes = Val(~ByteSet((UInt8('+'), UInt8('0'), UInt8('1'), UInt8('2'), UInt8('3'), UInt8('4'), UInt8('5'), UInt8('6'), UInt8('7'), UInt8('8'), UInt8('9'))))
+# Using ScanByte in _dec_grp_exp_end causes PackageCompiler to fail. As a workaround, we'll use `findnext`
+# const _NonNumericBytes = Val(~ByteSet((UInt8('+'), UInt8('0'), UInt8('1'), UInt8('2'), UInt8('3'), UInt8('4'), UInt8('5'), UInt8('6'), UInt8('7'), UInt8('8'), UInt8('9'))))
+# next_non_numeric(ptr, bytes_to_search) = Int(something(memchr(ptr, UInt(bytes_to_search), _NonNumericBytes), UInt(1)))
+# pointer_from_buffer(x::AbstractArray{UInt8}) = pointer(x)
+# pointer_from_buffer(x::SubArray{UInt8, 1, Vector{UInt8}, Tuple{UnitRange{UInt32}}, true}) = pointer(parent(x)) + Int(first(first(parentindices(x)))) - 1
 
-pointer_from_buffer(x::AbstractArray{UInt8}) = pointer(x)
-pointer_from_buffer(x::SubArray{UInt8, 1, Vector{UInt8}, Tuple{UnitRange{UInt32}}, true}) = pointer(parent(x)) + Int(first(first(parentindices(x)))) - 1
+function _next_byte_to_check(buf, pos)
+    something(findnext(x->!(x == UInt8('+') || (x >= 0x30 && x <= 0x39)), buf, pos+1), pos+1)
+end
 
 # Parsers.jl typically process a byte at a time but for Decimals we want to know
 # where the decimal point and `e` is so we can avoid overflows. E.g. in 123456789123456789.1e-10
@@ -136,7 +141,6 @@ function _dec_grp_exp_end(buf, pos, len, b, code, options)
     groupmark = options.groupmark
     ngroupmarks = 0
 
-    ptr = pointer_from_buffer(buf)
     @inbounds while true
         if b == options.delim
             break
@@ -161,7 +165,7 @@ function _dec_grp_exp_end(buf, pos, len, b, code, options)
                     break
                 end
             end
-            pos += Int(something(memchr(ptr+pos, UInt(len-pos), _NonNumericBytes), 1))::Int
+            pos = _next_byte_to_check(buf, pos)
         elseif b == options.decimal
             if decimal_position != 0
                 code |= Parsers.INVALID
@@ -172,10 +176,10 @@ function _dec_grp_exp_end(buf, pos, len, b, code, options)
                 code |= Parsers.EOF
                 break
             end
-            pos += Int(something(memchr(ptr+pos, UInt(len-pos), _NonNumericBytes), 1))::Int
+            pos = _next_byte_to_check(buf, pos)
         elseif has_groupmark && b == groupmark
             ngroupmarks += 1
-            adv = Int(something(memchr(ptr+pos, UInt(len-pos), _NonNumericBytes), 1))::Int
+            adv = _next_byte_to_check(buf, pos) - pos
             if (adv == 1 && len != pos + adv) || (decimal_position > 0) || (exp_position > 0)
                 code |= Parsers.INVALID
                 break
@@ -188,7 +192,7 @@ function _dec_grp_exp_end(buf, pos, len, b, code, options)
             code |= Parsers.INVALID
             break
         else
-            pos += Int(something(memchr(ptr+pos, UInt(len-pos), _NonNumericBytes), 1))::Int
+            pos = _next_byte_to_check(buf, pos)
         end
         b = buf[pos]
     end

@@ -95,11 +95,13 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
         v = view(parsing_ctx.bytes, s+1:e-1)
         pos = 1
         code = Parsers.OK
+        i = 1
         while !(Parsers.eof(code) || Parsers.newline(code))
             (;val, tlen, code) = Parsers.xparse(String, v, pos, length(v), options)
             !Parsers.ok(code) && (close(io); error("Error parsing header for column $i at $(Int(settings.skiprows)+1):$(pos) (row:col)."))
             @inbounds push!(parsing_ctx.header, Symbol(strip(String(v[val.pos:val.pos+val.len-1]))))
             pos += tlen
+            i += 1
         end
 
         resize!(schema, length(parsing_ctx.header))

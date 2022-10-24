@@ -834,6 +834,18 @@ end
                 @test length(testctx.results[1].cols[2]) == 1
             end
         end
+
+        for alg in [:serial, :singlebuffer, :doublebuffer]
+            @testset "$alg" begin
+                testctx = TestContext()
+                parse_file(IOBuffer("""a, b\n"foo"  ,"The cat said, \\"meow\\" "\n"""), nothing, testctx, _force=alg, escapechar='\\')
+                @test testctx.header == [:a, :b]
+                @test testctx.results[1].cols[1].elements[1:1] == [Parsers.PosLen(7, 3)]
+                @test testctx.results[1].cols[2].elements[1:1] == [Parsers.PosLen(15, 23, false, true)]
+                @test length(testctx.results[1].cols[1]) == 1
+                @test length(testctx.results[1].cols[2]) == 1
+            end
+        end
     end
 
     @testset "Characters outside of a quoted field should be marked as ValueParsingError" begin

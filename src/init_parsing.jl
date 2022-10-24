@@ -57,6 +57,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
                 push!(parsing_ctx.header, Symbol(string("COL_", i)))
             end
         else # should_parse_header
+            lexer_state.last_newline_at == UInt(0) && (close(io); error("Error parsing header for column 1 at $(Int(settings.skiprows)+1):1 (row:col)."))
             s = parsing_ctx.eols[1]
             e = parsing_ctx.eols[2]
             v = @view parsing_ctx.bytes[s+1:e-1]
@@ -71,6 +72,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
             !(Parsers.eof(code) || Parsers.newline(code)) && (close(io); error("Error parsing header, there are more columns that provided types in schema"))
         end
     elseif !should_parse_header
+        lexer_state.last_newline_at == UInt(0) && return (parsing_ctx, lexer_state)
         # infer the number of columns from the first data row
         s = parsing_ctx.eols[1]
         e = parsing_ctx.eols[2]
@@ -109,9 +111,9 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
         schema_is_dict && apply_types_from_mapping!(schema, parsing_ctx.header, settings, header_provided)
     end
 
-    should_parse_header && shiftleft!(parsing_ctx.eols, 1)
+    should_parse_header && length(parsing_ctx.eols) > 1 && shiftleft!(parsing_ctx.eols, 1)
     # Refill the buffer if if contained a single line and we consumed it to get the header
-    if should_parse_header && length(parsing_ctx.eols) == 1
+    if should_parse_header && length(parsing_ctx.eols) == 1 && !eof(io)
        read_and_lex!(lexer_state, parsing_ctx, options)
     end
 

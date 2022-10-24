@@ -48,6 +48,7 @@ struct ParsingContext
     cond::TaskCondition
 end
 function estimate_task_size(parsing_ctx::ParsingContext)
+    length(parsing_ctx.eols) == 1 && return 1 # empty file
     min_rows = max(2, cld(MIN_TASK_SIZE_IN_BYTES, ceil(Int, last(parsing_ctx.eols)  / length(parsing_ctx.eols))))
     return max(min_rows, cld(ceil(Int, length(parsing_ctx.eols) * ((1 + length(parsing_ctx.bytes)) / (1 + last(parsing_ctx.eols)))), parsing_ctx.maxtasks))
 end

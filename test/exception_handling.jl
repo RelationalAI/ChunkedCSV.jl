@@ -135,6 +135,18 @@ end
             @test test_logger.logs[1].kwargs[1][1].task.result.msg == "That should be enough data for everyone"
         end
     end
+
+    @testset "Empty input" begin
+        for alg in [:serial, :singlebuffer, :doublebuffer]
+            @testset "$alg, has file header, no provided header, no schema" begin
+                @test_throws "Error parsing header for column 1 at 1:1 (row:col)." parse_file(IOBuffer(""), nothing, ChunkedCSV.SkipContext(), _force=alg, hasheader=true, header=nothing)
+            end
+
+            @testset "$alg, has file header, no provided header, has schema" begin
+                @test_throws "Error parsing header for column 1 at 1:1 (row:col)." parse_file(IOBuffer(""), [Int, String], ChunkedCSV.SkipContext(), _force=alg, hasheader=true, header=nothing)
+            end
+        end
+    end
 end
 
 @testset "Schema and header validation" begin

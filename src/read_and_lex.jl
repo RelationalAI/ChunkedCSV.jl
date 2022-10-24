@@ -136,7 +136,7 @@ end
 _input_to_io(input::IO, use_mmap::Bool) = false, input
 function _input_to_io(input::String, use_mmap::Bool)
     ios = open(input, "r")
-    if peek(ios, UInt16) == 0x8b1f
+    if !eof(ios) && peek(ios, UInt16) == 0x8b1f
         # TODO: GzipDecompressorStream doesn't respect MmapStream reaching EOF for some reason
         # io = CodecZlib.GzipDecompressorStream(use_mmap ? MmapStream(ios) : ios, stop_on_end=use_mmap)
         use_mmap && @warn "`use_mmap=true` is currently unsupported when reading gzipped files, using file io."

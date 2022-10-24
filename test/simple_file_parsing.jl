@@ -586,6 +586,58 @@ alg=:serial
     end
 end
 
+@testset "Empty input" begin
+    for alg in [:serial, :singlebuffer, :doublebuffer]
+        @testset "$alg, no file header, no provided header, no schema" begin
+            testctx = TestContext()
+            parse_file(IOBuffer(""), nothing, testctx, _force=alg, hasheader=false, header=nothing)
+            @test isempty(testctx.results[1].cols)
+            @test isempty(testctx.header)
+            @test isempty(testctx.schema)
+        end
+
+        @testset "$alg, no file header, has provided header, no schema" begin
+            testctx = TestContext()
+            parse_file(IOBuffer(""), nothing, testctx, _force=alg, hasheader=false, header=[:A, :B])
+            @test length(testctx.results[1].cols) == 2
+            @test testctx.header == [:A, :B]
+            @test testctx.schema == [String, String]
+        end
+
+        @testset "$alg, no file header, no provided header, has schema" begin
+            testctx = TestContext()
+            parse_file(IOBuffer(""), [Int, String], testctx, _force=alg, hasheader=false, header=nothing)
+            @test length(testctx.results[1].cols) == 2
+            @test testctx.header == [:COL_1, :COL_2]
+            @test testctx.schema == [Int, String]
+        end
+
+        @testset "$alg, no file header, has provided header, has schema" begin
+            testctx = TestContext()
+            parse_file(IOBuffer(""), [Int, String], testctx, _force=alg, hasheader=false, header=[:A, :B])
+            @test length(testctx.results[1].cols) == 2
+            @test testctx.header == [:A, :B]
+            @test testctx.schema == [Int, String]
+        end
+
+        @testset "$alg, has file header, has provided header, no schema" begin
+            testctx = TestContext()
+            parse_file(IOBuffer(""), nothing, testctx, _force=alg, hasheader=true, header=[:A, :B])
+            @test length(testctx.results[1].cols) == 2
+            @test testctx.header == [:A, :B]
+            @test testctx.schema == [String, String]
+        end
+
+        @testset "$alg, has file header, has provided header, has schema" begin
+            testctx = TestContext()
+            parse_file(IOBuffer(""), [Int, String], testctx, _force=alg, hasheader=true, header=[:A, :B])
+            @test length(testctx.results[1].cols) == 2
+            @test testctx.header == [:A, :B]
+            @test testctx.schema == [Int, String]
+        end
+    end
+end
+
 @testset "RFC4180" begin
     # https://www.ietf.org/rfc/rfc4180.txt
     @testset "Each record is located on a separate line, delimited by a line break (CRLF)." begin

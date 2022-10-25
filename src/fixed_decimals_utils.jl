@@ -1,4 +1,4 @@
-@inline function _shift(n::T, decpos) where {T<:Int128}
+@inline function _shift(n::T, decpos) where {T<:Union{UInt128,Int128}}
     if     decpos ==   0 && return n
     elseif decpos ==   1 && return T(10) * n
     elseif decpos ==   2 && return T(100) * n
@@ -44,7 +44,7 @@
     end
 end
 
-@inline function _shift(n::T, decpos) where {T<:Int64}
+@inline function _shift(n::T, decpos) where {T<:Union{UInt64,Int64}}
     if     decpos ==   0 && return n
     elseif decpos ==   1 && return T(10) * n
     elseif decpos ==   2 && return T(100) * n
@@ -65,12 +65,13 @@ end
     elseif decpos ==  17 && return T(100000000000000000) * n
     elseif decpos ==  18 && return T(1000000000000000000) * n
     elseif decpos ==  19 && return T(10000000000000000000) * n
+    elseif decpos ==  20 && return T(100000000000000000000) * n
     else
         @assert false "unreachable"
     end
 end
 
-@inline function _shift(n::T, decpos) where {T<:Int32}
+@inline function _shift(n::T, decpos) where {T<:Union{UInt32,Int32}}
     if     decpos ==   1 && return T(10) * n
     elseif decpos ==   2 && return T(100) * n
     elseif decpos ==   3 && return T(1000) * n
@@ -86,7 +87,7 @@ end
     end
 end
 
-@inline function _shift(n::T, decpos) where {T<:Int16}
+@inline function _shift(n::T, decpos) where {T<:Union{UInt16,Int16}}
     if     decpos ==  0 && return n
     elseif decpos ==  1 && return T(10) * n
     elseif decpos ==  2 && return T(100) * n
@@ -98,7 +99,7 @@ end
     end
 end
 
-@inline function _shift(n::T, decpos) where {T<:Int8}
+@inline function _shift(n::T, decpos) where {T<:Union{UInt8,Int8}}
     if     decpos ==  1 && return T(10) * n
     elseif decpos ==  2 && return T(100) * n
     elseif decpos ==  3 && return T(1000) * n
@@ -108,16 +109,26 @@ end
 end
 
 maxdigits(::Type{Int8}) = 3
+maxdigits(::Type{UInt8}) = 3
 maxdigits(::Type{Int16}) = 5
+maxdigits(::Type{UInt16}) = 5
 maxdigits(::Type{Int32}) = 10
+maxdigits(::Type{UInt32}) = 10
 maxdigits(::Type{Int64}) = 19
+maxdigits(::Type{UInt64}) = 20
 maxdigits(::Type{Int128}) = 39
+maxdigits(::Type{UInt128}) = 39
 
 _typemaxbytes(::Type{Int8}, i, is_neg) = @inbounds NTuple{3,UInt8}((0x31, 0x32, 0x37))[i] + ((i == 3) * is_neg)
 _typemaxbytes(::Type{Int16}, i, is_neg) = @inbounds NTuple{5,UInt8}((0x33, 0x32, 0x37, 0x36, 0x37))[i] + ((i == 5) * is_neg)
 _typemaxbytes(::Type{Int32}, i, is_neg) = @inbounds NTuple{10,UInt8}((0x32, 0x31, 0x34, 0x37, 0x34, 0x38, 0x33, 0x36, 0x34, 0x37))[i] + ((i == 10) * is_neg)
 _typemaxbytes(::Type{Int64}, i, is_neg) = @inbounds NTuple{19,UInt8}((0x39, 0x32, 0x32, 0x33, 0x33, 0x37, 0x32, 0x30, 0x33, 0x36, 0x38, 0x35, 0x34, 0x37, 0x37, 0x35, 0x38, 0x30, 0x37))[i] + ((i == 19) * is_neg)
 _typemaxbytes(::Type{Int128}, i, is_neg) = @inbounds NTuple{39,UInt8}((0x31, 0x37, 0x30, 0x31, 0x34, 0x31, 0x31, 0x38, 0x33, 0x34, 0x36, 0x30, 0x34, 0x36, 0x39, 0x32, 0x33, 0x31, 0x37, 0x33, 0x31, 0x36, 0x38, 0x37, 0x33, 0x30, 0x33, 0x37, 0x31, 0x35, 0x38, 0x38, 0x34, 0x31, 0x30, 0x35, 0x37, 0x32, 0x37))[i] + ((i == 39) * is_neg)
+_typemaxbytes(::Type{UInt8}, i, is_neg) = @inbounds NTuple{3,UInt8}((0x32, 0x35, 0x35))[i]
+_typemaxbytes(::Type{UInt16}, i, is_neg) = @inbounds NTuple{5,UInt8}((0x36, 0x35, 0x35, 0x33, 0x35))[i]
+_typemaxbytes(::Type{UInt32}, i, is_neg) = @inbounds NTuple{10,UInt8}((0x34, 0x32, 0x39, 0x34, 0x39, 0x36, 0x37, 0x32, 0x39, 0x35))[i]
+_typemaxbytes(::Type{UInt64}, i, is_neg) = @inbounds NTuple{19,UInt8}((0x31, 0x38, 0x34, 0x34, 0x36, 0x37, 0x34, 0x34, 0x30, 0x37, 0x33, 0x37, 0x30, 0x39, 0x35, 0x35, 0x31, 0x36, 0x31, 0x35))[i]
+_typemaxbytes(::Type{UInt128}, i, is_neg) = @inbounds NTuple{39,UInt8}((0x33, 0x34, 0x30, 0x32, 0x38, 0x32, 0x33, 0x36, 0x36, 0x39, 0x32, 0x30, 0x39, 0x33, 0x38, 0x34, 0x36, 0x33, 0x34, 0x36, 0x33, 0x33, 0x37, 0x34, 0x36, 0x30, 0x37, 0x34, 0x33, 0x31, 0x37, 0x36, 0x38, 0x32, 0x31, 0x31, 0x34, 0x35, 0x35))[i]
 
 # Using ScanByte in _dec_grp_exp_end causes PackageCompiler to fail. As a workaround, we'll use `findnext`
 # const _NonNumericBytes = Val(~ByteSet((UInt8('+'), UInt8('0'), UInt8('1'), UInt8('2'), UInt8('3'), UInt8('4'), UInt8('5'), UInt8('6'), UInt8('7'), UInt8('8'), UInt8('9'))))
@@ -199,9 +210,9 @@ function _dec_grp_exp_end(buf, pos, len, b, code, options)
     return decimal_position, ngroupmarks, exp_position, pos, code
 end
 
-Base.@propagate_inbounds _typeparser(::Type{T}, f, buf::AbstractString, pos, len, b, code, options::Parsers.Options, mode::Base.RoundingMode=Base.RoundNearest) where {T<:Union{Int8,Int16,Int32,Int64,Int128}} =
+Base.@propagate_inbounds _typeparser(::Type{T}, f, buf::AbstractString, pos, len, b, code, options::Parsers.Options, mode::Base.RoundingMode=Base.RoundNearest) where {T<:Union{Int8,Int16,Int32,Int64,Int128,UInt8,UInt16,UInt32,UInt64,UInt128}} =
     _typeparser(T, f, codeunits(buf), pos, len, b, code, options, mode)
-Base.@propagate_inbounds function _typeparser(::Type{T}, f, buf::AbstractVector{UInt8}, pos, len, b, code, options::Parsers.Options, mode::Base.RoundingMode=Base.RoundNearest) where {T<:Union{Int8,Int16,Int32,Int64,Int128}}
+Base.@propagate_inbounds function _typeparser(::Type{T}, f, buf::AbstractVector{UInt8}, pos, len, b, code, options::Parsers.Options, mode::Base.RoundingMode=Base.RoundNearest) where {T<:Union{Int8,Int16,Int32,Int64,Int128,UInt8,UInt16,UInt32,UInt64,UInt128}}
     is_neg = b == UInt8('-')
     if (is_neg || b == '+')
         pos += 1

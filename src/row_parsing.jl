@@ -4,13 +4,13 @@ function _parse_rows_forloop!(result_buf::TaskResultBuffer{N,M}, task::AbstractV
     for chunk_row_idx in 2:length(task)
         @inbounds prev_newline = task[chunk_row_idx - 1]
         @inbounds curr_newline = task[chunk_row_idx]
-        (curr_newline - prev_newline) == 1 && continue # ignore empty lines
         # +1 -1 to exclude newline chars
         @inbounds row_bytes = view(buf, prev_newline+UInt32(1):curr_newline-UInt32(1))
 
         pos = 1
         len = length(row_bytes)
-        code = Int16(0)
+        # Empty lines are treated as having too few columns
+        code = (curr_newline - prev_newline) == 1 ? Parsers.EOF : Int16(0)
         row_status = RowStatus.Ok
         column_indicators = initflag(M)
         cols = result_buf.cols

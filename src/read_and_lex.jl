@@ -46,6 +46,7 @@ function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, 
     push!(parsing_ctx.eols, UInt32(0))
     eols = parsing_ctx.eols
     quoted = lexer_state.quoted
+    buffersize = UInt32(length(buf))
 
     bytes_read_in = prepare_buffer!(lexer_state.io, parsing_ctx.bytes, lexer_state.last_newline_at)
     reached_end_of_file = end_of_stream(lexer_state.io)
@@ -56,7 +57,7 @@ function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, 
         offset = bytes_carried_over_from_previous_chunk
     else
         # First length(buf) - last_newline_at bytes we've already seen in the previous round
-        bytes_carried_over_from_previous_chunk = UInt32(length(buf)) - lexer_state.last_newline_at
+        bytes_carried_over_from_previous_chunk = buffersize - lexer_state.last_newline_at
         offset = bytes_carried_over_from_previous_chunk
         ptr += offset
     end
@@ -72,7 +73,7 @@ function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, 
         else
             byte_to_check = buf[offset]
             if quoted
-                if byte_to_check == e && get(buf, offset+UInt32(1), 0xFF) == q
+                if byte_to_check == e && (offset < buffersize && buf[offset+UInt32(1)] == q)
                     pos_to_check += UInt(1)
                     offset += UInt32(1)
                 elseif byte_to_check == q
@@ -81,6 +82,12 @@ function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, 
             else
                 if byte_to_check == q
                     quoted = true
+                elseif byte_to_check == UInt8('\r')
+                    if offset < buffersize && buf[offset+UInt32(1)] == UInt8('\n')
+                        pos_to_check += UInt(1)
+                        offset += UInt32(1)
+                    end
+                    push!(eols, offset)
                 elseif byte_to_check != e
                     push!(eols, offset)
                 end

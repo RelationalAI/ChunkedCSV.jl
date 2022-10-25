@@ -635,6 +635,22 @@ end
             @test testctx.header == [:A, :B]
             @test testctx.schema == [Int, String]
         end
+
+        @testset "$alg, has file header, no provided header, no schema" begin
+            testctx = TestContext()
+            parse_file(IOBuffer(""), nothing, testctx, _force=alg, hasheader=true, header=nothing)
+            @test isempty(testctx.results[1].cols)
+            @test isempty(testctx.header)
+            @test isempty(testctx.schema)
+        end
+
+        @testset "$alg, has file header, no provided header, has schema" begin
+            testctx = TestContext()
+           parse_file(IOBuffer(""), [Int, String], testctx, _force=alg, hasheader=true, header=nothing)
+           @test length(testctx.results[1].cols) == 2
+           @test testctx.header == [:COL_1, :COL_2]
+           @test testctx.schema == [Int, String]
+        end
     end
 end
 

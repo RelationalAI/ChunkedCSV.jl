@@ -45,7 +45,7 @@ end
 Base.ensureroom(x::BufferedVector, n) = ((length(x.elements) < n) && Base._growend!(x.elements, n - length(x.elements)); return nothing)
 skip_element!(x::BufferedVector) = x.occupied += 1
 function shiftleft!(x::BufferedVector, n)
-    n == 0 && return
+    n <= 0 && return
     len = length(x)
     unsafe_copyto!(x.elements, 1, x.elements, 1 + n, len - n + 1)
     x.occupied -= n

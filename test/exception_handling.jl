@@ -153,7 +153,7 @@ end
         3,4,5
         """),
         [Int,Int],
-        header=nothing,
+        header=true,
     )
 
     @test_throws "Provided header and schema names don't match. In schema, not in header: Set([:q])). In header, not in schema: [:a, :b, :c]" parse_file(IOBuffer("""
@@ -172,7 +172,7 @@ end
         3,4,5
         """),
         Dict(:q => Int),
-        header=nothing,
+        header=true,
         validate_type_map=true,
     )
 end

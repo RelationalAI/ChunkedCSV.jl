@@ -165,7 +165,7 @@ alg=:serial
         end
     end
 
-    @testset "skiprows" begin
+    @testset "Skipping rows" begin
         for alg in [:serial, :singlebuffer, :doublebuffer]
             @testset "$alg string" begin
                 testctx = TestContext()
@@ -183,7 +183,7 @@ alg=:serial
                     testctx,
                     buffersize=8,
                     _force=alg,
-                    skiprows=4,
+                    header=5,
                 )
                 sort!(testctx.results, by=x->x.cols[1][1].pos)
                 @test testctx.header == [:a, :b]
@@ -218,7 +218,7 @@ alg=:serial
                     testctx,
                     buffersize=4,
                     _force=alg,
-                    skiprows=4,
+                    header=5,
                 )
                 sort!(testctx.results, by=x->x.cols[1][1])
                 @test testctx.header == [:a, :b]
@@ -253,7 +253,7 @@ alg=:serial
                     testctx,
                     buffersize=8,
                     _force=alg,
-                    skiprows=4,
+                    header=5,
                 )
                 sort!(testctx.results, by=x->x.cols[1][1])
                 @test testctx.header == [:a, :b]
@@ -284,7 +284,7 @@ alg=:serial
                     """),
                     nothing,
                     testctx,
-                    hasheader=false,
+                    header=false,
                     _force=alg,
                 )
                 @test testctx.header == [:COL_1, :COL_2]
@@ -303,8 +303,8 @@ alg=:serial
                     """),
                     nothing,
                     testctx,
-                    hasheader=false,
-                    skiprows=2,
+                    header=false,
+                    skipto=3,
                     _force=alg,
                 )
                 @test testctx.header == [:COL_1, :COL_2]
@@ -327,7 +327,7 @@ alg=:serial
                     """),
                     [Int,Int],
                     testctx,
-                    hasheader=false,
+                    header=false,
                     _force=alg,
                 )
                 @test testctx.header == [:COL_1, :COL_2]
@@ -346,8 +346,8 @@ alg=:serial
                     """),
                     [Int,Int],
                     testctx,
-                    hasheader=false,
-                    skiprows=2,
+                    header=false,
+                    skipto=3,
                     _force=alg,
                 )
                 @test testctx.header == [:COL_1, :COL_2]
@@ -371,7 +371,7 @@ alg=:serial
                     [Int,Int],
                     testctx,
                     limit=1,
-                    hasheader=false,
+                    header=false,
                     _force=alg,
                 )
                 @test testctx.header == [:COL_1, :COL_2]
@@ -391,8 +391,8 @@ alg=:serial
                     [Int,Int],
                     testctx,
                     limit=1,
-                    hasheader=false,
-                    skiprows=2,
+                    header=false,
+                    skipto=3,
                     _force=alg,
                 )
                 @test testctx.header == [:COL_1, :COL_2]
@@ -417,8 +417,8 @@ alg=:serial
                     [Int,Int],
                     testctx,
                     limit=1,
-                    skiprows=1,
-                    hasheader=false,
+                    skipto=2,
+                    header=false,
                     _force=alg,
                 )
                 @test testctx.header == [:COL_1, :COL_2]
@@ -438,8 +438,7 @@ alg=:serial
                     [Int,Int],
                     testctx,
                     limit=1,
-                    hasheader=true,
-                    skiprows=1,
+                    header=2,
                     _force=alg,
                 )
                 @test testctx.header == [:a, :b]
@@ -476,7 +475,7 @@ alg=:serial
             """),
             Dict(:q => Int, :b => Int),
             testctx,
-            header=nothing,
+            header=1,
             validate_type_map=false,
         )
         @test testctx.header == [:a, :b, :c]
@@ -590,7 +589,7 @@ end
     for alg in [:serial, :singlebuffer, :doublebuffer]
         @testset "$alg, no file header, no provided header, no schema" begin
             testctx = TestContext()
-            parse_file(IOBuffer(""), nothing, testctx, _force=alg, hasheader=false, header=nothing)
+            parse_file(IOBuffer(""), nothing, testctx, _force=alg, header=false)
             @test isempty(testctx.results[1].cols)
             @test isempty(testctx.header)
             @test isempty(testctx.schema)
@@ -598,7 +597,7 @@ end
 
         @testset "$alg, no file header, has provided header, no schema" begin
             testctx = TestContext()
-            parse_file(IOBuffer(""), nothing, testctx, _force=alg, hasheader=false, header=[:A, :B])
+            parse_file(IOBuffer(""), nothing, testctx, _force=alg, header=[:A, :B])
             @test length(testctx.results[1].cols) == 2
             @test testctx.header == [:A, :B]
             @test testctx.schema == [String, String]
@@ -606,31 +605,15 @@ end
 
         @testset "$alg, no file header, no provided header, has schema" begin
             testctx = TestContext()
-            parse_file(IOBuffer(""), [Int, String], testctx, _force=alg, hasheader=false, header=nothing)
+            parse_file(IOBuffer(""), [Int, String], testctx, _force=alg, header=false)
             @test length(testctx.results[1].cols) == 2
             @test testctx.header == [:COL_1, :COL_2]
             @test testctx.schema == [Int, String]
         end
 
-        @testset "$alg, no file header, has provided header, has schema" begin
-            testctx = TestContext()
-            parse_file(IOBuffer(""), [Int, String], testctx, _force=alg, hasheader=false, header=[:A, :B])
-            @test length(testctx.results[1].cols) == 2
-            @test testctx.header == [:A, :B]
-            @test testctx.schema == [Int, String]
-        end
-
-        @testset "$alg, has file header, has provided header, no schema" begin
-            testctx = TestContext()
-            parse_file(IOBuffer(""), nothing, testctx, _force=alg, hasheader=true, header=[:A, :B])
-            @test length(testctx.results[1].cols) == 2
-            @test testctx.header == [:A, :B]
-            @test testctx.schema == [String, String]
-        end
-
         @testset "$alg, has file header, has provided header, has schema" begin
             testctx = TestContext()
-            parse_file(IOBuffer(""), [Int, String], testctx, _force=alg, hasheader=true, header=[:A, :B])
+            parse_file(IOBuffer(""), [Int, String], testctx, _force=alg, header=[:A, :B])
             @test length(testctx.results[1].cols) == 2
             @test testctx.header == [:A, :B]
             @test testctx.schema == [Int, String]
@@ -638,7 +621,7 @@ end
 
         @testset "$alg, has file header, no provided header, no schema" begin
             testctx = TestContext()
-            parse_file(IOBuffer(""), nothing, testctx, _force=alg, hasheader=true, header=nothing)
+            parse_file(IOBuffer(""), nothing, testctx, _force=alg, header=true)
             @test isempty(testctx.results[1].cols)
             @test isempty(testctx.header)
             @test isempty(testctx.schema)
@@ -646,7 +629,7 @@ end
 
         @testset "$alg, has file header, no provided header, has schema" begin
             testctx = TestContext()
-           parse_file(IOBuffer(""), [Int, String], testctx, _force=alg, hasheader=true, header=nothing)
+           parse_file(IOBuffer(""), [Int, String], testctx, _force=alg, header=true)
            @test length(testctx.results[1].cols) == 2
            @test testctx.header == [:COL_1, :COL_2]
            @test testctx.schema == [Int, String]
@@ -660,7 +643,7 @@ end
         for alg in [:serial, :singlebuffer, :doublebuffer]
             @testset "$alg" begin
                 testctx = TestContext()
-                parse_file(IOBuffer("aaa,bbb,ccc\nzzz,yyy,xxx\n"), nothing, testctx, _force=alg, hasheader=false)
+                parse_file(IOBuffer("aaa,bbb,ccc\nzzz,yyy,xxx\n"), nothing, testctx, _force=alg, header=false)
                 @test testctx.results[1].cols[1].elements[1:2] == [Parsers.PosLen(1, 3), Parsers.PosLen(13, 3)]
                 @test testctx.results[1].cols[2].elements[1:2] == [Parsers.PosLen(5, 3), Parsers.PosLen(17, 3)]
                 @test testctx.results[1].cols[3].elements[1:2] == [Parsers.PosLen(9, 3), Parsers.PosLen(21, 3)]
@@ -669,7 +652,7 @@ end
                 @test length(testctx.results[1].cols[3]) == 2
 
                 testctx = TestContext()
-                parse_file(IOBuffer("aaa,bbb,ccc\r\nzzz,yyy,xxx\r\n"), nothing, testctx, _force=alg, hasheader=false)
+                parse_file(IOBuffer("aaa,bbb,ccc\r\nzzz,yyy,xxx\r\n"), nothing, testctx, _force=alg, header=false)
                 @test testctx.results[1].cols[1].elements[1:2] == [Parsers.PosLen(1, 3), Parsers.PosLen(14, 3)]
                 @test testctx.results[1].cols[2].elements[1:2] == [Parsers.PosLen(5, 3), Parsers.PosLen(18, 3)]
                 @test testctx.results[1].cols[3].elements[1:2] == [Parsers.PosLen(9, 3), Parsers.PosLen(22, 3)]
@@ -684,7 +667,7 @@ end
         for alg in [:serial, :singlebuffer, :doublebuffer]
             @testset "$alg" begin
                 testctx = TestContext()
-                parse_file(IOBuffer("aaa,bbb,ccc\nzzz,yyy,xxx"), nothing, testctx, _force=alg, hasheader=false)
+                parse_file(IOBuffer("aaa,bbb,ccc\nzzz,yyy,xxx"), nothing, testctx, _force=alg, header=false)
                 @test testctx.results[1].cols[1].elements[1:2] == [Parsers.PosLen(1, 3), Parsers.PosLen(13, 3)]
                 @test testctx.results[1].cols[2].elements[1:2] == [Parsers.PosLen(5, 3), Parsers.PosLen(17, 3)]
                 @test testctx.results[1].cols[3].elements[1:2] == [Parsers.PosLen(9, 3), Parsers.PosLen(21, 3)]
@@ -693,7 +676,7 @@ end
                 @test length(testctx.results[1].cols[3]) == 2
 
                 testctx = TestContext()
-                parse_file(IOBuffer("aaa,bbb,ccc\r\nzzz,yyy,xxx"), nothing, testctx, _force=alg, hasheader=false)
+                parse_file(IOBuffer("aaa,bbb,ccc\r\nzzz,yyy,xxx"), nothing, testctx, _force=alg, header=false)
                 @test testctx.results[1].cols[1].elements[1:2] == [Parsers.PosLen(1, 3), Parsers.PosLen(14, 3)]
                 @test testctx.results[1].cols[2].elements[1:2] == [Parsers.PosLen(5, 3), Parsers.PosLen(18, 3)]
                 @test testctx.results[1].cols[3].elements[1:2] == [Parsers.PosLen(9, 3), Parsers.PosLen(22, 3)]
@@ -747,7 +730,7 @@ end
         for alg in [:serial, :singlebuffer, :doublebuffer]
             @testset "$alg" begin
                 testctx = TestContext()
-                parse_file(IOBuffer("aaa,bbb,ccc"), nothing, testctx, _force=alg, hasheader=false)
+                parse_file(IOBuffer("aaa,bbb,ccc"), nothing, testctx, _force=alg, header=false)
                 @test testctx.results[1].cols[1].elements[1:1] == [Parsers.PosLen(1, 3)]
                 @test testctx.results[1].cols[2].elements[1:1] == [Parsers.PosLen(5, 3)]
                 @test testctx.results[1].cols[3].elements[1:1] == [Parsers.PosLen(9, 3)]
@@ -766,7 +749,7 @@ end
         for alg in [:serial, :singlebuffer, :doublebuffer]
             @testset "$alg" begin
                 testctx = TestContext()
-                parse_file(IOBuffer("\"aaa\",\"bbb\",\"ccc\"\nzzz,yyy,xxx"), nothing, testctx, _force=alg, hasheader=false)
+                parse_file(IOBuffer("\"aaa\",\"bbb\",\"ccc\"\nzzz,yyy,xxx"), nothing, testctx, _force=alg, header=false)
                 @test testctx.results[1].cols[1].elements[1:2] == [Parsers.PosLen(2, 3), Parsers.PosLen(19, 3)]
                 @test testctx.results[1].cols[2].elements[1:2] == [Parsers.PosLen(8, 3), Parsers.PosLen(23, 3)]
                 @test testctx.results[1].cols[3].elements[1:2] == [Parsers.PosLen(14, 3), Parsers.PosLen(27, 3)]
@@ -775,7 +758,7 @@ end
                 @test length(testctx.results[1].cols[3]) == 2
 
                 testctx = TestContext()
-                parse_file(IOBuffer("\"aaa\",\"bbb\",\"ccc\"\r\nzzz,yyy,xxx"), nothing, testctx, _force=alg, hasheader=false)
+                parse_file(IOBuffer("\"aaa\",\"bbb\",\"ccc\"\r\nzzz,yyy,xxx"), nothing, testctx, _force=alg, header=false)
                 @test testctx.results[1].cols[1].elements[1:2] == [Parsers.PosLen(2, 3), Parsers.PosLen(20, 3)]
                 @test testctx.results[1].cols[2].elements[1:2] == [Parsers.PosLen(8, 3), Parsers.PosLen(24, 3)]
                 @test testctx.results[1].cols[3].elements[1:2] == [Parsers.PosLen(14, 3), Parsers.PosLen(28, 3)]
@@ -792,7 +775,7 @@ end
         for alg in [:serial, :singlebuffer, :doublebuffer]
             @testset "$alg" begin
                 testctx = TestContext()
-                parse_file(IOBuffer("\"aaa\",\"b\nbb\",\"ccc\"\nzzz,yyy,xxx"), nothing, testctx, _force=alg, hasheader=false)
+                parse_file(IOBuffer("\"aaa\",\"b\nbb\",\"ccc\"\nzzz,yyy,xxx"), nothing, testctx, _force=alg, header=false)
                 @test testctx.results[1].cols[1].elements[1:2] == [Parsers.PosLen(2, 3), Parsers.PosLen(20, 3)]
                 @test testctx.results[1].cols[2].elements[1:2] == [Parsers.PosLen(8, 4), Parsers.PosLen(24, 3)]
                 @test testctx.results[1].cols[3].elements[1:2] == [Parsers.PosLen(15, 3), Parsers.PosLen(28, 3)]
@@ -801,7 +784,7 @@ end
                 @test length(testctx.results[1].cols[3]) == 2
 
                 testctx = TestContext()
-                parse_file(IOBuffer("\"aaa\",\"b\r\nbb\",\"ccc\"\r\nzzz,yyy,xxx"), nothing, testctx, _force=alg, hasheader=false)
+                parse_file(IOBuffer("\"aaa\",\"b\r\nbb\",\"ccc\"\r\nzzz,yyy,xxx"), nothing, testctx, _force=alg, header=false)
                 @test testctx.results[1].cols[1].elements[1:2] == [Parsers.PosLen(2, 3), Parsers.PosLen(22, 3)]
                 @test testctx.results[1].cols[2].elements[1:2] == [Parsers.PosLen(8, 5), Parsers.PosLen(26, 3)]
                 @test testctx.results[1].cols[3].elements[1:2] == [Parsers.PosLen(16, 3), Parsers.PosLen(30, 3)]
@@ -819,7 +802,7 @@ end
         for alg in [:serial, :singlebuffer, :doublebuffer]
             @testset "$alg" begin
                 testctx = TestContext()
-                parse_file(IOBuffer("\"aaa\",\"b\"\"bb\",\"ccc\""), nothing, testctx, _force=alg, hasheader=false)
+                parse_file(IOBuffer("\"aaa\",\"b\"\"bb\",\"ccc\""), nothing, testctx, _force=alg, header=false)
                 @test testctx.results[1].cols[1].elements[1:1] == [Parsers.PosLen(2, 3)]
                 @test testctx.results[1].cols[2].elements[1:1] == [Parsers.PosLen(8, 5, false, true)]
                 @test testctx.results[1].cols[3].elements[1:1] == [Parsers.PosLen(16, 3)]
@@ -940,7 +923,7 @@ end
         """),
         [Int,Int],
         testctx,
-        hasheader=false,
+        header=false,
         default_colname_prefix="#"
     )
     @test testctx.header == [Symbol("#1"), Symbol("#2")]
@@ -953,7 +936,7 @@ end
         """),
         nothing,
         testctx,
-        hasheader=false,
+        header=false,
         default_colname_prefix="##"
     )
     @test testctx.header == [Symbol("##1"), Symbol("##2")]

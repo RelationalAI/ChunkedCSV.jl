@@ -55,15 +55,22 @@ end
 struct ParserSettings
     schema::Union{Nothing,Vector{DataType},Dict{Symbol,DataType}}
     header::Union{Nothing,Vector{Symbol}}
-    hasheader::Bool
+    header_at::UInt
+    data_at::UInt
+    limit::UInt32
     validate_type_map::Bool
     default_colname_prefix::String
-    skiprows::Int
-    limit::UInt32
     buffersize::UInt32
     nworkers::UInt8
     maxtasks::UInt8
     nresults::UInt8
+end
+function ParserSettings(schema, header::Vector{Symbol}, data_at, limit, validate_type_map, default_colname_prefix, buffersize, nworkers, maxtasks, nresults)
+    ParserSettings(schema, header, UInt(0), UInt(data_at), limit, validate_type_map, default_colname_prefix, buffersize, nworkers, maxtasks, nresults)
+end
+
+function ParserSettings(schema, header::Integer, data_at, limit, validate_type_map, default_colname_prefix, buffersize, nworkers, maxtasks, nresults)
+    ParserSettings(schema, nothing, UInt(header), UInt(data_at), limit, validate_type_map, default_colname_prefix, buffersize, nworkers, maxtasks, nresults)
 end
 
 function limit_eols!(parsing_ctx::ParsingContext, row_num)
@@ -111,9 +118,8 @@ _validate(header, schema, validate_type_map) = true
 function setup_parser(
     input,
     schema::Union{Nothing,Vector{DataType},Dict{Symbol,DataType}}=nothing;
-    header::Union{Nothing,Vector{Symbol}}=nothing,
-    hasheader::Bool=true,
-    skiprows::Integer=UInt32(0),
+    header::Union{Vector{Symbol},Integer}=true,
+    skipto::Integer=UInt32(0),
     limit::Integer=UInt32(0),
     delim::Union{UInt8,Char}=',',
     quotechar::Union{UInt8,Char}='"',
@@ -132,7 +138,7 @@ function setup_parser(
     use_mmap::Bool=false,
 )
     @assert 0 < buffersize < typemax(UInt32)
-    @assert skiprows >= 0
+    @assert skipto >= 0
     @assert limit >= 0
     @assert nworkers > 0
     @assert maxtasks >= nworkers
@@ -140,7 +146,7 @@ function setup_parser(
     _validate(header, schema, validate_type_map)
 
     should_close, io = _input_to_io(input, use_mmap)
-    settings = ParserSettings(schema, header, hasheader, validate_type_map, default_colname_prefix, Int(skiprows), UInt32(limit), UInt32(buffersize), UInt8(nworkers), UInt8(maxtasks), UInt8(nresults))
+    settings = ParserSettings(schema, header, UInt(skipto), UInt32(limit), validate_type_map, default_colname_prefix, UInt32(buffersize), UInt8(nworkers), UInt8(maxtasks), UInt8(nresults))
     options = _create_options(delim, quotechar, escapechar, sentinel, groupmark, stripwhitespace)
     byteset = Val(ByteSet((UInt8(options.e), UInt8(options.oq), UInt8('\n'), UInt8('\r'))))
     (parsing_ctx, lexer_state) = init_parsing!(io, settings, options, Val(byteset))
@@ -176,9 +182,8 @@ function parse_file(
     input,
     schema::Union{Nothing,Vector{DataType},Dict{Symbol,DataType}}=nothing,
     consume_ctx::AbstractConsumeContext=DebugContext();
-    header::Union{Nothing,Vector{Symbol}}=nothing,
-    hasheader::Bool=true,
-    skiprows::Integer=UInt32(0),
+    header::Union{Nothing,Vector{Symbol},Integer}=true,
+    skipto::Integer=UInt32(0),
     limit::Integer=UInt32(0),
     delim::Union{UInt8,Char}=',',
     quotechar::Union{UInt8,Char}='"',
@@ -199,7 +204,7 @@ function parse_file(
 )
     (should_close, parsing_ctx, lexer_state, options) = setup_parser(
         input, schema; 
-        header, hasheader, skiprows, delim, quotechar, limit, escapechar, sentinel, groupmark, stripwhitespace, 
+        header, skipto, delim, quotechar, limit, escapechar, sentinel, groupmark, stripwhitespace, 
         validate_type_map, default_colname_prefix, buffersize, nworkers, maxtasks, nresults, use_mmap
     )
     parse_file(lexer_state, parsing_ctx, consume_ctx, options, _force)

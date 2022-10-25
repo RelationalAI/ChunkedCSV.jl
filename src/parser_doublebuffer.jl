@@ -9,7 +9,7 @@ function read_and_lex_task!(parsing_queue::Channel{T}, lexer_state::LexerState{B
         ntasks = cld(length(parsing_ctx.eols), task_size)
         # Set the expected number of parsing tasks
         setup_tasks!(consume_ctx, parsing_ctx, ntasks)
-        # Send task definitions (segmenf of `eols` to process) to the queue
+        # Send task definitions (segment of `eols` to process) to the queue
         task_start = UInt32(1)
         task_num = UInt32(1)
         for task in Iterators.partition(eachindex(parsing_ctx.eols), task_size)

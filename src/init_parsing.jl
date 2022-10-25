@@ -5,7 +5,7 @@ end
 
 function apply_types_from_mapping!(schema, header, settings, header_provided)
     mapping = settings.schema::Dict{Symbol,DataType}
-    @assert !settings.validate_type_map || header_provided || issubset(keys(mapping), header) "Unknown columns from schema mapping: $(setdiff(keys(mapping), header)), parsed header: $(header), row $(Int(settings.skiprows)+1)"
+    @assert !settings.validate_type_map || header_provided || issubset(keys(mapping), header) "Unknown columns from schema mapping: $(setdiff(keys(mapping), header)), parsed header: $(header), row $(Int(settings.header_at))"
     @inbounds for (i, (colname, default_type)) in enumerate(zip(header, schema))
         schema[i] = get(mapping, colname, default_type)
     end
@@ -15,11 +15,12 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
     header_provided = !isnothing(settings.header)
     schema_is_dict = isa(settings.schema, Dict)
     schema_provided = !isnothing(settings.schema) && !schema_is_dict
-    should_parse_header = settings.hasheader
+    should_parse_header = settings.header_at > 0
     schema = DataType[]
+
     parsing_ctx = ParsingContext(
         schema,
-        copy(Symbol[]),
+        Symbol[],
         Vector{UInt8}(undef, settings.buffersize),
         BufferedVector{UInt32}(),
         settings.limit,
@@ -34,7 +35,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
     read_and_lex!(lexer_state, parsing_ctx, options)
     input_is_empty = lexer_state.last_newline_at == UInt(0)
 
-    skiprows = Int(settings.skiprows)
+    init_skiprows = skiprows = (should_parse_header ? Int(settings.header_at) : Int(settings.data_at)) - 1
     while !lexer_state.done && skiprows >= length(parsing_ctx.eols) - 1
         skiprows -= length(parsing_ctx.eols) - 1
         read_and_lex!(lexer_state, parsing_ctx, options)
@@ -69,7 +70,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
                     push!(parsing_ctx.header, Symbol(string(settings.default_colname_prefix, i)))
                 elseif !Parsers.ok(code)
                     close(io); 
-                    error("Error parsing header for column $i at $(Int(settings.skiprows)+1):$(pos) (row:col).")
+                    error("Error parsing header for column $i at $(init_skiprows+1):$(pos) (row:col).")
                 else
                     push!(parsing_ctx.header, Symbol(strip(String(v[val.pos:val.pos+val.len-1]))))
                 end
@@ -88,7 +89,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
         i = 1
         while !(Parsers.eof(code) || Parsers.newline(code))
             (;val, tlen, code) = Parsers.xparse(String, v, pos, length(v), options)
-            !Parsers.ok(code) && (close(io); error("Error parsing header for column $i at $(Int(settings.skiprows)+1):$(pos) (row:col)."))
+            !Parsers.ok(code) && (close(io); error("Error parsing header for column $i at $(init_skiprows+1):$(pos) (row:col)."))
             pos += tlen
             push!(parsing_ctx.header, Symbol(string(settings.default_colname_prefix, i)))
             i += 1
@@ -111,7 +112,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
                 push!(parsing_ctx.header, Symbol(string(settings.default_colname_prefix, i)))
             elseif !Parsers.ok(code)
                 close(io) 
-                error("Error parsing header for column $i at $(Int(settings.skiprows)+1):$(pos) (row:col).")
+                error("Error parsing header for column $i at $(init_skiprows+1):$(pos) (row:col).")
             else
                 @inbounds push!(parsing_ctx.header, Symbol(strip(String(v[val.pos:val.pos+val.len-1]))))
             end
@@ -125,10 +126,19 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
     end
 
     should_parse_header && !input_is_empty && shiftleft!(parsing_ctx.eols, 1)
-    # Refill the buffer if if contained a single line and we consumed it to get the header
-    if should_parse_header && !input_is_empty && !eof(io)
+    # Refill the buffer if it contained a single line and we consumed it to get the header
+    if should_parse_header && length(parsing_ctx.eols) == 1 && !eof(io)
        read_and_lex!(lexer_state, parsing_ctx, options)
     end
+
+    skiprows = should_parse_header ? Int(settings.data_at) - Int(settings.header_at) - 1 : 0
+    while !lexer_state.done && skiprows >= length(parsing_ctx.eols) - 1
+        skiprows -= length(parsing_ctx.eols) - 1
+        read_and_lex!(lexer_state, parsing_ctx, options)
+        # TODO: Special path for the case where we skipped the entire file
+        # done && (return (parsing_ctx, last_newline_at, quoted, done))
+    end
+    shiftleft!(parsing_ctx.eols, skiprows)
 
     return (parsing_ctx, lexer_state)
 end

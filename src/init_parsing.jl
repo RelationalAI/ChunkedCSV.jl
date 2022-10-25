@@ -55,7 +55,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
         append!(schema, settings.schema)
         if !should_parse_header || input_is_empty
             for i in 1:length(settings.schema)
-                push!(parsing_ctx.header, Symbol(string("COL_", i)))
+                push!(parsing_ctx.header, Symbol(string(settings.default_colname_prefix, i)))
             end
         else # should_parse_header
             s = parsing_ctx.eols[1]
@@ -66,7 +66,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
             for i in 1:length(settings.schema)
                 (;val, tlen, code) = Parsers.xparse(String, v, pos, length(v), options)
                 if Parsers.sentinel(code)
-                    push!(parsing_ctx.header, Symbol(string("COL_", i)))
+                    push!(parsing_ctx.header, Symbol(string(settings.default_colname_prefix, i)))
                 elseif !Parsers.ok(code)
                     close(io); 
                     error("Error parsing header for column $i at $(Int(settings.skiprows)+1):$(pos) (row:col).")
@@ -90,7 +90,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
             (;val, tlen, code) = Parsers.xparse(String, v, pos, length(v), options)
             !Parsers.ok(code) && (close(io); error("Error parsing header for column $i at $(Int(settings.skiprows)+1):$(pos) (row:col)."))
             pos += tlen
-            push!(parsing_ctx.header, Symbol(string("COL_", i)))
+            push!(parsing_ctx.header, Symbol(string(settings.default_colname_prefix, i)))
             i += 1
         end
         resize!(schema, length(parsing_ctx.header))
@@ -108,7 +108,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
         while !((Parsers.eof(code) && !Parsers.delimited(code)) || Parsers.newline(code))
             (;val, tlen, code) = Parsers.xparse(String, v, pos, length(v), options)
             if Parsers.sentinel(code)
-                push!(parsing_ctx.header, Symbol(string("COL_", i)))
+                push!(parsing_ctx.header, Symbol(string(settings.default_colname_prefix, i)))
             elseif !Parsers.ok(code)
                 close(io) 
                 error("Error parsing header for column $i at $(Int(settings.skiprows)+1):$(pos) (row:col).")

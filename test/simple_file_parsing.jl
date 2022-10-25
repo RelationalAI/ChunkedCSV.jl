@@ -931,3 +931,30 @@ end
         end
     end
 end
+
+@testset "default_colname_prefix" begin
+    testctx = TestContext()
+    parse_file(IOBuffer("""
+        1,2
+        3,4
+        """),
+        [Int,Int],
+        testctx,
+        hasheader=false,
+        default_colname_prefix="#"
+    )
+    @test testctx.header == [Symbol("#1"), Symbol("#2")]
+
+
+    testctx = TestContext()
+    parse_file(IOBuffer("""
+        1,2
+        3,4
+        """),
+        nothing,
+        testctx,
+        hasheader=false,
+        default_colname_prefix="##"
+    )
+    @test testctx.header == [Symbol("##1"), Symbol("##2")]
+end

@@ -57,6 +57,7 @@ struct ParserSettings
     header::Union{Nothing,Vector{Symbol}}
     hasheader::Bool
     validate_type_map::Bool
+    default_colname_prefix::String
     skiprows::Int
     limit::UInt32
     buffersize::UInt32
@@ -127,6 +128,7 @@ function setup_parser(
     nworkers::Integer=Threads.nthreads(),
     maxtasks::Integer=2Threads.nthreads(),
     nresults::Integer=maxtasks,
+    default_colname_prefix::String="COL_",
     use_mmap::Bool=false,
 )
     @assert 0 < buffersize < typemax(UInt32)
@@ -138,7 +140,7 @@ function setup_parser(
     _validate(header, schema, validate_type_map)
 
     should_close, io = _input_to_io(input, use_mmap)
-    settings = ParserSettings(schema, header, hasheader, validate_type_map, Int(skiprows), UInt32(limit), UInt32(buffersize), UInt8(nworkers), UInt8(maxtasks), UInt8(nresults))
+    settings = ParserSettings(schema, header, hasheader, validate_type_map, default_colname_prefix, Int(skiprows), UInt32(limit), UInt32(buffersize), UInt8(nworkers), UInt8(maxtasks), UInt8(nresults))
     options = _create_options(delim, quotechar, escapechar, sentinel, groupmark, stripwhitespace)
     byteset = Val(ByteSet((UInt8(options.e), UInt8(options.oq), UInt8('\n'), UInt8('\r'))))
     (parsing_ctx, lexer_state) = init_parsing!(io, settings, options, Val(byteset))
@@ -192,12 +194,13 @@ function parse_file(
     maxtasks::Integer=2Threads.nthreads(),
     nresults::Integer=maxtasks,
     _force::Symbol=:none,
+    default_colname_prefix::String="COL_",
     use_mmap::Bool=false,
 )
     (should_close, parsing_ctx, lexer_state, options) = setup_parser(
         input, schema; 
         header, hasheader, skiprows, delim, quotechar, limit, escapechar, sentinel, groupmark, stripwhitespace, 
-        validate_type_map, buffersize, nworkers, maxtasks, nresults, use_mmap
+        validate_type_map, default_colname_prefix, buffersize, nworkers, maxtasks, nresults, use_mmap
     )
     parse_file(lexer_state, parsing_ctx, consume_ctx, options, _force)
     should_close && close(lexer_state.io)

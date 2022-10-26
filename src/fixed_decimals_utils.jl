@@ -367,7 +367,7 @@ function _parse_round(::Type{T}, buf, s, e, d, code, ::RoundingMode{:Nearest}) w
             b = buf[i] - 0x30
             b > 0x09 && (return (T(0), code | Parsers.INVALID))
             b += carries_over
-            (b > 0x05 || (b == 0x05 && isodd(prev_b))) && (carries_over = true)
+            carries_over = (b > 0x05 || (b == 0x05 && isodd(prev_b)))
             prev_b = b
         end
         return (T(carries_over), code)

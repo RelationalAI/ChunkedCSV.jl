@@ -142,12 +142,14 @@ _typeparser2(::Type{T}, f, buf, r=RoundNearest, options=DEFAULT_OPTIONS) where {
             @test _typeparser2(T, 2, "0.454")[1] == 0_45
             @test _typeparser2(T, 2, "0.455")[1] == 0_46
             @test _typeparser2(T, 2, "0.456")[1] == 0_46
+            @test _typeparser2(T, 2, "1.000924")[1] == 100
             @test _typeparser2(unsigned(T), 2, "0.444")[1] == 0_44
             @test _typeparser2(unsigned(T), 2, "0.445")[1] == 0_44
             @test _typeparser2(unsigned(T), 2, "0.446")[1] == 0_45
             @test _typeparser2(unsigned(T), 2, "0.454")[1] == 0_45
             @test _typeparser2(unsigned(T), 2, "0.455")[1] == 0_46
             @test _typeparser2(unsigned(T), 2, "0.456")[1] == 0_46
+            @test _typeparser2(unsigned(T), 2, "1.000924")[1] == 100
 
             @test _typeparser2(T, 2, "-0.444")[1] == -0_44
             @test _typeparser2(T, 2, "-0.445")[1] == -0_44

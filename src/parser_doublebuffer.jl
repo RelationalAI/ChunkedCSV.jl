@@ -49,7 +49,7 @@ function process_and_consume_task(parsing_queue::Channel{T}, result_buffers::Vec
     catch e
         @error "Task failed" exception=(e, catch_backtrace())
         # If there was an exception, immediately stop processing the queue
-        close(parsing_queue, e)
+        isopen(parsing_queue) && close(parsing_queue, e)
         # if the io_task was waiting for work to finish, we'll interrupt it here
         @lock parsing_ctx.cond.cond_wait begin
             notify(parsing_ctx.cond.cond_wait, e, all=true, error=true)
@@ -88,7 +88,8 @@ function _parse_file_doublebuffer(lexer_state::LexerState, parsing_ctx::ParsingC
         io_task = Threads.@spawn read_and_lex_task!(parsing_queue, lexer_state, parsing_ctx, parsing_ctx_next, consume_ctx, options)
         wait(io_task)
     catch e
-        close(parsing_queue, e)
+        isopen(parsing_queue) && close(parsing_queue, e)
+        cleanup(consume_ctx, e)
         rethrow()
     end
     # Cleanup

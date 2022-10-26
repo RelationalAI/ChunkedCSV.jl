@@ -5,6 +5,7 @@ function setup_tasks! end
 function consume! end
 function task_done! end
 function sync_tasks end
+function cleanup end
 
 maybe_deepcopy(x::AbstractConsumeContext) = x
 maybe_deepcopy(x::AbstractTaskLocalConsumeContext) = deepcopy(x)
@@ -31,6 +32,7 @@ function sync_tasks(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingCon
         end
     end
 end
+cleanup(consume_ctx::AbstractConsumeContext, e::Exception) = nothing
 
 struct DebugContext <: AbstractConsumeContext
     error_only::Bool

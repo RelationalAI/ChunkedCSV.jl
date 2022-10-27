@@ -3,6 +3,11 @@ using Logging
 using .Threads
 using ChunkedCSV
 using ChunkedCSV: TaskResultBuffer, ParsingContext
+using FixedPointDecimals
+
+struct CustomType
+    x::Any
+end
 
 struct TestThrowingContext <: AbstractConsumeContext end
 struct ThrowingIO <: IO
@@ -174,5 +179,13 @@ end
         Dict(:q => Int),
         header=true,
         validate_type_map=true,
+    )
+
+    @test_throws "Provided schema contains unsupported types: FixedDecimal{Int64, 9}, CustomType" parse_file(IOBuffer("""
+        a,b,c,d
+        1,2,3,"00000000-0000-0000-0000-000000000000"
+        3,4,5,"00000000-0000-0000-0000-000000000000"
+        """),
+        [Int,FixedDecimal{Int64,8},FixedDecimal{Int64,9},CustomType],
     )
 end

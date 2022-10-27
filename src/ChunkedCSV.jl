@@ -83,6 +83,15 @@ function limit_eols!(parsing_ctx::ParsingContext, row_num)
     return false
 end
 
+_is_supported_type(::Type{T}) where {T} = false
+_is_supported_type(::Type{T}) where {T<:Union{Int,Float64,String,Char,Bool,DateTime,Date}} = true
+_is_supported_type(::Type{FixedDecimal{T,f}}) where {T<:Union{Int8,Int16,Int32,Int64,Int128,UInt8,UInt16,UInt32,UInt64,UInt128},f} = f <= 8
+function validate_schema(types::Vector{DataType})
+    unsupported_types = filter(!_is_supported_type, types)
+    isempty(unsupported_types) || error("Provided schema contains unsupported types: $(join(unique!(unsupported_types), ", "))")
+    return nothing
+end
+
 include("init_parsing.jl")
 include("read_and_lex.jl")
 include("consume_context.jl")

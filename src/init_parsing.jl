@@ -17,6 +17,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
     schema_provided = !isnothing(settings.schema) && !schema_is_dict
     should_parse_header = settings.header_at > 0
     schema = DataType[]
+    schema_provided && validate_schema(settings.schema)
 
     parsing_ctx = ParsingContext(
         schema,
@@ -124,6 +125,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
         fill!(schema, String)
         schema_is_dict && apply_types_from_mapping!(schema, parsing_ctx.header, settings, header_provided)
     end
+    !schema_provided && validate_schema(schema)
 
     should_parse_header && !input_is_empty && shiftleft!(parsing_ctx.eols, 1)
     # Refill the buffer if it contained a single line and we consumed it to get the header

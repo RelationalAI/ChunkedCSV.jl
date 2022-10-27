@@ -2,6 +2,8 @@ using Test
 using ChunkedCSV
 using ChunkedCSV: TaskResultBuffer, ParsingContext
 import Parsers
+using Dates
+using FixedPointDecimals
 
 struct TestContext <: AbstractConsumeContext
     results::Vector{TaskResultBuffer}
@@ -60,6 +62,72 @@ alg=:serial
                 @test testctx.results[1].cols[2].elements[1:2] == [2.0,4.0]
                 @test length(testctx.results[1].cols[1]) == 2
                 @test length(testctx.results[1].cols[2]) == 2
+            end
+
+            @testset "$alg decimal" begin
+                testctx = TestContext()
+                parse_file(IOBuffer("""
+                    a,b
+                    1.0,-2e-2
+                    2,3.3e-1
+                    """),
+                    [FixedDecimal{Int32,2},FixedDecimal{Int64,3}],
+                    testctx,
+                    _force=alg,
+                )
+                @test testctx.header == [:a, :b]
+                @test testctx.schema == [FixedDecimal{Int32,2},FixedDecimal{Int64,3}]
+                @test testctx.results[1].cols[1].elements[1:2] == [FixedDecimal{Int32,2}(1.0), FixedDecimal{Int32,2}(2)]
+                @test testctx.results[1].cols[2].elements[1:2] == [FixedDecimal{Int32,2}(-2e-2), FixedDecimal{Int32,2}(3.3e-1)]
+                @test length(testctx.results[1].cols[1]) == 2
+                @test length(testctx.results[1].cols[2]) == 2
+            end
+
+            @testset "$alg date" begin
+                testctx = TestContext()
+                parse_file(IOBuffer("""
+                    a,b
+                    0-01-01,1600-02-29
+                    9999-12-31,1904-02-29
+                    """),
+                    [Date,Date],
+                    testctx,
+                    _force=alg,
+                )
+                @test testctx.header == [:a, :b]
+                @test testctx.schema == [Date, Date]
+                @test testctx.results[1].cols[1].elements[1:2] == [Date(0, 1, 1), Date(9999, 12, 31)]
+                @test testctx.results[1].cols[2].elements[1:2] == [Date(1600, 2, 29), Date(1904, 2, 29)]
+                @test length(testctx.results[1].cols[1]) == 2
+                @test length(testctx.results[1].cols[2]) == 2
+            end
+
+            @testset "$alg datetime" begin
+                testctx = TestContext()
+                parse_file(IOBuffer("""
+                    a,b
+                    2000-01-01T10:20:30Z,1969-07-20 00:00:00
+                    2000-01-01T10:20:30,1969-07-20 00:00:00.0
+                    2000-01-01 10:20:30Z,1969-07-20 00:00:00.00
+                    2000-01-01 10:20:30,1969-07-20 00:00:00.000
+                    2000-01-01 10:20:30,1969-07-20 00:00:00.000UTC
+                    2000-01-01T10:20:30+0000,1969-07-20 00:00:00.000+0000
+                    2000-01-01T10:20:30UTC,1969-07-19 17:00:00.000-0700
+                    2000-01-01 10:20:30+0000,1969-07-19 17:00:00.000America/Los_Angeles
+                    2000-01-01 10:20:30UTC,1969-07-20 09:00:00.000+0900
+                    2000-01-01 02:20:30-0800,1969-07-20 09:00:00.000 Asia/Tokyo
+                    2000-01-01 10:20:30GMT,1969-07-20 00:00:00.000Z
+                    """),
+                    [DateTime,DateTime],
+                    testctx,
+                    _force=alg,
+                )
+                @test testctx.header == [:a, :b]
+                @test testctx.schema == [DateTime, DateTime]
+                @test testctx.results[1].cols[1][1:11] == fill(DateTime(2000,1,1,10,20,30), 11)
+                @test testctx.results[1].cols[2][1:11] == fill(DateTime(1969,7,20,00,00,00), 11)
+                @test length(testctx.results[1].cols[1]) == 11
+                @test length(testctx.results[1].cols[2]) == 11
             end
 
             @testset "$alg string" begin

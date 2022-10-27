@@ -43,7 +43,7 @@ Base.@propagate_inbounds function _default_tryparse_timestamp(buf, pos, len, cod
         (b == UInt8('T') ||  b == UInt8(' ')) && break
     end
     day > Dates.daysinmonth(year, month) && (return DateTime(year, month), code | Parsers.INVALID, pos)
-    b != UInt8('T') &&  b != UInt8(' ') && (return DateTime(year, month, day), code | Parsers.INVALID, pos)
+    b != UInt8('T') && b != UInt8(' ') && (return DateTime(year, month, day), code | Parsers.INVALID, pos)
     b = buf[pos += 1]
 
     hour = 0

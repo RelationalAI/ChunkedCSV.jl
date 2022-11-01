@@ -12,7 +12,7 @@ function _parse_file_serial(lexer_state::LexerState, parsing_ctx::ParsingContext
                 task_end = UInt32(last(task))
                 _parse_rows_forloop!(result_buf, view(parsing_ctx.eols, task_start:task_end), parsing_ctx.bytes, parsing_ctx.schema, options)
                 consume!(consume_ctx, parsing_ctx, result_buf, row_num, UInt32(1))
-                row_num += UInt32(length(task))
+                row_num += task_end - task_start
                 task_start = task_end
                 task_num += UInt32(1)
                 task_done!(consume_ctx, parsing_ctx, result_buf)
@@ -22,7 +22,6 @@ function _parse_file_serial(lexer_state::LexerState, parsing_ctx::ParsingContext
             read_and_lex!(lexer_state, parsing_ctx, options)
         end # while true
     catch e
-        @info "parser_serial"
         @lock parsing_ctx.cond.cond_wait begin
             notify(parsing_ctx.cond.cond_wait, e, all=true, error=true)
         end

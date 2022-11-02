@@ -106,6 +106,7 @@ alg=:serial
                 testctx = TestContext()
                 parse_file(IOBuffer("""
                     a,b
+                    2000-01-01T10:20:30GMT,1969-07-20
                     2000-01-01T10:20:30Z,1969-07-20 00:00:00
                     2000-01-01T10:20:30,1969-07-20 00:00:00.0
                     2000-01-01 10:20:30Z,1969-07-20 00:00:00.00
@@ -124,10 +125,10 @@ alg=:serial
                 )
                 @test testctx.header == [:a, :b]
                 @test testctx.schema == [DateTime, DateTime]
-                @test testctx.results[1].cols[1][1:11] == fill(DateTime(2000,1,1,10,20,30), 11)
-                @test testctx.results[1].cols[2][1:11] == fill(DateTime(1969,7,20,00,00,00), 11)
-                @test length(testctx.results[1].cols[1]) == 11
-                @test length(testctx.results[1].cols[2]) == 11
+                @test testctx.results[1].cols[1][1:12] == fill(DateTime(2000,1,1,10,20,30), 12)
+                @test testctx.results[1].cols[2][1:12] == fill(DateTime(1969,7,20,00,00,00), 12)
+                @test length(testctx.results[1].cols[1]) == 12
+                @test length(testctx.results[1].cols[2]) == 12
             end
 
             @testset "$alg string" begin

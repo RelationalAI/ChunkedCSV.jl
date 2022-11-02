@@ -9,8 +9,8 @@ Dates.validargs(::Type{_GuessDateTime}, vals...) = Dates.validargs(Dates.DateTim
 
 # [y]yyy-[m]m-[d]d(T|\s)HH:MM:SS(\.s{1,3}})?(zzzz|ZZZ|\Z)?
 Base.@propagate_inbounds function _default_tryparse_timestamp(buf, pos, len, code, b, options)
-    len - pos < 17 && (return DateTime(0), code | Parsers.INVALID | Parsers.EOF, len)
-
+    # ensure there is enough room for at least yyyy-mm-dd
+    len - pos < 9 && (return DateTime(0), code | Parsers.INVALID | Parsers.EOF, len)
     year = 0
     for i in 1:4
         b -= 0x30
@@ -39,11 +39,14 @@ Base.@propagate_inbounds function _default_tryparse_timestamp(buf, pos, len, cod
         b -= 0x30
         b > 0x09 && (return DateTime(year, month), code | Parsers.INVALID, pos)
         day = Int(b) + 10 * day
+        pos == len && (code |= Parsers.EOF; break)
         b = buf[pos += 1]
         (b == UInt8('T') ||  b == UInt8(' ')) && break
     end
     day > Dates.daysinmonth(year, month) && (return DateTime(year, month), code | Parsers.INVALID, pos)
-    b != UInt8('T') && b != UInt8(' ') && (return DateTime(year, month, day), code | Parsers.INVALID, pos)
+    (pos == len || (b != UInt8('T') && b != UInt8(' '))) && (return DateTime(year, month, day), code | Parsers.OK, pos)
+    # ensure there is enough room for at least HH:MM:DD
+    len - pos < 8 && (return DateTime(0), code | Parsers.INVALID | Parsers.EOF, len)
     b = buf[pos += 1]
 
     hour = 0
@@ -94,6 +97,7 @@ Base.@propagate_inbounds function _default_tryparse_timestamp(buf, pos, len, cod
             millisecond = Int(b) + 10 * millisecond
             i += 1
         end
+        # TODO: rounding modes like we do for FixedPointDecimals
         i == 0 || millisecond > 999 && (return DateTime(year, month, day, hour, minute, second), code | Parsers.INVALID, pos)
         if (pos == len || (b + 0x30) == options.delim || b == options.cq)
             pos == len && (code |= Parsers.EOF)

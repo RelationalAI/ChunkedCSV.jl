@@ -5,7 +5,8 @@ function _parse_file_serial(lexer_state::LexerState, parsing_ctx::ParsingContext
         while true
             limit_eols!(parsing_ctx, row_num) && break
             task_size = estimate_task_size(parsing_ctx)
-            setup_tasks!(consume_ctx, parsing_ctx, 0)
+            ntasks = cld(length(parsing_ctx.eols), task_size)
+            setup_tasks!(consume_ctx, parsing_ctx, ntasks)
             task_start = UInt32(1)
             task_num = UInt32(1)
             for task in Iterators.partition(eachindex(parsing_ctx.eols), task_size)
@@ -17,7 +18,7 @@ function _parse_file_serial(lexer_state::LexerState, parsing_ctx::ParsingContext
                 task_num += UInt32(1)
                 task_done!(consume_ctx, parsing_ctx, result_buf)
             end
-            sync_tasks(consume_ctx, parsing_ctx, 0)
+            sync_tasks(consume_ctx, parsing_ctx, ntasks)
             lexer_state.done && break
             read_and_lex!(lexer_state, parsing_ctx, options)
         end # while true

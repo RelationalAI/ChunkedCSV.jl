@@ -11,20 +11,17 @@ maybe_deepcopy(x::AbstractConsumeContext) = x
 maybe_deepcopy(x::AbstractTaskLocalConsumeContext) = deepcopy(x)
 
 function setup_tasks!(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext, ntasks::Int)
-    ntasks == 0 && return nothing # opt-out for :serial
     @lock parsing_ctx.cond.cond_wait begin
         parsing_ctx.cond.ntasks = ntasks
     end
 end
 function task_done!(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext, result_buf::TaskResultBuffer{N,M}) where {N,M}
-    result_buf.id == 0 && return nothing # opt-out for :serial
     @lock parsing_ctx.cond.cond_wait begin
         parsing_ctx.cond.ntasks -= 1
         notify(parsing_ctx.cond.cond_wait)
     end
 end
 function sync_tasks(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext, ntasks::Int)
-    ntasks == 0 && return nothing # opt-out for :serial
     @lock parsing_ctx.cond.cond_wait begin
         while true
             parsing_ctx.cond.ntasks == 0 && break

@@ -43,7 +43,7 @@ end
 function debug(x::BufferedVector{Parsers.PosLen}, i, parsing_ctx, consume_ctx)
     pl = x.elements[i]
     pl.missingvalue && return "missing"
-    repr(String(parsing_ctx.bytes[pl.pos:pl.pos+pl.len-1]))
+    repr(Parsers.getstring(parsing_ctx.bytes, pl, parsing_ctx.e))
 end
 debug(x::BufferedVector, i, parsing_ctx, consume_ctx) = string(x.elements[i])
 function debug_eols(x::BufferedVector{UInt32}, parsing_ctx, consume_ctx)
@@ -71,7 +71,7 @@ function consume!(consume_ctx::DebugContext, parsing_ctx::ParsingContext, task_b
     printstyled(IOContext(io, :color => true), "❚", color=Int(hash(Base.current_task()) % UInt8))
     println(io)
     anyerrs = sum(status_counts[3:end]) > 0
-    if anyerrs
+    if anyerrs || !consume_ctx.error_only
         write(io, "Row count by status: ")
         join(io, zip(RowStatus.Marks, status_counts), " | ")
         println(io)

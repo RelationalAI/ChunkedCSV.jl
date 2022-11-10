@@ -77,7 +77,7 @@ function _parse_file_doublebuffer(lexer_state::LexerState, parsing_ctx::ParsingC
     )
     parser_tasks = Task[]
     for i in 1:parsing_ctx.nworkers
-        t = Threads.@spawn process_and_consume_task(parsing_queue, result_buffers, consume_ctx, parsing_ctx, parsing_ctx_next, options)
+        t = Threads.@spawn process_and_consume_task($parsing_queue, $result_buffers, $consume_ctx, $parsing_ctx, $parsing_ctx_next, $options)
         push!(parser_tasks, t)
         if i < parsing_ctx.nworkers
             consume_ctx = maybe_deepcopy(consume_ctx)
@@ -85,7 +85,7 @@ function _parse_file_doublebuffer(lexer_state::LexerState, parsing_ctx::ParsingC
     end
 
     try
-        io_task = Threads.@spawn read_and_lex_task!(parsing_queue, lexer_state, parsing_ctx, parsing_ctx_next, consume_ctx, options)
+        io_task = Threads.@spawn read_and_lex_task!($parsing_queue, $lexer_state, $parsing_ctx, $parsing_ctx_next, $consume_ctx, $options)
         wait(io_task)
     catch e
         isopen(parsing_queue) && close(parsing_queue, e)

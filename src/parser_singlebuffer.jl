@@ -49,14 +49,14 @@ function _parse_file_singlebuffer(lexer_state::LexerState{B}, parsing_ctx::Parsi
     result_buffers = TaskResultBuffer{N,M}[TaskResultBuffer{N,M}(id, parsing_ctx.schema, cld(length(parsing_ctx.eols), parsing_ctx.maxtasks)) for id in 1:parsing_ctx.nresults]
     parser_tasks = Task[]
     for i in 1:parsing_ctx.nworkers
-        t = Threads.@spawn process_and_consume_task(parsing_queue, result_buffers, consume_ctx, parsing_ctx, options)
+        t = Threads.@spawn process_and_consume_task($parsing_queue, $result_buffers, $consume_ctx, $parsing_ctx, $options)
         push!(parser_tasks, t)
         if i < parsing_ctx.nworkers
             consume_ctx = maybe_deepcopy(consume_ctx)
         end
     end
     try
-        io_task = Threads.@spawn read_and_lex_task!(parsing_queue, lexer_state, parsing_ctx, consume_ctx, options)
+        io_task = Threads.@spawn read_and_lex_task!($parsing_queue, $lexer_state, $parsing_ctx, $consume_ctx, $options)
         wait(io_task)
     catch e
         isopen(parsing_queue) && close(parsing_queue, e)

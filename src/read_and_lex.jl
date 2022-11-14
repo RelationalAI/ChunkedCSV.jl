@@ -67,7 +67,7 @@ function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, 
         if pos_to_check == UInt(0)
             if (length(eols) == 0 || (length(eols) == 1 && first(eols) == 0)) && !reached_end_of_file
                 close(lexer_state.io)
-                error("CSV parse job failed on lexing newlines. There was no linebreak in the entire buffer of $(length(buf)) bytes.")
+                throw(NoValidRowsInBufferError(UInt32(length(buf))))
             end
             break
         else
@@ -98,7 +98,7 @@ function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, 
     end
 
     @inbounds if reached_end_of_file
-        quoted && (close(lexer_state.io); error("CSV parse job failed on lexing newlines. There file has ended with an unmatched quote."))
+        quoted && (close(lexer_state.io); throw(UnmatchedQuoteError()))
         lexer_state.done = true
         # Insert a newline at the end of the file if there wasn't one
         # This is just to make `eols` contain both start and end `pos` of every single line

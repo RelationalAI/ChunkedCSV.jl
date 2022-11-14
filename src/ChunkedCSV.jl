@@ -23,6 +23,7 @@ include("TaskResults.jl")
 include("fixed_decimals_utils.jl")
 include("datetime_utils.jl")
 
+include("exceptions.jl")
 # Temporary hack to register new DateTime
 function __init__()
     Dates.CONVERSION_TRANSLATIONS[_GuessDateTime] = Dates.CONVERSION_TRANSLATIONS[Dates.DateTime]
@@ -88,7 +89,11 @@ _is_supported_type(::Type{T}) where {T<:Union{Int,Float64,String,Char,Bool,DateT
 _is_supported_type(::Type{FixedDecimal{T,f}}) where {T<:Union{Int8,Int16,Int32,Int64,Int128,UInt8,UInt16,UInt32,UInt64,UInt128},f} = f <= 8
 function validate_schema(types::Vector{DataType})
     unsupported_types = filter(!_is_supported_type, types)
-    isempty(unsupported_types) || error("Provided schema contains unsupported types: $(join(unique!(unsupported_types), ", "))")
+    if !isempty(unsupported_types)
+        err_msg = "Provided schema contains unsupported types: $(join(unique!(unsupported_types), ", "))."
+        any(T->(T <: FixedDecimal), unsupported_types) && (err_msg *= " Note: Currently, only decimals with less than 9 decimal places are supported.")
+        throw(ArgumentError(err_msg))
+    end
     return nothing
 end
 
@@ -102,7 +107,7 @@ include("parser_singlebuffer.jl")
 include("parser_doublebuffer.jl")
 
 function _create_options(delim::Char=',', quotechar::Char='"', escapechar::Char='"', sentinel::Union{Missing,String,Vector{String}}=missing, groupmark::Union{Char,UInt8,Nothing}=nothing, stripwhitespace::Bool=false)
-    (UInt8(quotechar) == 0xff || UInt8(escapechar) == 0xff) && error("`escapechar` and/or `quotechar` must not be a `0xff` byte.")
+    (UInt8(quotechar) == 0xff || UInt8(escapechar) == 0xff) && throw(ArgumentError("`escapechar` and/or `quotechar` must not be a `0xff` byte."))
     return Parsers.Options(
         sentinel=sentinel,
         wh1=delim ==  ' ' ? '\v' : ' ',
@@ -120,8 +125,8 @@ function _create_options(delim::Char=',', quotechar::Char='"', escapechar::Char=
     )
 end
 
-_validate(header::Vector, schema::Vector, validate_type_map) = length(header) == length(schema) || error("Provided header and schema lengths don't match. Header has $(length(header)) columns, schema has $(length(schema)).")
-_validate(header::Vector, schema::Dict, validate_type_map) = !validate_type_map || issubset(keys(schema), header) || error("Provided header and schema names don't match. In schema, not in header: $(setdiff(keys(schema), header))). In header, not in schema: $(setdiff(header, keys(schema)))")
+_validate(header::Vector, schema::Vector, validate_type_map) = length(header) == length(schema) || throw(ArgumentError("Provided header and schema lengths don't match. Header has $(length(header)) columns, schema has $(length(schema))."))
+_validate(header::Vector, schema::Dict, validate_type_map) = !validate_type_map || issubset(keys(schema), header) || throw(ArgumentError("Provided header and schema names don't match. In schema, not in header: $(setdiff(keys(schema), header))). In header, not in schema: $(setdiff(header, keys(schema)))"))
 _validate(header, schema, validate_type_map) = true
 
 function setup_parser(
@@ -146,12 +151,13 @@ function setup_parser(
     default_colname_prefix::String="COL_",
     use_mmap::Bool=false,
 )
-    @assert 0 < buffersize < typemax(UInt32)
-    @assert skipto >= 0
-    @assert limit >= 0
-    @assert nworkers > 0
-    @assert maxtasks >= nworkers
-    @assert nresults == maxtasks # otherwise not implemented; implementation postponed once we know why take!/wait allocates
+    0 < buffersize < typemax(UInt32) || throw(ArgumentError("`buffersize` argument must be larger than 0 and smaller than 4_294_967_295 bytes."))
+    skipto >= 0 || throw(ArgumentError("`skipto` argument must be larger than 0."))
+    limit >= 0 || throw(ArgumentError("`limit` argument must be larger than 0."))
+    nworkers > 0 || throw(ArgumentError("`nworkers` argument must be larger than 0."))
+    maxtasks >= nworkers || throw(ArgumentError("`maxtasks` argument must be larger of equal to the `nworkers` argument."))
+    # otherwise not implemented; implementation postponed once we know why take!/wait allocates
+    nresults == maxtasks || throw(ArgumentError("Currently, `nresults` argument must be equal to the `maxtasks` argument."))
     _validate(header, schema, validate_type_map)
 
     should_close, io = _input_to_io(input, use_mmap)
@@ -170,7 +176,7 @@ function parse_file(
     options::Parsers.Options,
     _force::Symbol=:none,
 )
-    @assert _force in (:none, :serial, :singlebuffer, :doublebuffer)
+    _force in (:none, :serial, :singlebuffer, :doublebuffer) || throw(ArgumentError("`_force` argument must be one of (:none, :serial, :singlebuffer, :doublebuffer)."))
     schema = parsing_ctx.schema
     N = length(schema)
     M = _bounding_flag_type(N)
@@ -212,8 +218,8 @@ function parse_file(
     use_mmap::Bool=false,
 )
     (should_close, parsing_ctx, lexer_state, options) = setup_parser(
-        input, schema; 
-        header, skipto, delim, quotechar, limit, escapechar, sentinel, groupmark, stripwhitespace, 
+        input, schema;
+        header, skipto, delim, quotechar, limit, escapechar, sentinel, groupmark, stripwhitespace,
         validate_type_map, default_colname_prefix, buffersize, nworkers, maxtasks, nresults, use_mmap
     )
     parse_file(lexer_state, parsing_ctx, consume_ctx, options, _force)

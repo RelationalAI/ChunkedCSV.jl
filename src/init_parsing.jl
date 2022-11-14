@@ -5,7 +5,9 @@ end
 
 function apply_types_from_mapping!(schema, header, settings, header_provided)
     mapping = settings.schema::Dict{Symbol,DataType}
-    @assert !settings.validate_type_map || header_provided || issubset(keys(mapping), header) "Unknown columns from schema mapping: $(setdiff(keys(mapping), header)), parsed header: $(header), row $(Int(settings.header_at))"
+    if !(!settings.validate_type_map || header_provided || issubset(keys(mapping), header))
+        throw(ArgumentError("Unknown columns from schema mapping: $(setdiff(keys(mapping), header)), parsed header: $(header), row $(Int(settings.header_at))"))
+    end
     @inbounds for (i, (colname, default_type)) in enumerate(zip(header, schema))
         schema[i] = get(mapping, colname, default_type)
     end
@@ -70,14 +72,14 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
                 if Parsers.sentinel(code)
                     push!(parsing_ctx.header, Symbol(string(settings.default_colname_prefix, i)))
                 elseif !Parsers.ok(code)
-                    close(io); 
-                    error("Error parsing header for column $i at $(init_skiprows+1):$(pos) (row:col).")
+                    close(io);
+                    throw(HeaderParsingError("Error parsing header for column $i at $(init_skiprows+1):$(pos) (row:col)."))
                 else
                     push!(parsing_ctx.header, Symbol(strip(String(v[val.pos:val.pos+val.len-1]))))
                 end
                 pos += tlen
             end
-            !(Parsers.eof(code) || Parsers.newline(code)) && (close(io); error("Error parsing header, there are more columns that provided types in schema"))
+            !(Parsers.eof(code) || Parsers.newline(code)) && (close(io); throw(HeaderParsingError("Error parsing header, there are more columns than provided types in schema")))
         end
     elseif !should_parse_header
         input_is_empty && return (parsing_ctx, lexer_state)
@@ -90,7 +92,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
         i = 1
         while !(Parsers.eof(code) || Parsers.newline(code))
             (;val, tlen, code) = Parsers.xparse(String, v, pos, length(v), options)
-            !Parsers.ok(code) && (close(io); error("Error parsing header for column $i at $(init_skiprows+1):$(pos) (row:col)."))
+            !Parsers.ok(code) && (close(io); throw(HeaderParsingError("Error parsing header for column $i at $(init_skiprows+1):$(pos) (row:col).")))
             pos += tlen
             push!(parsing_ctx.header, Symbol(string(settings.default_colname_prefix, i)))
             i += 1
@@ -112,8 +114,8 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
             if Parsers.sentinel(code)
                 push!(parsing_ctx.header, Symbol(string(settings.default_colname_prefix, i)))
             elseif !Parsers.ok(code)
-                close(io) 
-                error("Error parsing header for column $i at $(init_skiprows+1):$(pos) (row:col).")
+                close(io)
+                throw(HeaderParsingError("Error parsing header for column $i at $(init_skiprows+1):$(pos) (row:col)."))
             else
                 @inbounds push!(parsing_ctx.header, Symbol(strip(String(v[val.pos:val.pos+val.len-1]))))
             end

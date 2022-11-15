@@ -152,7 +152,7 @@ end
         header=[:a, :b, :c],
     )
 
-    @test_throws "Error parsing header, there are more columns that provided types in schema" parse_file(IOBuffer("""
+    @test_throws "Error parsing header, there are more columns than provided types in schema" parse_file(IOBuffer("""
         a,b,c
         1,2,3
         3,4,5

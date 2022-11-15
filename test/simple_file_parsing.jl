@@ -566,9 +566,9 @@ alg=:serial
                 @test testctx.header == [:a, :b, :c]
                 @test testctx.schema == [String, String, String]
                 # https://github.com/JuliaData/Parsers.jl/issues/138
-                @test testctx.results[1].cols[1].elements[1] == Parsers.PosLen(8,0) broken=true 
-                @test testctx.results[1].cols[2].elements[1] == Parsers.PosLen(11,0) broken=true 
-                @test testctx.results[1].cols[3].elements[1] == Parsers.PosLen(14,0) broken=true 
+                @test testctx.results[1].cols[1].elements[1] == Parsers.PosLen(8,0) broken=true
+                @test testctx.results[1].cols[2].elements[1] == Parsers.PosLen(11,0) broken=true
+                @test testctx.results[1].cols[3].elements[1] == Parsers.PosLen(14,0) broken=true
                 @test length(testctx.results[1].cols[1]) == 1
                 @test length(testctx.results[1].cols[2]) == 1
                 @test length(testctx.results[1].cols[3]) == 1
@@ -584,9 +584,9 @@ alg=:serial
                 @test testctx.header == [:a, :b, :c]
                 @test testctx.schema == [String, String, String]
                 # https://github.com/JuliaData/Parsers.jl/issues/138
-                @test testctx.results[1].cols[1].elements[1] == Parsers.PosLen(7,0) broken=true 
-                @test testctx.results[1].cols[2].elements[1] == Parsers.PosLen(8,0) broken=true 
-                @test testctx.results[1].cols[3].elements[1] == Parsers.PosLen(9,0) broken=true 
+                @test testctx.results[1].cols[1].elements[1] == Parsers.PosLen(7,0) broken=true
+                @test testctx.results[1].cols[2].elements[1] == Parsers.PosLen(8,0) broken=true
+                @test testctx.results[1].cols[3].elements[1] == Parsers.PosLen(9,0) broken=true
                 @test length(testctx.results[1].cols[1]) == 1
                 @test length(testctx.results[1].cols[2]) == 1
                 @test length(testctx.results[1].cols[3]) == 1
@@ -1009,4 +1009,38 @@ end
         default_colname_prefix="##"
     )
     @test testctx.header == [Symbol("##1"), Symbol("##2")]
+end
+
+@testset "escaped quote outside of quoted field" begin
+    testctx = TestContext()
+    parse_file(IOBuffer("""
+        a|b
+        1|"2\\""
+        3|4
+        """),
+        nothing,
+        testctx,
+        escapechar='\\',
+        delim='|',
+    )
+    @test testctx.header == [:a, :b]
+    @test testctx.results[1].cols[1].elements[1:2] == [Parsers.PosLen(5, 1), Parsers.PosLen(13, 1)]
+    @test testctx.results[1].cols[2].elements[1:2] == [Parsers.PosLen(8, 3, false, true), Parsers.PosLen(15, 1)]
+    @test length(testctx.results[1].cols[1]) == 2
+    @test length(testctx.results[1].cols[2]) == 2
+
+    testctx = TestContext()
+    parse_file(IOBuffer("""
+        a|b
+        1|"2\\"\""""),
+        nothing,
+        testctx,
+        escapechar='\\',
+        delim='|',
+    )
+    @test testctx.header == [:a, :b]
+    @test testctx.results[1].cols[1].elements[1:1] == [Parsers.PosLen(5, 1)]
+    @test testctx.results[1].cols[2].elements[1:1] == [Parsers.PosLen(8, 3, false, true)]
+    @test length(testctx.results[1].cols[1]) == 1
+    @test length(testctx.results[1].cols[2]) == 1
 end

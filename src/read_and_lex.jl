@@ -39,7 +39,7 @@ end
 findmark(ptr, bytes_to_search, ::Val{B}) where B = something(memchr(ptr, bytes_to_search, B), zero(UInt))
 function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, options) where B
     ptr = pointer(parsing_ctx.bytes) # We never resize the buffer, the array shouldn't need to relocate
-    e, q = options.e, options.cq.token
+    (e, oq, cq) = (options.e, options.oq.token, options.cq.token)::Tuple{UInt8,UInt8,UInt8}
     buf = parsing_ctx.bytes
 
     empty!(parsing_ctx.eols)
@@ -73,14 +73,14 @@ function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, 
         else
             byte_to_check = buf[offset]
             if quoted
-                if byte_to_check == e && (offset < buffersize && buf[offset+UInt32(1)] == q)
+                if byte_to_check == e && (offset < buffersize && buf[offset+UInt32(1)] == cq)
                     pos_to_check += UInt(1)
                     offset += UInt32(1)
-                elseif byte_to_check == q
+                elseif byte_to_check == cq
                     quoted = false
                 end
             else
-                if byte_to_check == q
+                if byte_to_check == oq
                     quoted = true
                 elseif byte_to_check == UInt8('\r')
                     if offset < buffersize && buf[offset+UInt32(1)] == UInt8('\n')
@@ -89,7 +89,7 @@ function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, 
                     end
                     push!(eols, offset)
                 elseif byte_to_check == e
-                    if (offset < buffersize && buf[offset+UInt32(1)] == q)
+                    if (offset < buffersize && buf[offset+UInt32(1)] == oq)
                         pos_to_check += UInt(1)
                         offset += UInt32(1)
                     end

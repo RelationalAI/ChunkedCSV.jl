@@ -1044,3 +1044,22 @@ end
     @test length(testctx.results[1].cols[1]) == 1
     @test length(testctx.results[1].cols[2]) == 1
 end
+
+@testset "Opening and closing quotes" begin
+    testctx = TestContext()
+    parse_file(IOBuffer("""
+        a,b
+        1,S2E
+        3,S"ES4"EE
+        """),
+        nothing,
+        testctx,
+        openquotechar='S',
+        closequotechar='E',
+    )
+    @test testctx.header == [:a, :b]
+    @test testctx.results[1].cols[1].elements[1:2] == [Parsers.PosLen(5, 1), Parsers.PosLen(11, 1)]
+    @test testctx.results[1].cols[2].elements[1:2] == [Parsers.PosLen(8, 1), Parsers.PosLen(14, 6, false, true)]
+    @test length(testctx.results[1].cols[1]) == 2
+    @test length(testctx.results[1].cols[2]) == 2
+end

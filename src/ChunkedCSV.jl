@@ -106,7 +106,7 @@ include("parser_serial.jl")
 include("parser_singlebuffer.jl")
 include("parser_doublebuffer.jl")
 
-function _create_options(delim::Char=',', quotechar::Char='"', escapechar::Char='"', sentinel::Union{Missing,String,Vector{String}}=missing, groupmark::Union{Char,UInt8,Nothing}=nothing, stripwhitespace::Bool=false)
+function _create_options(;delim::Char=',', quotechar::Char='"', escapechar::Char='"', sentinel::Union{Missing,String,Vector{String}}=missing, groupmark::Union{Char,UInt8,Nothing}=nothing, stripwhitespace::Bool=false)
     (UInt8(quotechar) == 0xff || UInt8(escapechar) == 0xff) && throw(ArgumentError("`escapechar` and/or `quotechar` must not be a `0xff` byte."))
     return Parsers.Options(
         sentinel=sentinel,
@@ -162,10 +162,10 @@ function setup_parser(
 
     should_close, io = _input_to_io(input, use_mmap)
     settings = ParserSettings(schema, header, UInt(skipto), UInt32(limit), validate_type_map, default_colname_prefix, UInt32(buffersize), UInt8(nworkers), UInt8(maxtasks), UInt8(nresults))
-    options = _create_options(delim, quotechar, escapechar, sentinel, groupmark, stripwhitespace)
-    byteset = Val(ByteSet((UInt8(options.e), UInt8(options.oq), UInt8('\n'), UInt8('\r'))))
+    options = _create_options(;delim, quotechar, escapechar, sentinel, groupmark, stripwhitespace)
+    byteset = Val(ByteSet((UInt8(options.e), UInt8(options.oq.token), UInt8('\n'), UInt8('\r'))))
     (parsing_ctx, lexer_state) = init_parsing!(io, settings, options, Val(byteset))
-    options = _create_options(delim, quotechar, escapechar, sentinel, groupmark, stripwhitespace)
+    options = _create_options(;delim, quotechar, escapechar, sentinel, groupmark, stripwhitespace)
     return should_close, parsing_ctx, lexer_state, options
 end
 
@@ -181,16 +181,17 @@ function parse_file(
     N = length(schema)
     M = _bounding_flag_type(N)
     if _force === :doublebuffer
-        _parse_file_doublebuffer(lexer_state, parsing_ctx, consume_ctx, options, Val(N), Val(M))::Nothing
+        _parse_file_doublebuffer(lexer_state, parsing_ctx, consume_ctx, options, Val(N), Val(M))
     elseif _force === :singlebuffer
-        _parse_file_singlebuffer(lexer_state, parsing_ctx, consume_ctx, options, Val(N), Val(M))::Nothing
+        _parse_file_singlebuffer(lexer_state, parsing_ctx, consume_ctx, options, Val(N), Val(M))
     elseif _force === :serial || Threads.nthreads() == 1 || parsing_ctx.nworkers == 1 || parsing_ctx.maxtasks == 1 || lexer_state.last_newline_at < MIN_TASK_SIZE_IN_BYTES
-              _parse_file_serial(lexer_state, parsing_ctx, consume_ctx, options, Val(N), Val(M))::Nothing
+              _parse_file_serial(lexer_state, parsing_ctx, consume_ctx, options, Val(N), Val(M))
     elseif !lexer_state.done
-        _parse_file_doublebuffer(lexer_state, parsing_ctx, consume_ctx, options, Val(N), Val(M))::Nothing
+        _parse_file_doublebuffer(lexer_state, parsing_ctx, consume_ctx, options, Val(N), Val(M))
     else
-        _parse_file_singlebuffer(lexer_state, parsing_ctx, consume_ctx, options, Val(N), Val(M))::Nothing
+        _parse_file_singlebuffer(lexer_state, parsing_ctx, consume_ctx, options, Val(N), Val(M))
     end
+    return nothing
 end
 
 function parse_file(

@@ -566,9 +566,9 @@ alg=:serial
                 @test testctx.header == [:a, :b, :c]
                 @test testctx.schema == [String, String, String]
                 # https://github.com/JuliaData/Parsers.jl/issues/138
-                @test testctx.results[1].cols[1].elements[1] == Parsers.PosLen(8,0) broken=true
-                @test testctx.results[1].cols[2].elements[1] == Parsers.PosLen(11,0) broken=true
-                @test testctx.results[1].cols[3].elements[1] == Parsers.PosLen(14,0) broken=true
+                @test testctx.results[1].cols[1].elements[1] == Parsers.PosLen(8,0)
+                @test testctx.results[1].cols[2].elements[1] == Parsers.PosLen(11,0)
+                @test testctx.results[1].cols[3].elements[1] == Parsers.PosLen(14,0)
                 @test length(testctx.results[1].cols[1]) == 1
                 @test length(testctx.results[1].cols[2]) == 1
                 @test length(testctx.results[1].cols[3]) == 1
@@ -584,9 +584,9 @@ alg=:serial
                 @test testctx.header == [:a, :b, :c]
                 @test testctx.schema == [String, String, String]
                 # https://github.com/JuliaData/Parsers.jl/issues/138
-                @test testctx.results[1].cols[1].elements[1] == Parsers.PosLen(7,0) broken=true
-                @test testctx.results[1].cols[2].elements[1] == Parsers.PosLen(8,0) broken=true
-                @test testctx.results[1].cols[3].elements[1] == Parsers.PosLen(9,0) broken=true
+                @test testctx.results[1].cols[1].elements[1] == Parsers.PosLen(7,0)
+                @test testctx.results[1].cols[2].elements[1] == Parsers.PosLen(8,0)
+                @test testctx.results[1].cols[3].elements[1] == Parsers.PosLen(9,0)
                 @test length(testctx.results[1].cols[1]) == 1
                 @test length(testctx.results[1].cols[2]) == 1
                 @test length(testctx.results[1].cols[3]) == 1

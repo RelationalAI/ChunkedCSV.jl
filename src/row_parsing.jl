@@ -274,7 +274,7 @@ function _parse_rows_forloop!(result_buf::TaskResultBuffer{N,M}, task::AbstractV
                 # end
                 # break
             end
-            if Parsers.invalid(code)
+            if !Parsers.ok(code)
                 row_status |= RowStatus.ValueParsingError
                 row_status |= RowStatus.HasColumnIndicators
                 column_indicators = setflag(column_indicators, col_idx)

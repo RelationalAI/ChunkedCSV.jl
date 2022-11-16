@@ -153,9 +153,9 @@ function _dec_grp_exp_end(buf, pos, len, b, code, options)
     ngroupmarks = 0
 
     @inbounds while true
-        if b == options.delim
+        if b == options.delim.token
             break
-        elseif options.quoted && b == options.cq
+        elseif Parsers.quoted(code) && b == options.cq.token
             break
         elseif b == UInt8('e') || b == UInt8('E')
             if exp_position != 0 || ngroupmarks > 0
@@ -381,7 +381,7 @@ struct _FixedDecimal{T<:Integer,f} <: Integer
     _FixedDecimal{T, f}(x::FixedDecimal{T, f}) where {T<:Integer, f} = new{T,f}(x)
 end
 
-function Parsers.typeparser(::Type{_FixedDecimal{T,f}}, source::AbstractVector{UInt8}, pos, len, b, code, options) where {T<:Integer,f}
+function Parsers.typeparser(::Type{_FixedDecimal{T,f}}, source::AbstractVector{UInt8}, pos, len, b, code, pl, options) where {T<:Integer,f}
     @inbounds x, code, pos = _typeparser(T, f, source, pos, len, b, code, options, RoundNearest)
-    return _FixedDecimal{T, f}(reinterpret(FixedDecimal{T,f}, x)), code, pos
+    return pos, code, pl, _FixedDecimal{T, f}(reinterpret(FixedDecimal{T,f}, x))
 end

@@ -81,7 +81,7 @@ Base.@propagate_inbounds function _default_tryparse_timestamp(buf, pos, len, cod
     end
     pos == len && (code |= Parsers.EOF)
     second > 60 && (return DateTime(year, month, day, hour, minute), code | Parsers.INVALID, pos)
-    if (pos == len || b == options.delim || b == options.cq)
+    if (pos == len || b == options.delim.token || b == options.cq.token)
         code |= isnothing(Dates.validargs(DateTime, year, month, day, hour, minute, second, 0)) ? Parsers.OK : Parsers.INVALID
         if Parsers.ok(code)
             return DateTime(year, month, day, hour, minute, second), code, pos
@@ -99,7 +99,7 @@ Base.@propagate_inbounds function _default_tryparse_timestamp(buf, pos, len, cod
         end
         # TODO: rounding modes like we do for FixedPointDecimals
         i == 0 || millisecond > 999 && (return DateTime(year, month, day, hour, minute, second), code | Parsers.INVALID, pos)
-        if (pos == len || (b + 0x30) == options.delim || b == options.cq)
+        if (pos == len || (b + 0x30) == options.delim.token || b == options.cq.token)
             pos == len && (code |= Parsers.EOF)
             code |= isnothing(Dates.validargs(DateTime, year, month, day, hour, minute, second, millisecond)) ? Parsers.OK : Parsers.INVALID
             if Parsers.ok(code)
@@ -129,10 +129,11 @@ Base.@propagate_inbounds function _default_tryparse_timestamp(buf, pos, len, cod
 end
 
 
-function Parsers.typeparser(::Type{_GuessDateTime}, source::AbstractVector{UInt8}, pos, len, b, code, options)
+function Parsers.typeparser(::Type{_GuessDateTime}, source::AbstractVector{UInt8}, pos, len, b, code, pl, options)
     if isnothing(options.dateformat)
-        return @inbounds _default_tryparse_timestamp(source, pos, len, code, b, options)
+        (x, code, pos) = @inbounds _default_tryparse_timestamp(source, pos, len, code, b, options)
+        return (pos, code, Parsers.PosLen(pl.pos, pos - pl.pos), x)
     else
-        return Parsers.typeparser(Dates.DateTime, source, pos, len, b, code, options)
+        return Parsers.typeparser(Dates.DateTime, source, pos, len, b, code, pl, options)
     end
 end

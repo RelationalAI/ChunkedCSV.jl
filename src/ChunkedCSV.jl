@@ -106,7 +106,17 @@ include("parser_serial.jl")
 include("parser_singlebuffer.jl")
 include("parser_doublebuffer.jl")
 
-function _create_options(;delim::Char=',', openquotechar::Char='"', closequotechar::Char='"', escapechar::Char='"', sentinel::Union{Missing,String,Vector{String}}=missing, groupmark::Union{Char,UInt8,Nothing}=nothing, stripwhitespace::Bool=false)
+function _create_options(;
+    delim::Char=',',
+    openquotechar::Char='"',
+    closequotechar::Char='"',
+    escapechar::Char='"',
+    sentinel::Union{Missing,String,Vector{String}}=missing,
+    groupmark::Union{Char,UInt8,Nothing}=nothing,
+    stripwhitespace::Bool=false,
+    truestrings::Union{Nothing,Vector{String}}=["true", "True", "1", "t", "T"],
+    falsestrings::Union{Nothing,Vector{String}}=["false", "False", "0", "f", "F"],
+)
     (UInt8(openquotechar) == 0xff || UInt8(closequotechar) == 0xff || UInt8(escapechar) == 0xff) &&
         throw(ArgumentError("`escapechar`, `openquotechar` and `closequotechar` must not be a `0xff` byte."))
     return Parsers.Options(
@@ -120,8 +130,8 @@ function _create_options(;delim::Char=',', openquotechar::Char='"', closequotech
         quoted=true,
         ignoreemptylines=true,
         stripwhitespace=stripwhitespace,
-        trues=["true", "True", "1", "t", "T"],
-        falses=["false", "False", "0", "f", "F"],
+        trues=truestrings,
+        falses=falsestrings,
         groupmark=groupmark,
     )
 end
@@ -144,6 +154,8 @@ function setup_parser(
     groupmark::Union{Char,UInt8,Nothing}=nothing,
     stripwhitespace::Bool=false,
     validate_type_map::Bool=true,
+    truestrings::Union{Nothing,Vector{String}}=["true", "True", "1", "t", "T"],
+    falsestrings::Union{Nothing,Vector{String}}=["false", "False", "0", "f", "F"],
     # In bytes. This absolutely has to be larger than any single row.
     # Much safer if any two consecutive rows are smaller than this threshold.
     buffersize::Integer=UInt32(Threads.nthreads() * 1024 * 1024),
@@ -164,7 +176,10 @@ function setup_parser(
 
     should_close, io = _input_to_io(input, use_mmap)
     settings = ParserSettings(schema, header, UInt(skipto), UInt32(limit), validate_type_map, default_colname_prefix, UInt32(buffersize), UInt8(nworkers), UInt8(maxtasks), UInt8(nresults))
-    options = _create_options(;delim, openquotechar, closequotechar, escapechar, sentinel, groupmark, stripwhitespace)
+    options = _create_options(;
+        delim, openquotechar, closequotechar, escapechar, sentinel, groupmark, stripwhitespace,
+        truestrings, falsestrings,
+    )
     byteset = Val(ByteSet((UInt8(options.e), UInt8(options.oq.token),  UInt8(options.cq.token), UInt8('\n'), UInt8('\r'))))
     (parsing_ctx, lexer_state) = init_parsing!(io, settings, options, Val(byteset))
     return should_close, parsing_ctx, lexer_state, options
@@ -210,6 +225,8 @@ function parse_file(
     groupmark::Union{Char,UInt8,Nothing}=nothing,
     stripwhitespace::Bool=false,
     validate_type_map::Bool=true,
+    truestrings::Union{Nothing,Vector{String}}=["true", "True", "1", "t", "T"],
+    falsestrings::Union{Nothing,Vector{String}}=["false", "False", "0", "f", "F"],
     # In bytes. This absolutely has to be larger than any single row.
     # Much safer if any two consecutive rows are smaller than this threshold.
     buffersize::Integer=UInt32(Threads.nthreads() * 1024 * 1024),
@@ -222,8 +239,9 @@ function parse_file(
 )
     (should_close, parsing_ctx, lexer_state, options) = setup_parser(
         input, schema;
-        header, skipto, delim, openquotechar, closequotechar, limit, escapechar, sentinel, groupmark, stripwhitespace,
-        validate_type_map, default_colname_prefix, buffersize, nworkers, maxtasks, nresults, use_mmap
+        header, skipto, delim, openquotechar, closequotechar, limit, escapechar, sentinel,
+        groupmark, stripwhitespace, truestrings, falsestrings, validate_type_map,
+        default_colname_prefix, buffersize, nworkers, maxtasks, nresults, use_mmap
     )
     parse_file(lexer_state, parsing_ctx, consume_ctx, options, _force)
     should_close && close(lexer_state.io)

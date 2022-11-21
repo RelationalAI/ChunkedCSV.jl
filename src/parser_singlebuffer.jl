@@ -29,7 +29,7 @@ function process_and_consume_task(parsing_queue::Channel{T}, result_buffers::Vec
             task_start, task_end, row_num, task_num = take!(parsing_queue)
             iszero(task_end) && break
             result_buf = result_buffers[task_num]
-            _parse_rows_forloop!(result_buf, @view(parsing_ctx.eols.elements[task_start:task_end]), parsing_ctx.bytes, parsing_ctx.schema, options)
+            _parse_rows_forloop!(result_buf, @view(parsing_ctx.eols.elements[task_start:task_end]), parsing_ctx.bytes, parsing_ctx.schema, options, parsing_ctx.comment)
             consume!(consume_ctx, parsing_ctx, result_buf, row_num, task_start)
             task_done!(consume_ctx, parsing_ctx, result_buf)
         end

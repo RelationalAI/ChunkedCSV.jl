@@ -47,6 +47,7 @@ struct ParsingContext
     nresults::UInt8
     escapechar::UInt8
     cond::TaskCondition
+    comment::Union{Nothing,Vector{UInt8}}
 end
 function estimate_task_size(parsing_ctx::ParsingContext)
     length(parsing_ctx.eols) == 1 && return 1 # empty file
@@ -65,13 +66,14 @@ struct ParserSettings
     nworkers::UInt8
     maxtasks::UInt8
     nresults::UInt8
+    comment::Union{Nothing,Vector{UInt8}}
 end
-function ParserSettings(schema, header::Vector{Symbol}, data_at, limit, validate_type_map, default_colname_prefix, buffersize, nworkers, maxtasks, nresults)
-    ParserSettings(schema, header, UInt(0), UInt(data_at), limit, validate_type_map, default_colname_prefix, buffersize, nworkers, maxtasks, nresults)
+function ParserSettings(schema, header::Vector{Symbol}, data_at, limit, validate_type_map, default_colname_prefix, buffersize, nworkers, maxtasks, nresults, comment)
+    ParserSettings(schema, header, UInt(0), UInt(data_at), limit, validate_type_map, default_colname_prefix, buffersize, nworkers, maxtasks, nresults, comment)
 end
 
-function ParserSettings(schema, header::Integer, data_at, limit, validate_type_map, default_colname_prefix, buffersize, nworkers, maxtasks, nresults)
-    ParserSettings(schema, nothing, UInt(header), UInt(data_at), limit, validate_type_map, default_colname_prefix, buffersize, nworkers, maxtasks, nresults)
+function ParserSettings(schema, header::Integer, data_at, limit, validate_type_map, default_colname_prefix, buffersize, nworkers, maxtasks, nresults, comment)
+    ParserSettings(schema, nothing, UInt(header), UInt(data_at), limit, validate_type_map, default_colname_prefix, buffersize, nworkers, maxtasks, nresults, comment)
 end
 
 function limit_eols!(parsing_ctx::ParsingContext, row_num)
@@ -97,8 +99,8 @@ function validate_schema(types::Vector{DataType})
     return nothing
 end
 
-include("init_parsing.jl")
 include("read_and_lex.jl")
+include("init_parsing.jl")
 include("consume_context.jl")
 
 include("row_parsing.jl")
@@ -156,6 +158,7 @@ function setup_parser(
     validate_type_map::Bool=true,
     truestrings::Union{Nothing,Vector{String}}=["true", "True", "1", "t", "T"],
     falsestrings::Union{Nothing,Vector{String}}=["false", "False", "0", "f", "F"],
+    comment::Union{Nothing,String}=nothing,
     # In bytes. This absolutely has to be larger than any single row.
     # Much safer if any two consecutive rows are smaller than this threshold.
     buffersize::Integer=UInt32(Threads.nthreads() * 1024 * 1024),
@@ -175,7 +178,10 @@ function setup_parser(
     _validate(header, schema, validate_type_map)
 
     should_close, io = _input_to_io(input, use_mmap)
-    settings = ParserSettings(schema, header, UInt(skipto), UInt32(limit), validate_type_map, default_colname_prefix, UInt32(buffersize), UInt8(nworkers), UInt8(maxtasks), UInt8(nresults))
+    settings = ParserSettings(
+        schema, header, UInt(skipto), UInt32(limit), validate_type_map, default_colname_prefix,
+        UInt32(buffersize), UInt8(nworkers), UInt8(maxtasks), UInt8(nresults), isnothing(comment) ? nothing : Vector{UInt8}(comment),
+    )
     options = _create_options(;
         delim, openquotechar, closequotechar, escapechar, sentinel, groupmark, stripwhitespace,
         truestrings, falsestrings,
@@ -227,6 +233,7 @@ function parse_file(
     validate_type_map::Bool=true,
     truestrings::Union{Nothing,Vector{String}}=["true", "True", "1", "t", "T"],
     falsestrings::Union{Nothing,Vector{String}}=["false", "False", "0", "f", "F"],
+    comment::Union{Nothing,String}=nothing,
     # In bytes. This absolutely has to be larger than any single row.
     # Much safer if any two consecutive rows are smaller than this threshold.
     buffersize::Integer=UInt32(Threads.nthreads() * 1024 * 1024),
@@ -240,7 +247,7 @@ function parse_file(
     (should_close, parsing_ctx, lexer_state, options) = setup_parser(
         input, schema;
         header, skipto, delim, openquotechar, closequotechar, limit, escapechar, sentinel,
-        groupmark, stripwhitespace, truestrings, falsestrings, validate_type_map,
+        groupmark, stripwhitespace, truestrings, falsestrings, comment, validate_type_map,
         default_colname_prefix, buffersize, nworkers, maxtasks, nresults, use_mmap
     )
     parse_file(lexer_state, parsing_ctx, consume_ctx, options, _force)

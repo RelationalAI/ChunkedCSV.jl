@@ -25,29 +25,30 @@ _startswith(s, soff, prefix::Nothing) = false
 _startswith(s, prefix::Nothing) = false
 
 function skip_rows_init!(lexer_state, parsing_ctx, options, rows_to_skip, comment)
-    i = 0
     input_is_empty = lexer_state.last_newline_at == UInt(0)
     lines_skipped_total = 0
-    @inbounds while !input_is_empty
-        if i + 1 == length(parsing_ctx.eols)
+    input_is_empty && return lines_skipped_total
+    eol_index = 1
+    @inbounds while true
+        if eol_index == length(parsing_ctx.eols)
             if lexer_state.done
                 break
             else
                 read_and_lex!(lexer_state, parsing_ctx, options)
-                i = 0
+                eol_index = 1
             end
         end
-        if !_startswith(parsing_ctx.bytes, parsing_ctx.eols[i+1], comment)
+        if !_startswith(parsing_ctx.bytes, parsing_ctx.eols[eol_index], comment)
             if rows_to_skip > 0
                 rows_to_skip -= 1
             else
                 break
             end
         end
-        i += 1
+        eol_index += 1
         lines_skipped_total += 1
     end
-    shiftleft!(parsing_ctx.eols, i)
+    shiftleft!(parsing_ctx.eols, eol_index-1)
     return lines_skipped_total
 end
 

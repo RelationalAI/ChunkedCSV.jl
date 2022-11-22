@@ -142,6 +142,12 @@ _validate(header::Vector, schema::Vector, validate_type_map) = length(header) ==
 _validate(header::Vector, schema::Dict, validate_type_map) = !validate_type_map || issubset(keys(schema), header) || throw(ArgumentError("Provided header and schema names don't match. In schema, not in header: $(setdiff(keys(schema), header))). In header, not in schema: $(setdiff(header, keys(schema)))"))
 _validate(header, schema, validate_type_map) = true
 
+_comment_to_bytes(x::String) = Vector{UInt8}(x)
+_comment_to_bytes(x::Char) = _comment_to_bytes(string(x))
+_comment_to_bytes(x::UInt8) = [x]
+_comment_to_bytes(x::Nothing) = nothing
+
+
 function setup_parser(
     input,
     schema::Union{Nothing,Vector{DataType},Dict{Symbol,DataType}}=nothing;
@@ -158,7 +164,7 @@ function setup_parser(
     validate_type_map::Bool=true,
     truestrings::Union{Nothing,Vector{String}}=["true", "True", "1", "t", "T"],
     falsestrings::Union{Nothing,Vector{String}}=["false", "False", "0", "f", "F"],
-    comment::Union{Nothing,String}=nothing,
+    comment::Union{Nothing,String,Char,UInt8}=nothing,
     # In bytes. This absolutely has to be larger than any single row.
     # Much safer if any two consecutive rows are smaller than this threshold.
     buffersize::Integer=UInt32(Threads.nthreads() * 1024 * 1024),
@@ -180,7 +186,7 @@ function setup_parser(
     should_close, io = _input_to_io(input, use_mmap)
     settings = ParserSettings(
         schema, header, UInt(skipto), UInt32(limit), validate_type_map, default_colname_prefix,
-        UInt32(buffersize), UInt8(nworkers), UInt8(maxtasks), UInt8(nresults), isnothing(comment) ? nothing : Vector{UInt8}(comment),
+        UInt32(buffersize), UInt8(nworkers), UInt8(maxtasks), UInt8(nresults), _comment_to_bytes(comment),
     )
     options = _create_options(;
         delim, openquotechar, closequotechar, escapechar, sentinel, groupmark, stripwhitespace,
@@ -233,7 +239,7 @@ function parse_file(
     validate_type_map::Bool=true,
     truestrings::Union{Nothing,Vector{String}}=["true", "True", "1", "t", "T"],
     falsestrings::Union{Nothing,Vector{String}}=["false", "False", "0", "f", "F"],
-    comment::Union{Nothing,String}=nothing,
+    comment::Union{Nothing,String,Char,UInt8}=nothing,
     # In bytes. This absolutely has to be larger than any single row.
     # Much safer if any two consecutive rows are smaller than this threshold.
     buffersize::Integer=UInt32(Threads.nthreads() * 1024 * 1024),

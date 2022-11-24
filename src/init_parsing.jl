@@ -13,6 +13,57 @@ function apply_types_from_mapping!(schema, header, settings, header_provided)
     end
 end
 
+function _startswith(s::AbstractVector{UInt8}, soff::Integer, prefix::AbstractVector{UInt8})
+    length(s) - soff < length(prefix) && return false
+    @inbounds for i in eachindex(prefix)
+        s[i + soff] == prefix[i] || return false
+    end
+    return true
+end
+_startswith(s::AbstractVector{UInt8}, prefix::AbstractVector{UInt8}) = _startswith(s, 0, prefix)
+_startswith(s, soff, prefix::Nothing) = false
+_startswith(s, prefix::Nothing) = false
+
+function skip_rows_init!(lexer_state, parsing_ctx, options, rows_to_skip, comment)
+    input_is_empty = lexer_state.last_newline_at == UInt(0)
+    lines_skipped_total = 0
+    input_is_empty && return lines_skipped_total
+    eol_index = 1
+    @inbounds while true
+        if eol_index == length(parsing_ctx.eols)
+            if lexer_state.done
+                break
+            else
+                read_and_lex!(lexer_state, parsing_ctx, options)
+                eol_index = 1
+            end
+        end
+        if !_startswith(parsing_ctx.bytes, parsing_ctx.eols[eol_index], comment)
+            if rows_to_skip > 0
+                rows_to_skip -= 1
+            else
+                break
+            end
+        else rows_to_skip > 0
+            rows_to_skip -= 1
+        end
+        eol_index += 1
+        lines_skipped_total += 1
+    end
+    shiftleft!(parsing_ctx.eols, eol_index-1)
+    return lines_skipped_total
+end
+
+function skip_rows_init!(lexer_state, parsing_ctx, options, rows_to_skip, comment::Nothing)
+    while !lexer_state.done && rows_to_skip >= length(parsing_ctx.eols) - 1
+        rows_to_skip -= length(parsing_ctx.eols) - 1
+        read_and_lex!(lexer_state, parsing_ctx, options)
+    end
+    shiftleft!(parsing_ctx.eols, rows_to_skip)
+    return rows_to_skip
+end
+
+
 function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Options, byteset::Val{B}) where {B}
     header_provided = !isnothing(settings.header)
     schema_is_dict = isa(settings.schema, Dict)
@@ -32,20 +83,16 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
         settings.nresults,
         options.e,
         TaskCondition(),
+        settings.comment,
     )
     lexer_state = LexerState{byteset}(io)
     # read and lex the entire buffer for the first time
     read_and_lex!(lexer_state, parsing_ctx, options)
     input_is_empty = lexer_state.last_newline_at == UInt(0)
 
-    init_skiprows = skiprows = (should_parse_header ? Int(settings.header_at) : Int(settings.data_at)) - 1
-    while !lexer_state.done && skiprows >= length(parsing_ctx.eols) - 1
-        skiprows -= length(parsing_ctx.eols) - 1
-        read_and_lex!(lexer_state, parsing_ctx, options)
-        # TODO: Special path for the case where we skipped the entire file
-        # done && (return (parsing_ctx, last_newline_at, quoted, done))
-    end
-    shiftleft!(parsing_ctx.eols, skiprows)
+    # First skip over commented lines, then jump to header / data row
+    pre_header_skiprows = (should_parse_header ? Int(settings.header_at) : Int(settings.data_at)) - 1
+    lines_skipped_total = skip_rows_init!(lexer_state, parsing_ctx, options, pre_header_skiprows, parsing_ctx.comment)
 
     @inbounds if schema_provided & header_provided
         append!(parsing_ctx.header, settings.header)
@@ -73,7 +120,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
                     push!(parsing_ctx.header, Symbol(string(settings.default_colname_prefix, i)))
                 elseif !Parsers.ok(code)
                     close(io);
-                    throw(HeaderParsingError("Error parsing header for column $i at $(init_skiprows+1):$(pos) (row:col)."))
+                    throw(HeaderParsingError("Error parsing header for column $i at $(lines_skipped_total+1):$(pos) (row:col)."))
                 else
                     push!(parsing_ctx.header, Symbol(strip(String(v[val.pos:val.pos+val.len-1]))))
                 end
@@ -92,7 +139,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
         i = 1
         while !(Parsers.eof(code) || Parsers.newline(code))
             (;val, tlen, code) = Parsers.xparse(String, v, pos, length(v), options)
-            !Parsers.ok(code) && (close(io); throw(HeaderParsingError("Error parsing header for column $i at $(init_skiprows+1):$(pos) (row:col).")))
+            !Parsers.ok(code) && (close(io); throw(HeaderParsingError("Error parsing header for column $i at $(lines_skipped_total+1):$(pos) (row:col).")))
             pos += tlen
             push!(parsing_ctx.header, Symbol(string(settings.default_colname_prefix, i)))
             i += 1
@@ -115,7 +162,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
                 push!(parsing_ctx.header, Symbol(string(settings.default_colname_prefix, i)))
             elseif !Parsers.ok(code)
                 close(io)
-                throw(HeaderParsingError("Error parsing header for column $i at $(init_skiprows+1):$(pos) (row:col)."))
+                throw(HeaderParsingError("Error parsing header for column $i at $(lines_skipped_total+1):$(pos) (row:col)."))
             else
                 @inbounds push!(parsing_ctx.header, Symbol(strip(String(v[val.pos:val.pos+val.len-1]))))
             end
@@ -135,14 +182,9 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
        read_and_lex!(lexer_state, parsing_ctx, options)
     end
 
-    skiprows = should_parse_header ? Int(settings.data_at) - Int(settings.header_at) - 1 : 0
-    while !lexer_state.done && skiprows >= length(parsing_ctx.eols) - 1
-        skiprows -= length(parsing_ctx.eols) - 1
-        read_and_lex!(lexer_state, parsing_ctx, options)
-        # TODO: Special path for the case where we skipped the entire file
-        # done && (return (parsing_ctx, last_newline_at, quoted, done))
-    end
-    shiftleft!(parsing_ctx.eols, skiprows)
+    # Skip over commented lines, then jump to data row if needed
+    post_header_skiprows = should_parse_header ? Int(settings.data_at) - Int(settings.header_at) - 1 : 0
+    skip_rows_init!(lexer_state, parsing_ctx, options, post_header_skiprows, parsing_ctx.comment)
 
     return (parsing_ctx, lexer_state)
 end

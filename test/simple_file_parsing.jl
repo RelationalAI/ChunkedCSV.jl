@@ -1,6 +1,6 @@
 using Test
 using ChunkedCSV
-using ChunkedCSV: TaskResultBuffer, ParsingContext
+using ChunkedCSV: TaskResultBuffer, ParsingContext, RowStatus
 import Parsers
 using Dates
 using FixedPointDecimals
@@ -271,7 +271,7 @@ alg=:serial
                 @test length(testctx.results[3].cols[1]) == 1
                 @test length(testctx.results[3].cols[2]) == 1
             end
-            @testset "$alg string" begin
+            @testset "$alg int" begin
                 testctx = TestContext()
                 parse_file(IOBuffer("""
                     xxx
@@ -306,7 +306,7 @@ alg=:serial
                 @test length(testctx.results[3].cols[1]) == 1
                 @test length(testctx.results[3].cols[2]) == 1
             end
-            @testset "$alg string" begin
+            @testset "$alg float" begin
                 testctx = TestContext()
                 parse_file(IOBuffer("""
                     xxxxxx
@@ -340,6 +340,289 @@ alg=:serial
                 @test length(testctx.results[2].cols[2]) == 1
                 @test length(testctx.results[3].cols[1]) == 1
                 @test length(testctx.results[3].cols[2]) == 1
+            end
+        end
+
+        @testset "Comments" begin
+            for alg in (:serial, :singlebuffer, :doublebuffer)
+                @testset "$alg only comments, single chunk" begin
+                    testctx = TestContext()
+                    parse_file(IOBuffer("""
+                        #xx
+                        #xx
+                        a,b
+                        #xx
+                        1,2
+                        #3,4
+                        5,6
+                        #7,8
+                        """),
+                        [Int, Int],
+                        testctx,
+                        comment="#",
+                        _force=alg
+                    )
+                    @test testctx.header == [:a, :b]
+                    @test testctx.schema == [Int, Int]
+                    @test testctx.results[1].cols[1][[1, 3]] == [1, 5]
+                    @test testctx.results[1].cols[2][[1, 3]] == [2, 6]
+
+                    @test length(testctx.results) == 1
+                    @test testctx.results[1].row_statuses == [RowStatus.Ok, RowStatus.SkippedRow, RowStatus.Ok, RowStatus.SkippedRow]
+                    @test length(testctx.results[1].cols[1]) == 4
+                    @test length(testctx.results[1].cols[2]) == 4
+                end
+            end
+
+            for alg in (:serial, :singlebuffer, :doublebuffer)
+                @testset "$alg only comments, multiple chunks" begin
+                    testctx = TestContext()
+                    parse_file(IOBuffer("""
+                        #xx
+                        #xx
+                        a,b
+                        #xx
+                        1,2
+                        #3,4
+                        5,6
+                        #7,8
+                        """),
+                        [Int, Int],
+                        testctx,
+                        comment="#",
+                        _force=alg,
+                        buffersize=5,
+                    )
+                    @test testctx.header == [:a, :b]
+                    @test testctx.schema == [Int, Int]
+                    @test testctx.results[1].cols[1] == [1]
+                    @test testctx.results[1].cols[2] == [2]
+                    @test testctx.results[3].cols[1] == [5]
+                    @test testctx.results[3].cols[2] == [6]
+
+                    @test length(testctx.results) == 4
+                    @test testctx.results[1].row_statuses == [RowStatus.Ok]
+                    @test testctx.results[2].row_statuses == [RowStatus.SkippedRow]
+                    @test testctx.results[3].row_statuses == [RowStatus.Ok]
+                    @test testctx.results[4].row_statuses == [RowStatus.SkippedRow]
+                    @test length(testctx.results[2].cols[1]) == 1
+                    @test length(testctx.results[2].cols[2]) == 1
+                    @test length(testctx.results[4].cols[1]) == 1
+                    @test length(testctx.results[4].cols[2]) == 1
+                end
+            end
+
+            for alg in (:serial, :singlebuffer, :doublebuffer)
+                @testset "$alg comments and header row, single chunk" begin
+                    testctx = TestContext()
+                    parse_file(IOBuffer("""
+                        #xx
+                        #xx
+                        xxx
+                        #xx
+                        a,b
+                        #xx
+                        1,2
+                        #3,4
+                        5,6
+                        #7,8
+                        """),
+                        [Int, Int],
+                        testctx,
+                        comment="#",
+                        _force=alg,
+                        header=5,
+                    )
+                    @test testctx.header == [:a, :b]
+                    @test testctx.schema == [Int, Int]
+                    @test testctx.results[1].cols[1][[1, 3]] == [1, 5]
+                    @test testctx.results[1].cols[2][[1, 3]] == [2, 6]
+
+                    @test length(testctx.results) == 1
+                    @test testctx.results[1].row_statuses == [RowStatus.Ok, RowStatus.SkippedRow, RowStatus.Ok, RowStatus.SkippedRow]
+                    @test length(testctx.results[1].cols[1]) == 4
+                    @test length(testctx.results[1].cols[2]) == 4
+                end
+            end
+
+            for alg in (:serial, :singlebuffer, :doublebuffer)
+                @testset "$alg comments and header row, multiple chunks" begin
+                    testctx = TestContext()
+                    parse_file(IOBuffer("""
+                        #xx
+                        #xx
+                        xxx
+                        #xx
+                        a,b
+                        #xx
+                        1,2
+                        #3,4
+                        5,6
+                        #7,8
+                        """),
+                        [Int, Int],
+                        testctx,
+                        comment="#",
+                        _force=alg,
+                        buffersize=5,
+                        header=5,
+                    )
+                    @test testctx.header == [:a, :b]
+                    @test testctx.schema == [Int, Int]
+                    @test testctx.results[1].cols[1] == [1]
+                    @test testctx.results[1].cols[2] == [2]
+                    @test testctx.results[3].cols[1] == [5]
+                    @test testctx.results[3].cols[2] == [6]
+
+                    @test length(testctx.results) == 4
+                    @test testctx.results[1].row_statuses == [RowStatus.Ok]
+                    @test testctx.results[2].row_statuses == [RowStatus.SkippedRow]
+                    @test testctx.results[3].row_statuses == [RowStatus.Ok]
+                    @test testctx.results[4].row_statuses == [RowStatus.SkippedRow]
+                    @test length(testctx.results[2].cols[1]) == 1
+                    @test length(testctx.results[2].cols[2]) == 1
+                    @test length(testctx.results[4].cols[1]) == 1
+                    @test length(testctx.results[4].cols[2]) == 1
+                end
+            end
+
+            for alg in (:serial, :singlebuffer, :doublebuffer)
+                @testset "$alg comments, header row and data row, single chunk" begin
+                    testctx = TestContext()
+                    parse_file(IOBuffer("""
+                        #xx
+                        #xx
+                        xxx
+                        #xx
+                        a,b
+                        #xx
+                        xxx
+                        #xx
+                        1,2
+                        #3,4
+                        5,6
+                        #7,8
+                        """),
+                        [Int, Int],
+                        testctx,
+                        comment="#",
+                        _force=alg,
+                        header=5,
+                        skipto=9,
+                    )
+                    @test testctx.header == [:a, :b]
+                    @test testctx.schema == [Int, Int]
+                    @test testctx.results[1].cols[1][[1, 3]] == [1, 5]
+                    @test testctx.results[1].cols[2][[1, 3]] == [2, 6]
+
+                    @test length(testctx.results) == 1
+                    @test testctx.results[1].row_statuses == [RowStatus.Ok, RowStatus.SkippedRow, RowStatus.Ok, RowStatus.SkippedRow]
+                    @test length(testctx.results[1].cols[1]) == 4
+                    @test length(testctx.results[1].cols[2]) == 4
+                end
+            end
+
+            for alg in (:serial, :singlebuffer, :doublebuffer)
+                @testset "$alg comments, header row and data row, multiple chunks" begin
+                    testctx = TestContext()
+                    parse_file(IOBuffer("""
+                        #xx
+                        #xx
+                        xxx
+                        a,b
+                        #xx
+                        xxx
+                        #xx
+                        1,2
+                        #3,4
+                        5,6
+                        #7,8
+                        """),
+                        [Int, Int],
+                        testctx,
+                        comment="#",
+                        _force=alg,
+                        buffersize=5,
+                        header=4,
+                        skipto=8,
+                    )
+                    @test testctx.header == [:a, :b]
+                    @test testctx.schema == [Int, Int]
+                    @test testctx.results[1].cols[1] == [1]
+                    @test testctx.results[1].cols[2] == [2]
+                    @test testctx.results[3].cols[1] == [5]
+                    @test testctx.results[3].cols[2] == [6]
+
+                    @test length(testctx.results) == 4
+                    @test testctx.results[1].row_statuses == [RowStatus.Ok]
+                    @test testctx.results[2].row_statuses == [RowStatus.SkippedRow]
+                    @test testctx.results[3].row_statuses == [RowStatus.Ok]
+                    @test testctx.results[4].row_statuses == [RowStatus.SkippedRow]
+                    @test length(testctx.results[2].cols[1]) == 1
+                    @test length(testctx.results[2].cols[2]) == 1
+                    @test length(testctx.results[4].cols[1]) == 1
+                    @test length(testctx.results[4].cols[2]) == 1
+                end
+            end
+
+            for alg in (:serial, :singlebuffer, :doublebuffer)
+                @testset "$alg file with header and comments only" begin
+                    testctx = TestContext()
+                    parse_file(IOBuffer("""
+                        #xx
+                        #xx
+                        xxx
+                        #xx
+                        a,b
+                        #xx
+                        xxx
+                        #xx
+                        #1,2
+                        #3,4
+                        #5,6
+                        #7,8
+                        """),
+                        [Int, Int],
+                        testctx,
+                        comment="#",
+                        _force=alg,
+                        header=5,
+                        skipto=8,
+                        buffersize=5,
+                    )
+                    @test testctx.header == [:a, :b]
+                    @test testctx.schema == [Int, Int]
+                    @test length(testctx.results) == 1
+                    @test all(isempty, testctx.results[1].cols)
+                end
+            end
+
+            for alg in (:serial, :singlebuffer, :doublebuffer)
+                @testset "$alg file with comments only" begin
+                    testctx = TestContext()
+                    parse_file(IOBuffer("""
+                        #xx
+                        #xx
+                        #xx
+                        #xx
+                        #xx
+                        #1,2
+                        #3,4
+                        #5,6
+                        #7,8
+                        """),
+                        [Int, Int],
+                        testctx,
+                        comment="#",
+                        _force=alg,
+                        header=false,
+                        buffersize=5,
+                    )
+                    @test testctx.header == [:COL_1, :COL_2]
+                    @test testctx.schema == [Int, Int]
+                    @test length(testctx.results) == 1
+                    @test all(isempty, testctx.results[1].cols)
+                end
             end
         end
     end

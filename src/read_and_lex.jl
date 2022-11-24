@@ -37,7 +37,7 @@ end
 # Assumption: we can find all valid endlines only by observing quotes (currently hardcoded to double quote)
 #             and newline characters.
 findmark(ptr, bytes_to_search, ::Val{B}) where B = something(memchr(ptr, bytes_to_search, B), zero(UInt))
-function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, options) where B
+function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, options::Parsers.Options) where B
     ptr = pointer(parsing_ctx.bytes) # We never resize the buffer, the array shouldn't need to relocate
     (e, oq, cq) = (options.e, options.oq.token, options.cq.token)::Tuple{UInt8,UInt8,UInt8}
     buf = parsing_ctx.bytes

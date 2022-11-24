@@ -61,11 +61,9 @@ function consume!(consume_ctx::DebugContext, parsing_ctx::ParsingContext, task_b
     @inbounds for i in 1:length(task_buf.row_statuses)
         s = task_buf.row_statuses[i]
         status_counts[1] += s <= 0x01
-        status_counts[2] += 0x01 & s > 0
-        status_counts[3] += 0x02 & s > 0
-        status_counts[4] += 0x04 & s > 0
-        status_counts[5] += 0x08 & s > 0
-        status_counts[6] += 0x10 & s > 0
+        for (j, f) in enumerate(RowStatus.Flags[2:end])
+            status_counts[j + 1] += f & s > 0
+        end
     end
     write(io, string("Start row: ", row_num, ", nrows: ", length(task_buf.cols[1]), ", $(Base.current_task()) "))
     printstyled(IOContext(io, :color => true), "❚", color=Int(hash(Base.current_task()) % UInt8))
@@ -87,12 +85,13 @@ function consume!(consume_ctx::DebugContext, parsing_ctx::ParsingContext, task_b
                     if task_buf.row_statuses[j] == RowStatus.Ok
                         write(io, debug(col, j, parsing_ctx, consume_ctx))
                         n != 1 && print(io, ", ")
+                        n -= 1
                     elseif task_buf.row_statuses[j] == RowStatus.HasColumnIndicators
                         write(io, isflagset(task_buf.column_indicators[c], k) ? "?" : debug(col, j, parsing_ctx, consume_ctx))
                         n != 1 && print(io, ", ")
                         c += 1
+                        n -= 1
                     end
-                    n -= 1
                     n == 0 && break
                 end
                 print(io, "]\n")

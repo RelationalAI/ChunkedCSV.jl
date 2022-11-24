@@ -10,10 +10,11 @@ module RowStatus
     const TooManyColumns      = 0x04 # We have a valid record according to schema, but we didn't parse some fields due to missing schema info
     const ValueParsingError   = 0x08 # We couldn't parse some fields because we don't know how to parse that particular instance of that type
     const UnknownTypeError    = 0x10 # We couldn't parse some fields because we don't know how to parse any instance of that type
+    const SkippedRow          = 0x20 # The row contains no valid values
 
-    const Marks = ('✓', '?', '<', '>', '!', 'T')
-    const Names = ("Ok", "HasColumnIndicators", "TooFewColumns", "TooManyColumns", "ValueParsingError", "UnknownTypeError")
-    const Flags = (0x00, 0x01, 0x02, 0x04, 0x08, 0x10)
+    const Marks = ('✓', '?', '<', '>', '!', 'T', '#')
+    const Names = ("Ok", "HasColumnIndicators", "TooFewColumns", "TooManyColumns", "ValueParsingError", "UnknownTypeError", "SkippedRow")
+    const Flags = (0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20)
 end
 
 
@@ -74,6 +75,9 @@ end
 
 initflag(::Type{T}) where {T<:Unsigned} = zero(T)
 initflag(::Type{NTuple{N,T}}) where {N,T<:Unsigned} = ntuple(_->zero(T), N)
+
+initflagset(::Type{T}) where {T<:Unsigned} = ~zero(T)
+initflagset(::Type{NTuple{N,T}}) where {N,T<:Unsigned} = ntuple(_->~zero(T), N)
 
 function isflagset(x::NTuple{N,T}, n) where {T,N}
     d, r = fldmod1(n, 8sizeof(T))

@@ -73,7 +73,7 @@ function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, 
         else
             byte_to_check = buf[offset]
             if quoted
-                if byte_to_check == e && (offset < buffersize && buf[offset+UInt32(1)] == cq)
+                if byte_to_check == e && (offset < buffersize && (buf[offset+UInt32(1)] in (e, cq)))
                     pos_to_check += UInt(1)
                     offset += UInt32(1)
                 elseif byte_to_check == cq
@@ -89,7 +89,7 @@ function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, 
                     end
                     push!(eols, offset)
                 elseif byte_to_check == e
-                    if (offset < buffersize && buf[offset+UInt32(1)] == oq)
+                    if (offset < buffersize && (buf[offset+UInt32(1)] in (e, oq)))
                         pos_to_check += UInt(1)
                         offset += UInt32(1)
                     end

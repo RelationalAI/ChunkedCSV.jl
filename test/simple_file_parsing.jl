@@ -1346,3 +1346,25 @@ end
     @test length(testctx.results[1].cols[1]) == 2
     @test length(testctx.results[1].cols[2]) == 2
 end
+
+@testset "Two escape characters before closing quote" begin
+    for alg in [:serial, :singlebuffer, :doublebuffer]
+        @testset "$alg" begin
+            testctx = TestContext()
+            parse_file(IOBuffer("""
+                a,b
+                "a","b\\\\"
+                """),
+                nothing,
+                testctx,
+                _force=alg,
+                escapechar='\\'
+            )
+            @test testctx.header == [:a, :b]
+            @test testctx.results[1].cols[1].elements[1:1] == [Parsers.PosLen(6, 1)]
+            @test testctx.results[1].cols[2].elements[1:1] == [Parsers.PosLen(10, 3, false, true)]
+            @test length(testctx.results[1].cols[1]) == 1
+            @test length(testctx.results[1].cols[2]) == 1
+        end
+    end
+end

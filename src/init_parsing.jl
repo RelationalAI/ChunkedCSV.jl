@@ -44,6 +44,8 @@ function skip_rows_init!(lexer_state, parsing_ctx, options, rows_to_skip, commen
             else
                 break
             end
+        else rows_to_skip > 0
+            rows_to_skip -= 1
         end
         eol_index += 1
         lines_skipped_total += 1

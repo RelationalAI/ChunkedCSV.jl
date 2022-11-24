@@ -431,7 +431,7 @@ alg=:serial
                         testctx,
                         comment="#",
                         _force=alg,
-                        header=2,
+                        header=5,
                     )
                     @test testctx.header == [:a, :b]
                     @test testctx.schema == [Int, Int]
@@ -465,7 +465,7 @@ alg=:serial
                         comment="#",
                         _force=alg,
                         buffersize=5,
-                        header=2,
+                        header=5,
                     )
                     @test testctx.header == [:a, :b]
                     @test testctx.schema == [Int, Int]
@@ -507,8 +507,8 @@ alg=:serial
                         testctx,
                         comment="#",
                         _force=alg,
-                        header=2,
-                        skipto=4,
+                        header=5,
+                        skipto=9,
                     )
                     @test testctx.header == [:a, :b]
                     @test testctx.schema == [Int, Int]
@@ -543,8 +543,8 @@ alg=:serial
                         comment="#",
                         _force=alg,
                         buffersize=5,
-                        header=2,
-                        skipto=4,
+                        header=4,
+                        skipto=8,
                     )
                     @test testctx.header == [:a, :b]
                     @test testctx.schema == [Int, Int]
@@ -586,8 +586,8 @@ alg=:serial
                         testctx,
                         comment="#",
                         _force=alg,
-                        header=2,
-                        skipto=4,
+                        header=5,
+                        skipto=8,
                         buffersize=5,
                     )
                     @test testctx.header == [:a, :b]

@@ -142,8 +142,8 @@ _validate(header::Vector, schema::Vector, validate_type_map) = length(header) ==
 _validate(header::Vector, schema::Dict, validate_type_map) = !validate_type_map || issubset(keys(schema), header) || throw(ArgumentError("Provided header and schema names don't match. In schema, not in header: $(setdiff(keys(schema), header))). In header, not in schema: $(setdiff(header, keys(schema)))"))
 _validate(header, schema, validate_type_map) = true
 
-_comment_to_bytes(x::String) = Vector{UInt8}(x)
-_comment_to_bytes(x::Char) = _comment_to_bytes(string(x))
+_comment_to_bytes(x::AbstractString) = Vector{UInt8}(x)
+_comment_to_bytes(x::Char) = _comment_to_bytes(ncodeunits(x) > 1 ? string(x) : UInt8(x))
 _comment_to_bytes(x::UInt8) = [x]
 _comment_to_bytes(x::Nothing) = nothing
 
@@ -164,7 +164,7 @@ function setup_parser(
     validate_type_map::Bool=true,
     truestrings::Union{Nothing,Vector{String}}=["true", "True", "1", "t", "T"],
     falsestrings::Union{Nothing,Vector{String}}=["false", "False", "0", "f", "F"],
-    comment::Union{Nothing,String,Char,UInt8}=nothing,
+    comment::Union{Nothing,AbstractString,Char,UInt8}=nothing,
     # In bytes. This absolutely has to be larger than any single row.
     # Much safer if any two consecutive rows are smaller than this threshold.
     buffersize::Integer=UInt32(Threads.nthreads() * 1024 * 1024),
@@ -175,9 +175,11 @@ function setup_parser(
     use_mmap::Bool=false,
 )
     0 < buffersize < typemax(UInt32) || throw(ArgumentError("`buffersize` argument must be larger than 0 and smaller than 4_294_967_295 bytes."))
+    0 < nworkers < 256 || throw(ArgumentError("`nworkers` argument must be larger than 0 and smaller than 256."))
+    0 < nresults < 256 || throw(ArgumentError("`nresults` argument must be larger than 0 and smaller than 256."))
+    0 < maxtasks < 256 || throw(ArgumentError("`maxtasks` argument must be larger than 0 and smaller than 256."))
     skipto >= 0 || throw(ArgumentError("`skipto` argument must be larger than 0."))
     limit >= 0 || throw(ArgumentError("`limit` argument must be larger than 0."))
-    nworkers > 0 || throw(ArgumentError("`nworkers` argument must be larger than 0."))
     maxtasks >= nworkers || throw(ArgumentError("`maxtasks` argument must be larger of equal to the `nworkers` argument."))
     # otherwise not implemented; implementation postponed once we know why take!/wait allocates
     nresults == maxtasks || throw(ArgumentError("Currently, `nresults` argument must be equal to the `maxtasks` argument."))

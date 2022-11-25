@@ -28,6 +28,8 @@ function skip_rows_init!(lexer_state, parsing_ctx, options, rows_to_skip, commen
     input_is_empty = lexer_state.last_newline_at == UInt(0)
     lines_skipped_total = 0
     input_is_empty && return lines_skipped_total
+    # To know where in the end-of-line buffer we are while deciding whether we can skip or
+    # if we need to refill the buffer because we skipped everything in it.
     eol_index = 1
     @inbounds while true
         if eol_index == length(parsing_ctx.eols)

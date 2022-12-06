@@ -18,7 +18,7 @@ function prepare_buffer!(io::IO, buf::Vector{UInt8}, last_newline_at)
     if last_newline_at == 0 # this is the first time we saw the buffer, we'll just fill it up
         bytes_read_in = readbytesall!(io, buf, buffersize)
         if bytes_read_in > 2 && hasBOM(buf)
-            bytes_read_in -= prepare_buffer!(io, buf, UInt32(3)) - UInt32(3)
+            bytes_read_in -= (prepare_buffer!(io, buf, UInt32(3)) + UInt32(3))
         end
     elseif last_newline_at < buffersize
         # We'll keep the bytes that are past the last newline, shifting them to the left

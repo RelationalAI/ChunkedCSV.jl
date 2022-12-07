@@ -114,10 +114,12 @@ alg=:serial
                     2000-01-01 10:20:30,1969-07-20 00:00:00.000UTC
                     2000-01-01T10:20:30+0000,1969-07-20 00:00:00.000+0000
                     2000-01-01T10:20:30UTC,1969-07-19 17:00:00.000-0700
-                    2000-01-01 10:20:30+0000,1969-07-19 17:00:00.000America/Los_Angeles
+                    2000-01-01 10:20:30+00:00,1969-07-19 17:00:00.000America/Los_Angeles
                     2000-01-01 10:20:30UTC,1969-07-20 09:00:00.000+0900
                     2000-01-01 02:20:30-0800,1969-07-20 09:00:00.000 Asia/Tokyo
                     2000-01-01 10:20:30GMT,1969-07-20 00:00:00.000Z
+                    2000-01-01 10:20:30+00,1969-07-20 00:00:00.00-0000
+                    2000-01-01 10:20:30-00,1969-07-20 00:00:00.00-00:00
                     """),
                     [DateTime,DateTime],
                     testctx,
@@ -125,10 +127,10 @@ alg=:serial
                 )
                 @test testctx.header == [:a, :b]
                 @test testctx.schema == [DateTime, DateTime]
-                @test testctx.results[1].cols[1][1:12] == fill(DateTime(2000,1,1,10,20,30), 12)
-                @test testctx.results[1].cols[2][1:12] == fill(DateTime(1969,7,20,00,00,00), 12)
-                @test length(testctx.results[1].cols[1]) == 12
-                @test length(testctx.results[1].cols[2]) == 12
+                @test testctx.results[1].cols[1][1:14] == fill(DateTime(2000,1,1,10,20,30), 14)
+                @test testctx.results[1].cols[2][1:14] == fill(DateTime(1969,7,20,00,00,00), 14)
+                @test length(testctx.results[1].cols[1]) == 14
+                @test length(testctx.results[1].cols[2]) == 14
             end
 
             @testset "$alg string" begin

@@ -128,8 +128,8 @@ Base.@propagate_inbounds function _default_tryparse_timestamp(buf, pos, len, cod
             return (_unsafe_datetime(year, month, day, hour, minute, second, millisecond), code, pos)
         else
             dt = _unsafe_datetime(year, month, day, hour, minute, second, millisecond)
-            ztd = TimeZones.ZonedDateTime(dt, tz)
-            return (_unsafe_datetime(ztd, TimeZones.UTC), code, pos)
+            ztd = TimeZones.ZonedDateTime(dt, TimeZones.TimeZone(tz))
+            return (DateTime(ztd, TimeZones.UTC), code, pos)
         end
     else
         return (_unsafe_datetime(0), code | Parsers.INVALID, pos)
@@ -161,13 +161,13 @@ const _Z = SubString("Z", 1:1)
 
     @inbounds if b == UInt8('G')
         if nb > 1 && buf[pos+1] == UInt8('M') && buf[pos+2] == UInt8('T')
-            return (_Z, pos+3+(nb>2), UInt8('T'), code) # GMT
+            return (_Z, pos+2+(nb>2), UInt8('T'), code) # GMT
         end
     elseif b == UInt8('z') || b == UInt8('Z')
         return (_Z, pos+(nb>1), b, code)                # [Zz]
     elseif b == UInt8('U')
         if nb > 1 && buf[pos+1] == UInt8('T') && buf[pos+2] == UInt8('C')
-            return (_Z, pos+3+(nb>2), UInt8('T'), code) # UTC
+            return (_Z, pos+2+(nb>2), UInt8('T'), code) # UTC
         end
     end
     return Parsers.tryparsenext(Dates.DatePart{'Z'}(3, false), buf, pos, len, b, code)

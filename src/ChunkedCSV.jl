@@ -169,7 +169,7 @@ function setup_parser(
     # Much safer if any two consecutive rows are smaller than this threshold.
     buffersize::Integer=UInt32(Threads.nthreads() * 1024 * 1024),
     nworkers::Integer=Threads.nthreads(),
-    maxtasks::Integer=2Threads.nthreads(),
+    maxtasks::Integer=2nworkers,
     nresults::Integer=maxtasks,
     default_colname_prefix::String="COL_",
     use_mmap::Bool=false,
@@ -246,7 +246,7 @@ function parse_file(
     # Much safer if any two consecutive rows are smaller than this threshold.
     buffersize::Integer=UInt32(Threads.nthreads() * 1024 * 1024),
     nworkers::Integer=Threads.nthreads(),
-    maxtasks::Integer=2Threads.nthreads(),
+    maxtasks::Integer=2nworkers,
     nresults::Integer=maxtasks,
     _force::Symbol=:none,
     default_colname_prefix::String="COL_",

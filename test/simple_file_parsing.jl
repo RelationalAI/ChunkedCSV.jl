@@ -29,20 +29,22 @@ alg=:serial
             @testset "$alg int" begin
                 testctx = TestContext()
                 parse_file(IOBuffer("""
-                    a,b
-                    1,2
-                    3,4
+                    a,b,c
+                    1,2,3
+                    3,4,4
                     """),
-                    [Int,Int],
+                    [Int,Int,Int],
                     testctx,
                     _force=alg,
                 )
-                @test testctx.header == [:a, :b]
-                @test testctx.schema == [Int, Int]
+                @test testctx.header == [:a, :b, :c]
+                @test testctx.schema == [Int, Int, Int]
                 @test testctx.results[1].cols[1].elements[1:2] == [1,3]
                 @test testctx.results[1].cols[2].elements[1:2] == [2,4]
+                @test testctx.results[1].cols[3].elements[1:2] == [3,4]
                 @test length(testctx.results[1].cols[1]) == 2
                 @test length(testctx.results[1].cols[2]) == 2
+                @test length(testctx.results[1].cols[3]) == 2
             end
 
             @testset "$alg float" begin
@@ -67,20 +69,22 @@ alg=:serial
             @testset "$alg decimal" begin
                 testctx = TestContext()
                 parse_file(IOBuffer("""
-                    a,b
-                    1.0,-2e-2
-                    2,3.3e-1
+                    a,b,c
+                    1.0,-2e-2,1.000924
+                    2,3.3e-1,1.00345
                     """),
-                    [FixedDecimal{Int32,2},FixedDecimal{Int64,3}],
+                    [FixedDecimal{Int32,2},FixedDecimal{Int64,3},FixedDecimal{UInt128,2}],
                     testctx,
                     _force=alg,
                 )
-                @test testctx.header == [:a, :b]
-                @test testctx.schema == [FixedDecimal{Int32,2},FixedDecimal{Int64,3}]
+                @test testctx.header == [:a, :b, :c]
+                @test testctx.schema == [FixedDecimal{Int32,2},FixedDecimal{Int64,3}, FixedDecimal{UInt128,2}]
                 @test testctx.results[1].cols[1].elements[1:2] == [FixedDecimal{Int32,2}(1.0), FixedDecimal{Int32,2}(2)]
-                @test testctx.results[1].cols[2].elements[1:2] == [FixedDecimal{Int32,2}(-2e-2), FixedDecimal{Int32,2}(3.3e-1)]
+                @test testctx.results[1].cols[2].elements[1:2] == [FixedDecimal{Int64,2}(-2e-2), FixedDecimal{Int64,2}(3.3e-1)]
+                @test testctx.results[1].cols[3].elements[1:2] == [FixedDecimal{UInt128,2}(1.0), FixedDecimal{UInt128,2}(1.0)]
                 @test length(testctx.results[1].cols[1]) == 2
                 @test length(testctx.results[1].cols[2]) == 2
+                @test length(testctx.results[1].cols[3]) == 2
             end
 
             @testset "$alg date" begin
@@ -105,32 +109,34 @@ alg=:serial
             @testset "$alg datetime" begin
                 testctx = TestContext()
                 parse_file(IOBuffer("""
-                    a,b
-                    2000-01-01T10:20:30GMT,1969-07-20
-                    2000-01-01T10:20:30Z,1969-07-20 00:00:00
-                    2000-01-01T10:20:30,1969-07-20 00:00:00.0
-                    2000-01-01 10:20:30Z,1969-07-20 00:00:00.00
-                    2000-01-01 10:20:30,1969-07-20 00:00:00.000
-                    2000-01-01 10:20:30,1969-07-20 00:00:00.000UTC
-                    2000-01-01T10:20:30+0000,1969-07-20 00:00:00.000+0000
-                    2000-01-01T10:20:30UTC,1969-07-19 17:00:00.000-0700
-                    2000-01-01 10:20:30+00:00,1969-07-19 17:00:00.000America/Los_Angeles
-                    2000-01-01 10:20:30UTC,1969-07-20 09:00:00.000+0900
-                    2000-01-01 02:20:30-0800,1969-07-20 09:00:00.000 Asia/Tokyo
-                    2000-01-01 10:20:30GMT,1969-07-20 00:00:00.000Z
-                    2000-01-01 10:20:30+00,1969-07-20 00:00:00.00-0000
-                    2000-01-01 10:20:30-00,1969-07-20 00:00:00.00-00:00
+                    a,b,c
+                    2000-01-01T10:20:30GMT,1969-07-20,1969-07-20
+                    2000-01-01T10:20:30Z,1969-07-20 00:00:00,1969-07-20 00:00:00
+                    2000-01-01T10:20:30,1969-07-20 00:00:00.0,1969-07-20 00:00:00.0
+                    2000-01-01 10:20:30Z,1969-07-20 00:00:00.00,1969-07-20 00:00:00.00
+                    2000-01-01 10:20:30,1969-07-20 00:00:00.000,1969-07-20 00:00:00.000
+                    2000-01-01 10:20:30,1969-07-20 00:00:00.000UTC,1969-07-20 00:00:00.000UTC
+                    2000-01-01T10:20:30+0000,1969-07-20 00:00:00.000+0000,1969-07-20 00:00:00.000+0000
+                    2000-01-01T10:20:30UTC,1969-07-19 17:00:00.000-0700,1969-07-19 17:00:00.000-0700
+                    2000-01-01 10:20:30+00:00,1969-07-19 17:00:00.000America/Los_Angeles,1969-07-19 17:00:00.000America/Los_Angeles
+                    2000-01-01 10:20:30UTC,1969-07-20 09:00:00.000+0900,1969-07-20 09:00:00.000+0900
+                    2000-01-01 02:20:30-0800,1969-07-20 09:00:00.000 Asia/Tokyo,1969-07-20 09:00:00.000 Asia/Tokyo
+                    2000-01-01 10:20:30GMT,1969-07-20 00:00:00.000Z,1969-07-20 00:00:00.000Z
+                    2000-01-01 10:20:30+00,1969-07-20 00:00:00.00-0000,1969-07-20 00:00:00.00-0000
+                    2000-01-01 10:20:30-00,1969-07-20 00:00:00.00-00:00,1969-07-20 00:00:00.00-00:00
                     """),
-                    [DateTime,DateTime],
+                    [DateTime,DateTime,DateTime],
                     testctx,
                     _force=alg,
                 )
-                @test testctx.header == [:a, :b]
-                @test testctx.schema == [DateTime, DateTime]
+                @test testctx.header == [:a, :b, :c]
+                @test testctx.schema == [DateTime, DateTime, DateTime]
                 @test testctx.results[1].cols[1][1:14] == fill(DateTime(2000,1,1,10,20,30), 14)
                 @test testctx.results[1].cols[2][1:14] == fill(DateTime(1969,7,20,00,00,00), 14)
+                @test testctx.results[1].cols[3][1:14] == fill(DateTime(1969,7,20,00,00,00), 14)
                 @test length(testctx.results[1].cols[1]) == 14
                 @test length(testctx.results[1].cols[2]) == 14
+                @test length(testctx.results[1].cols[3]) == 14
             end
 
             @testset "$alg string" begin

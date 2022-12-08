@@ -131,13 +131,13 @@ _typemaxbytes(::Type{UInt64}, i, is_neg) = @inbounds NTuple{19,UInt8}((0x31, 0x3
 _typemaxbytes(::Type{UInt128}, i, is_neg) = @inbounds NTuple{39,UInt8}((0x33, 0x34, 0x30, 0x32, 0x38, 0x32, 0x33, 0x36, 0x36, 0x39, 0x32, 0x30, 0x39, 0x33, 0x38, 0x34, 0x36, 0x33, 0x34, 0x36, 0x33, 0x33, 0x37, 0x34, 0x36, 0x30, 0x37, 0x34, 0x33, 0x31, 0x37, 0x36, 0x38, 0x32, 0x31, 0x31, 0x34, 0x35, 0x35))[i]
 
 # Using ScanByte in _dec_grp_exp_end causes PackageCompiler to fail. As a workaround, we'll use `findnext`
-# const _NonNumericBytes = Val(~ByteSet((UInt8('+'), UInt8('0'), UInt8('1'), UInt8('2'), UInt8('3'), UInt8('4'), UInt8('5'), UInt8('6'), UInt8('7'), UInt8('8'), UInt8('9'))))
+# const _NonNumericBytes = Val(~ByteSet((UInt8('+'), UInt8('-'), UInt8('0'), UInt8('1'), UInt8('2'), UInt8('3'), UInt8('4'), UInt8('5'), UInt8('6'), UInt8('7'), UInt8('8'), UInt8('9'))))
 # next_non_numeric(ptr, bytes_to_search) = Int(something(memchr(ptr, UInt(bytes_to_search), _NonNumericBytes), UInt(1)))
 # pointer_from_buffer(x::AbstractArray{UInt8}) = pointer(x)
 # pointer_from_buffer(x::SubArray{UInt8, 1, Vector{UInt8}, Tuple{UnitRange{UInt32}}, true}) = pointer(parent(x)) + Int(first(first(parentindices(x)))) - 1
 
 function _next_byte_to_check(buf, pos)
-    something(findnext(x->!(x == UInt8('+') || (x >= 0x30 && x <= 0x39)), buf, pos+1), pos+1)
+    something(findnext(x->!(x == UInt8('+') || x == UInt8('-') || (x >= 0x30 && x <= 0x39)), buf, pos+1), length(buf))
 end
 
 # Parsers.jl typically process a byte at a time but for Decimals we want to know
@@ -151,11 +151,14 @@ function _dec_grp_exp_end(buf, pos, len, b, code, options)
     has_groupmark = !isnothing(options.groupmark)
     groupmark = options.groupmark
     ngroupmarks = 0
+    delim = options.delim.token
+    cq = options.cq.token
+    decimal = options.decimal
 
     @inbounds while true
-        if b == options.delim.token
+        if b == delim
             break
-        elseif Parsers.quoted(code) && b == options.cq.token
+        elseif Parsers.quoted(code) && b == cq
             break
         elseif b == UInt8('e') || b == UInt8('E')
             if exp_position != 0 || ngroupmarks > 0
@@ -177,7 +180,7 @@ function _dec_grp_exp_end(buf, pos, len, b, code, options)
                 end
             end
             pos = _next_byte_to_check(buf, pos)
-        elseif b == options.decimal
+        elseif b == decimal
             if decimal_position != 0
                 code |= Parsers.INVALID
                 break
@@ -229,8 +232,7 @@ Base.@propagate_inbounds function _typeparser(::Type{T}, f, buf::AbstractVector{
     if exp_position != 0
         exp_result = Parsers.xparse(Int, buf, exp_position+1, field_end, options)
         exp_val = exp_result.val
-        code |= exp_result.code
-        Parsers.invalid(code) && return (T(0), code, field_end)
+        Parsers.invalid(exp_result.code) && return (T(0), code |= exp_result.code, field_end)
     else
         exp_val = 0
     end
@@ -383,5 +385,6 @@ end
 
 function Parsers.typeparser(::Type{_FixedDecimal{T,f}}, source::AbstractVector{UInt8}, pos, len, b, code, pl, options) where {T<:Integer,f}
     @inbounds x, code, pos = _typeparser(T, f, source, pos, len, b, code, options, RoundNearest)
-    return pos, code, pl, _FixedDecimal{T, f}(reinterpret(FixedDecimal{T,f}, x))
+    pos += pos == len
+    return pos, code, Parsers.PosLen(pl.pos, pos - pl.pos), _FixedDecimal{T, f}(reinterpret(FixedDecimal{T,f}, x))
 end

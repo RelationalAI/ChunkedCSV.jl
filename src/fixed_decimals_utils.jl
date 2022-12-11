@@ -130,16 +130,6 @@ _typemaxbytes(::Type{UInt32}, i, is_neg) = @inbounds NTuple{10,UInt8}((0x34, 0x3
 _typemaxbytes(::Type{UInt64}, i, is_neg) = @inbounds NTuple{19,UInt8}((0x31, 0x38, 0x34, 0x34, 0x36, 0x37, 0x34, 0x34, 0x30, 0x37, 0x33, 0x37, 0x30, 0x39, 0x35, 0x35, 0x31, 0x36, 0x31, 0x35))[i]
 _typemaxbytes(::Type{UInt128}, i, is_neg) = @inbounds NTuple{39,UInt8}((0x33, 0x34, 0x30, 0x32, 0x38, 0x32, 0x33, 0x36, 0x36, 0x39, 0x32, 0x30, 0x39, 0x33, 0x38, 0x34, 0x36, 0x33, 0x34, 0x36, 0x33, 0x33, 0x37, 0x34, 0x36, 0x30, 0x37, 0x34, 0x33, 0x31, 0x37, 0x36, 0x38, 0x32, 0x31, 0x31, 0x34, 0x35, 0x35))[i]
 
-# Using ScanByte in _dec_grp_exp_end causes PackageCompiler to fail. As a workaround, we'll use `findnext`
-# const _NonNumericBytes = Val(~ByteSet((UInt8('+'), UInt8('-'), UInt8('0'), UInt8('1'), UInt8('2'), UInt8('3'), UInt8('4'), UInt8('5'), UInt8('6'), UInt8('7'), UInt8('8'), UInt8('9'))))
-# next_non_numeric(ptr, bytes_to_search) = Int(something(memchr(ptr, UInt(bytes_to_search), _NonNumericBytes), UInt(1)))
-# pointer_from_buffer(x::AbstractArray{UInt8}) = pointer(x)
-# pointer_from_buffer(x::SubArray{UInt8, 1, Vector{UInt8}, Tuple{UnitRange{UInt32}}, true}) = pointer(parent(x)) + Int(first(first(parentindices(x)))) - 1
-
-function _next_byte_to_check(buf, pos)
-    something(findnext(x->!(x == UInt8('+') || x == UInt8('-') || (x >= 0x30 && x <= 0x39)), buf, pos+1), length(buf))
-end
-
 # Parsers.jl typically process a byte at a time but for Decimals we want to know
 # where the decimal point and `e` is so we can avoid overflows. E.g. in 123456789123456789.1e-10
 # we don't have to materialize the whole 123456789123456789 since we know
@@ -147,84 +137,110 @@ end
 # rounded if needed.
 function _dec_grp_exp_end(buf, pos, len, b, code, options)
     decimal_position = 0
-    exp_position = 0
-    has_groupmark = !isnothing(options.groupmark)
-    groupmark = options.groupmark
     ngroupmarks = 0
+    exp_position = 0
+
+    groupmark = options.groupmark
+    has_groupmark = !isnothing(groupmark)
     delim = options.delim.token
     cq = options.cq.token
     decimal = options.decimal
+    found_any_number = false
 
     @inbounds while true
-        if b == delim
-            break
-        elseif Parsers.quoted(code) && b == cq
-            break
-        elseif b == UInt8('e') || b == UInt8('E')
-            if exp_position != 0 || ngroupmarks > 0
+        if b == UInt8('e') || b == UInt8('E')
+            if !(pos < len)
+                code |= Parsers.INVALID | Parsers.EOF
+                break
+            end
+            if !found_any_number || exp_position != 0 || ngroupmarks != 0
                 code |= Parsers.INVALID
                 break
             end
             exp_position = pos
-            if pos == len
-                code |= Parsers.EOF | Parsers.INVALID
-                break
-            elseif buf[pos+1] in (UInt8('-'), UInt8('+'))
-                pos += 1
-                if pos == len
-                    code |= Parsers.EOF | Parsers.INVALID
-                    break
-                elseif buf[pos+1] - 0x30 > 0x09
-                    code |= Parsers.INVALID
+
+            pos += 1
+            b = buf[pos]
+            if b == UInt8('-') || b == UInt8('+')
+                if !(pos < len)
+                    code |= Parsers.INVALID | Parsers.EOF
                     break
                 end
+                pos += 1
+                b = buf[pos]
             end
-            pos = _next_byte_to_check(buf, pos)
+
+            if b - UInt8('0') > 0x09
+                code |= Parsers.INVALID
+                break
+            end
         elseif b == decimal
-            if decimal_position != 0
+            if decimal_position != 0 || exp_position != 0
                 code |= Parsers.INVALID
                 break
             end
             decimal_position = pos
-            if pos == len
-                code |= Parsers.EOF
+        elseif has_groupmark && b == groupmark
+            if !(pos < len)
+                code |= Parsers.INVALID | Parsers.EOF
                 break
             end
-            pos = _next_byte_to_check(buf, pos)
-        elseif has_groupmark && b == groupmark
-            ngroupmarks += 1
-            adv = _next_byte_to_check(buf, pos) - pos
-            if (adv == 1 && len != pos + adv) || (decimal_position > 0) || (exp_position > 0)
+            if decimal_position != 0 || exp_position != 0
                 code |= Parsers.INVALID
                 break
             end
-            pos += adv
-        elseif pos == len || b == UInt8('\n') || b == UInt8('\r')
-            code |= Parsers.EOF
+            pos += 1
+            b = buf[pos]
+            if b - UInt8('0') > 0x09
+                code |= Parsers.INVALID
+                break
+            end
+            found_any_number = true
+            ngroupmarks += 1
+        elseif b == delim || (Parsers.quoted(code) && b == cq)
             break
-        elseif b - 0x30 > 0x09
+        elseif UInt8('0') <= b <= UInt8('9')
+            found_any_number = true
+        else
             code |= Parsers.INVALID
             break
-        else
-            pos = _next_byte_to_check(buf, pos)
         end
-        b = buf[pos]
+
+        if pos == len
+            code |= Parsers.EOF
+            break
+        else
+            pos += 1
+            b = buf[pos]
+        end
+    end
+    if !found_any_number
+        code |= Parsers.INVALID
     end
     return decimal_position, ngroupmarks, exp_position, pos, code
 end
 
+
 Base.@propagate_inbounds _typeparser(::Type{T}, f, buf::AbstractString, pos, len, b, code, options::Parsers.Options, mode::Base.RoundingMode=Base.RoundNearest) where {T<:Union{Int8,Int16,Int32,Int64,Int128,UInt8,UInt16,UInt32,UInt64,UInt128}} =
     _typeparser(T, f, codeunits(buf), pos, len, b, code, options, mode)
 Base.@propagate_inbounds function _typeparser(::Type{T}, f, buf::AbstractVector{UInt8}, pos, len, b, code, options::Parsers.Options, mode::Base.RoundingMode=Base.RoundNearest) where {T<:Union{Int8,Int16,Int32,Int64,Int128,UInt8,UInt16,UInt32,UInt64,UInt128}}
+    decimal = options.decimal
+
     is_neg = b == UInt8('-')
     if (is_neg || b == '+')
         pos += 1
-        b = buf[pos]
     end
+    if pos > len
+        code |= Parsers.EOF | Parsers.INVALID
+        return (T(0), code, pos)
+    end
+
     int_sign = T(is_neg ? -1 : 1)
+    b = buf[pos]
 
     decimal_position, ngroupmarks, exp_position, field_end, code = _dec_grp_exp_end(buf, pos, len, b, code, options)
-    Parsers.invalid(code) && return (T(0), code, field_end)
+    Parsers.invalid(code) && return (T(0), code, pos)
+
     # if we got here, we can safely ignore all bytes that == groupmark, these also must appear before decimal_position and exp_position
     groupmark = something(options.groupmark, 0xff)
 
@@ -232,7 +248,7 @@ Base.@propagate_inbounds function _typeparser(::Type{T}, f, buf::AbstractVector{
     if exp_position != 0
         exp_result = Parsers.xparse(Int, buf, exp_position+1, field_end, options)
         exp_val = exp_result.val
-        Parsers.invalid(exp_result.code) && return (T(0), code |= exp_result.code, field_end)
+        !Parsers.ok(exp_result.code) && return (T(0), code |= exp_result.code, field_end)
     else
         exp_val = 0
     end
@@ -242,7 +258,7 @@ Base.@propagate_inbounds function _typeparser(::Type{T}, f, buf::AbstractVector{
     number_of_fractional_digits = 0
     if has_digits_past_decimal
         # Remove trailing zeros after decimal
-        while buf[last_byte_to_parse] == 0x30
+        while buf[last_byte_to_parse] == UInt8('0')
             last_byte_to_parse -= 1
         end
         if last_byte_to_parse == decimal_position
@@ -253,16 +269,16 @@ Base.@propagate_inbounds function _typeparser(::Type{T}, f, buf::AbstractVector{
     end
 
     # Remove leading zeros in 0.00..x
-    if field_end > pos && buf[pos] == 0x30
+    if field_end > pos && buf[pos] == UInt8('0')
         if field_end > 1 + pos
-            if buf[1+pos] == options.decimal
+            if buf[1+pos] == decimal
                 pos += 1
                 while true
                     1+pos > last_byte_to_parse && return (T(0), code | Parsers.OK, field_end) # This was something like "0.00"
                     b = buf[1+pos]
-                    if b == 0x30
+                    if b == UInt8('0')
                         pos += 1
-                    elseif b == options.decimal
+                    elseif b == decimal
                         pos += 1
                         parse_through_decimal = false
                     else
@@ -303,7 +319,7 @@ Base.@propagate_inbounds function _typeparser(::Type{T}, f, buf::AbstractVector{
             (i == decimal_position) && continue
             b = buf[i]
             b == groupmark && continue
-            out = T(10) * out + T(b - 0x30)
+            out = T(10) * out + T(b - UInt8('0'))
         end
         out *= int_sign
         if number_of_fractional_digits < f
@@ -331,7 +347,7 @@ Base.@propagate_inbounds function _typeparser(::Type{T}, f, buf::AbstractVector{
                     return (out, code | Parsers.OVERFLOW, field_end)
                 end
             end
-            out = T(10) * out + T(b-0x30)
+            out = T(10) * out + T(b-UInt8('0'))
         end
         out *= int_sign
 
@@ -350,13 +366,13 @@ end
 
 # Add 1 or 0 to our integer depending on the rounding mode and trailing bytes (that we din't use because the precision of our decimal is not high enough)
 _parse_round(::Type{T}, buf, s, e, d, code, ::RoundingMode{:ToZero}) where {T} = (T(0), code)
-_parse_round(::Type{T}, buf, s, e, d, code, ::RoundingMode{:Throws}) where {T} = s < e && !all(==(0x30), view(buf, s:e)) ? (T(0), code | Parsers.INVALID) : (T(0), code)
+_parse_round(::Type{T}, buf, s, e, d, code, ::RoundingMode{:Throws}) where {T} = s < e && !all(==(UInt8('0')), view(buf, s:e)) ? (T(0), code | Parsers.INVALID) : (T(0), code)
 function _parse_round(::Type{T}, buf, s, e, d, code, ::RoundingMode{:Nearest}) where {T}
     @assert s <= length(buf) "$s $e"
     @assert 1 < s <= e || 1 <= s < e  "$s $length(buf)"
     @inbounds begin
         if e == s
-            b = buf[e] - 0x30
+            b = buf[e] - UInt8('0')
             b > 0x09 && (return (T(0), code | Parsers.INVALID))
             b > 0x05 && (return (T(1), code))
             b == 0x05 && isodd(buf[e-1-((e-1)==d)]) && (return (T(1), code))
@@ -366,7 +382,7 @@ function _parse_round(::Type{T}, buf, s, e, d, code, ::RoundingMode{:Nearest}) w
         prev_b = 0x00
         for i in e:-1:s
             i == d && continue
-            b = buf[i] - 0x30
+            b = buf[i] - UInt8('0')
             b > 0x09 && (return (T(0), code | Parsers.INVALID))
             b += carries_over
             carries_over = (b > 0x05 || (b == 0x05 && isodd(prev_b)))
@@ -385,6 +401,8 @@ end
 
 function Parsers.typeparser(::Type{_FixedDecimal{T,f}}, source::AbstractVector{UInt8}, pos, len, b, code, pl, options) where {T<:Integer,f}
     @inbounds x, code, pos = _typeparser(T, f, source, pos, len, b, code, options, RoundNearest)
-    pos += pos == len
+    # We need to step one past field_end on EOF so that Parsers.jl recognize it's not a bad delim
+    # but only when we didn't end up on an empty field?
+    Parsers.eof(code) && !Parsers.invalid(code) && (pos += 1)
     return pos, code, Parsers.PosLen(pl.pos, pos - pl.pos), _FixedDecimal{T, f}(reinterpret(FixedDecimal{T,f}, x))
 end

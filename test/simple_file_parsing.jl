@@ -22,6 +22,7 @@ function ChunkedCSV.consume!(ctx::TestContext, parsing_ctx::ParsingContext, task
     end
 end
 alg=:serial
+sentinel=""
 
 @testset "Simple file parsing" begin
     @testset "simple file, single chunk" begin
@@ -1395,6 +1396,127 @@ end
             @test testctx.results[1].cols[2].elements[1:1] == [Parsers.PosLen(10, 3, false, true)]
             @test length(testctx.results[1].cols[1]) == 1
             @test length(testctx.results[1].cols[2]) == 1
+        end
+    end
+end
+
+@testset "sentinels" begin
+    for sentinel in ("", "NA", "NULL")
+        for alg in [:serial, :singlebuffer, :doublebuffer]
+            @testset "$alg sentinel \"$(sentinel)\" int" begin
+                testctx = TestContext()
+                parse_file(IOBuffer("""
+                    a,b,c
+                    1,$(sentinel),3
+                    3,4,$(sentinel)
+                    $(sentinel),$(sentinel),$(sentinel)
+                    """),
+                    [Int,Int,Int],
+                    testctx,
+                    _force=alg,
+                    sentinel=isempty(sentinel) ? missing : [sentinel],
+                )
+                @test testctx.header == [:a, :b, :c]
+                @test testctx.schema == [Int, Int, Int]
+                @test testctx.results[1].cols[1].elements[1:2] == [1,3]
+                @test testctx.results[1].cols[2].elements[2] == 4
+                @test testctx.results[1].cols[3].elements[1] == 3
+                @test testctx.results[1].row_statuses[1] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[2] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[3] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].column_indicators[1] == UInt8(1) << 1
+                @test testctx.results[1].column_indicators[2] == UInt8(1) << 2
+                @test testctx.results[1].column_indicators[3] == (UInt8(1) << 0) | (UInt8(1) << 1) | (UInt8(1) << 2)
+                @test length(testctx.results[1].cols[1]) == 3
+                @test length(testctx.results[1].cols[2]) == 3
+                @test length(testctx.results[1].cols[3]) == 3
+            end
+        end
+
+        for alg in [:serial, :singlebuffer, :doublebuffer]
+            @testset "$alg sentinel \"$(sentinel)\" decimal" begin
+                testctx = TestContext()
+                parse_file(IOBuffer("""
+                    a,b,c
+                    1.0,$(sentinel),3E+1
+                    3e-1,40,$(sentinel)
+                    0.000,$(sentinel),0.000
+                    0.000,0.000,$(sentinel)
+                    0,$(sentinel),0
+                    0,0,$(sentinel)
+                    $(sentinel),$(sentinel),$(sentinel)
+                    """),
+                    [FixedDecimal{Int32,1}, FixedDecimal{UInt32,2}, FixedDecimal{Int64,3}],
+                    testctx,
+                    sentinel=isempty(sentinel) ? missing : [sentinel],
+                    _force=alg,
+                )
+                @test testctx.header == [:a, :b, :c]
+                @test testctx.schema == [FixedDecimal{Int32,1}, FixedDecimal{UInt32,2}, FixedDecimal{Int64,3}]
+                @test testctx.results[1].cols[1].elements[1:6] == [FixedDecimal{Int32,1}(1.0),FixedDecimal{Int32,1}(0.3),FixedDecimal{Int32,1}(0),FixedDecimal{Int32,1}(0),FixedDecimal{Int32,1}(0),FixedDecimal{Int32,1}(0)]
+                @test testctx.results[1].cols[2].elements[[2,4,6]] == [FixedDecimal{UInt32,2}(40), FixedDecimal{UInt32,2}(0), FixedDecimal{UInt32,2}(0)]
+                @test testctx.results[1].cols[3].elements[[1,3,5]] == [FixedDecimal{Int64,3}(30), FixedDecimal{Int64,3}(0), FixedDecimal{Int64,3}(0)]
+                @test testctx.results[1].row_statuses[1] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[2] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[3] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[4] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[5] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[6] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[7] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].column_indicators[1] == UInt8(1) << 1
+                @test testctx.results[1].column_indicators[2] == UInt8(1) << 2
+                @test testctx.results[1].column_indicators[3] == UInt8(1) << 1
+                @test testctx.results[1].column_indicators[4] == UInt8(1) << 2
+                @test testctx.results[1].column_indicators[5] == UInt8(1) << 1
+                @test testctx.results[1].column_indicators[6] == UInt8(1) << 2
+                @test testctx.results[1].column_indicators[7] == (UInt8(1) << 0) | (UInt8(1) << 1) | (UInt8(1) << 2)
+                @test length(testctx.results[1].cols[1]) == 7
+                @test length(testctx.results[1].cols[2]) == 7
+                @test length(testctx.results[1].cols[3]) == 7
+            end
+        end
+
+        for alg in [:serial, :singlebuffer, :doublebuffer]
+            @testset "$alg sentinel \"$(sentinel)\" datetime" begin
+                testctx = TestContext()
+                parse_file(IOBuffer("""
+                    a,b,c
+                    1990-03-04 00:00:00,$(sentinel),1990-03-05 00:00:00
+                    1990-03-04 00:00:00,1990-03-06 00:00:00,$(sentinel)
+                    1990-03-04 00:00:00,$(sentinel),1990-03-05 00:00:00+00:00
+                    1990-03-04 00:00:00,1990-03-06 00:00:00GMT,$(sentinel)
+                    1990-03-04,$(sentinel),1990-03-05
+                    1990-03-04,1990-03-06,$(sentinel)
+                    $(sentinel),$(sentinel),$(sentinel)
+                    """),
+                    [DateTime,DateTime,DateTime],
+                    testctx,
+                    sentinel=isempty(sentinel) ? missing : [sentinel],
+                    _force=alg,
+                )
+                @test testctx.header == [:a, :b, :c]
+                @test testctx.schema == [DateTime,DateTime,DateTime]
+                @test testctx.results[1].cols[1].elements[1:6] == [DateTime(1990, 3, 4), DateTime(1990, 3, 4), DateTime(1990, 3, 4), DateTime(1990, 3, 4), DateTime(1990, 3, 4), DateTime(1990, 3, 4)]
+                @test testctx.results[1].cols[2].elements[[2, 4, 6]] == [DateTime(1990, 3, 6), DateTime(1990, 3, 6), DateTime(1990, 3, 6)]
+                @test testctx.results[1].cols[3].elements[[1, 3, 5]] == [DateTime(1990, 3, 5), DateTime(1990, 3, 5), DateTime(1990, 3, 5)]
+                @test testctx.results[1].row_statuses[1] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[2] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[3] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[4] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[5] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[6] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[7] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].column_indicators[1] == UInt8(1) << 1
+                @test testctx.results[1].column_indicators[2] == UInt8(1) << 2
+                @test testctx.results[1].column_indicators[3] == UInt8(1) << 1
+                @test testctx.results[1].column_indicators[4] == UInt8(1) << 2
+                @test testctx.results[1].column_indicators[5] == UInt8(1) << 1
+                @test testctx.results[1].column_indicators[6] == UInt8(1) << 2
+                @test testctx.results[1].column_indicators[7] == (UInt8(1) << 0) | (UInt8(1) << 1) | (UInt8(1) << 2)
+                @test length(testctx.results[1].cols[1]) == 7
+                @test length(testctx.results[1].cols[2]) == 7
+                @test length(testctx.results[1].cols[3]) == 7
+            end
         end
     end
 end

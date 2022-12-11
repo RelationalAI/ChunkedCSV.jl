@@ -286,7 +286,10 @@ function _parse_rows_forloop!(result_buf::TaskResultBuffer{N,M}, task::AbstractV
                 # end
                 # break
             end
-            if !Parsers.ok(code)
+            if Parsers.sentinel(code)
+                row_status |= RowStatus.HasColumnIndicators
+                column_indicators = setflag(column_indicators, col_idx)
+            elseif !Parsers.ok(code)
                 row_status |= RowStatus.ValueParsingError
                 row_status |= RowStatus.HasColumnIndicators
                 column_indicators = setflag(column_indicators, col_idx)
@@ -296,9 +299,6 @@ function _parse_rows_forloop!(result_buf::TaskResultBuffer{N,M}, task::AbstractV
                 #     column_indicators = setflag(column_indicators, _col_idx)
                 # end
                 # break
-            elseif Parsers.sentinel(code)
-                row_status |= RowStatus.HasColumnIndicators
-                column_indicators = setflag(column_indicators, col_idx)
             end
             pos += tlen
         end # for col_idx

@@ -12,8 +12,8 @@ struct NoValidRowsInBufferError <: FatalLexingError
             string(
                 "CSV parse job failed on lexing newlines. There was no linebreak (outside a quoted string field) ",
                 "in the entire buffer of $(buffersize) bytes. ",
-                "This could happen if your buffer is too small, or if your `openquotechar`, `closequotechar` or `escapechar` ",
-                "is not set properly, or if the file is not a proper CSV file according to RFC4180.",
+                "This could happen if your buffer is too small, or if your quote or escape characters ",
+                "are not set properly, or if the file is not a proper CSV file according to RFC4180.",
             ),
             buffersize,
         )
@@ -27,9 +27,8 @@ struct UnmatchedQuoteError <: FatalLexingError
         new(
             string(
                 "CSV parse job failed on lexing newlines. The file has ended with an unmatched quote. ",
-                "This could happen if your `openquotechar`, `closequotechar`, ",
-                "or `escapechar` is not set properly, or if the file is not a proper CSV file according ",
-                "to RFC4180.",
+                "This could happen if your quote or escape characters are not set properly, ",
+                "or if the file is not a proper CSV file according to RFC4180.",
             ),
         )
     end

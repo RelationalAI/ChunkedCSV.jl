@@ -1431,9 +1431,36 @@ end
                 @test length(testctx.results[1].cols[2]) == 3
                 @test length(testctx.results[1].cols[3]) == 3
             end
-        end
 
-        for alg in [:serial, :singlebuffer, :doublebuffer]
+            @testset "$alg sentinel \"$(sentinel)\" Char" begin
+                testctx = TestContext()
+                parse_file(IOBuffer("""
+                    a,b,c
+                    a,$(sentinel),b
+                    c,d,$(sentinel)
+                    $(sentinel),$(sentinel),$(sentinel)
+                    """),
+                    [Char,Char,Char],
+                    testctx,
+                    _force=alg,
+                    sentinel=isempty(sentinel) ? missing : [sentinel],
+                )
+                @test testctx.header == [:a, :b, :c]
+                @test testctx.schema == [Char,Char,Char]
+                @test testctx.results[1].cols[1].elements[1:2] == ['a','c']
+                @test testctx.results[1].cols[2].elements[2] == 'd'
+                @test testctx.results[1].cols[3].elements[1] == 'b'
+                @test testctx.results[1].row_statuses[1] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[2] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[3] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].column_indicators[1] == UInt8(1) << 1
+                @test testctx.results[1].column_indicators[2] == UInt8(1) << 2
+                @test testctx.results[1].column_indicators[3] == (UInt8(1) << 0) | (UInt8(1) << 1) | (UInt8(1) << 2)
+                @test length(testctx.results[1].cols[1]) == 3
+                @test length(testctx.results[1].cols[2]) == 3
+                @test length(testctx.results[1].cols[3]) == 3
+            end
+
             @testset "$alg sentinel \"$(sentinel)\" decimal" begin
                 testctx = TestContext()
                 parse_file(IOBuffer("""
@@ -1474,9 +1501,7 @@ end
                 @test length(testctx.results[1].cols[2]) == 7
                 @test length(testctx.results[1].cols[3]) == 7
             end
-        end
 
-        for alg in [:serial, :singlebuffer, :doublebuffer]
             @testset "$alg sentinel \"$(sentinel)\" datetime" begin
                 testctx = TestContext()
                 parse_file(IOBuffer("""

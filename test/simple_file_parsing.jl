@@ -1520,3 +1520,65 @@ end
         end
     end
 end
+
+@testset "Ending on an escapechar" begin
+    for buffersize in (12, 13, 14, 15)
+        # buffersize 12 ends the first buffer on letter S
+        testctx = TestContext()
+        parse_file(IOBuffer("""
+            a,b
+            0,z
+            1,"S\"\"\"
+            """),
+            [Int,String],
+            testctx,
+            buffersize=buffersize,
+            escapechar='"',
+        )
+        @test testctx.header == [:a, :b]
+        @test testctx.schema == [Int,String]
+        @test length(testctx.results) == 2
+        @test testctx.results[1].cols[1][1] == 0
+        @test testctx.results[2].cols[1][1] == 1
+        @test testctx.results[1].cols[2][1] == PosLen(7,1)
+        @test testctx.results[2].cols[2][1] == PosLen(4,3,false,true)
+
+        testctx = TestContext()
+        parse_file(IOBuffer("""
+            a,b
+            0,z
+            1,"S\\\\\"
+            """),
+            [Int,String],
+            testctx,
+            buffersize=buffersize,
+            escapechar='\\',
+        )
+        @test testctx.header == [:a, :b]
+        @test testctx.schema == [Int,String]
+        @test length(testctx.results) == 2
+        @test testctx.results[1].cols[1][1] == 0
+        @test testctx.results[2].cols[1][1] == 1
+        @test testctx.results[1].cols[2][1] == PosLen(7,1)
+        @test testctx.results[2].cols[2][1] == PosLen(4,3,false,true)
+
+        testctx = TestContext()
+        parse_file(IOBuffer("""
+            a,b
+            0,z
+            1,zS\\"\\"
+            """),
+            [Int,String],
+            testctx,
+            buffersize=buffersize,
+            escapechar='\\',
+        )
+        @test testctx.header == [:a, :b]
+        @test testctx.schema == [Int,String]
+        @test length(testctx.results) == 2
+        @test testctx.results[1].cols[1][1] == 0
+        @test testctx.results[2].cols[1][1] == 1
+        @test testctx.results[1].cols[2][1] == PosLen(7,1)
+        @test testctx.results[2].cols[2][1] == PosLen(3,6,false,false)
+    end
+end

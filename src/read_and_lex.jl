@@ -1,10 +1,16 @@
-mutable struct LexerState{B, IO_t<:IO}
+mutable struct LexerState{B #=`ByteSet` for ScanByte.jl=#, IO_t<:IO}
     io::IO_t
+    # The position of the last newline in the previous chunk. We don't need to check the first
+    # `buffersize - last_newline_at` bytes for newlines, as we already search them last time.
     last_newline_at::UInt32
+    # Last chunk ended inside quoted field, next chunk will start looking for newlines in "quoted" mode
     quoted::Bool
+    # We've reached end of stream
     done::Bool
+    # Last chunk ended with an escape control character (we'll skip one byte in the next chunk)
+    ended_on_escape::Bool
 
-    LexerState{B}(input::IO) where {B} = new{B, typeof(input)}(input, UInt32(0), false, false)
+    LexerState{B}(input::IO) where {B} = new{B, typeof(input)}(input, UInt32(0), false, false, false)
 end
 
 end_of_stream(io::IO) = eof(io)
@@ -59,8 +65,24 @@ function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, 
         # First length(buf) - last_newline_at bytes we've already seen in the previous round
         bytes_carried_over_from_previous_chunk = buffersize - lexer_state.last_newline_at
         offset = bytes_carried_over_from_previous_chunk
+        if lexer_state.ended_on_escape
+            if e == cq # Here is where we resolve the ambiguity from the last chunk
+                if @inbounds buf[1] == e
+                    # The last byte of the previous chunk was actually escaping a quote or escape char
+                    # we can just skip over it
+                    offset += UInt32(1)
+                else
+                    # The last byte of the previous chunk was actually a closing quote
+                    quoted = false
+                end
+            else
+                offset += UInt32(1)
+            end
+        end
         ptr += offset
     end
+
+    lexer_state.ended_on_escape = false
     @inbounds while bytes_to_search > UInt(0)
         pos_to_check = findmark(ptr, bytes_to_search, B)
         offset += UInt32(pos_to_check)
@@ -72,10 +94,25 @@ function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, 
             break
         else
             byte_to_check = buf[offset]
-            if quoted
-                if byte_to_check == e && (offset < buffersize && (buf[offset+UInt32(1)] in (e, cq)))
-                    pos_to_check += UInt(1)
-                    offset += UInt32(1)
+            if quoted # We're inside a quoted field
+                if byte_to_check == e
+                    if offset < buffersize
+                        if buf[offset+UInt32(1)] in (e, cq)
+                            pos_to_check += UInt(1)
+                            offset += UInt32(1)
+                        elseif e == cq
+                            quoted = false
+                        end
+                    else # end of chunk
+                        # Note that when e == cq, we can't be sure if we saw a closing char
+                        # or an escape char and we won't be sure until the next chunk arrives
+                        # Since this is the last byte of the chunk it could be also the last
+                        # byte of the entire file and ending on an unmatched quote is an error
+                        if e == cq
+                            quoted = !reached_end_of_file
+                        end
+                        lexer_state.ended_on_escape = true
+                    end
                 elseif byte_to_check == cq
                     quoted = false
                 end
@@ -88,10 +125,13 @@ function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, 
                         offset += UInt32(1)
                     end
                     push!(eols, offset)
-                elseif byte_to_check == e
-                    if (offset < buffersize && (buf[offset+UInt32(1)] in (e, oq)))
+                elseif byte_to_check == e # This is to allow that fields like `16\"` without quotes
+                    # If we're here it implies oq != e
+                    if offset < buffersize
                         pos_to_check += UInt(1)
                         offset += UInt32(1)
+                    else # end of chunk
+                        lexer_state.ended_on_escape = true
                     end
                 else
                     push!(eols, offset)

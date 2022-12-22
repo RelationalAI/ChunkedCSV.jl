@@ -1607,3 +1607,71 @@ end
         @test testctx.results[2].cols[2][1] == PosLen(3,6,false,false)
     end
 end
+
+@testset "Carriage return" begin
+    @testset "ints" begin
+        testctx = TestContext()
+        parse_file(IOBuffer("""
+            a,b
+            0,1\r
+            1,2\r
+            2,3\r
+            3,\r
+            """),
+            [Int,Int],
+            testctx,
+        )
+        @test testctx.header == [:a, :b]
+        @test testctx.schema == [Int,Int]
+        @test length(testctx.results) == 1
+        @test testctx.results[1].cols[1][1:4] == 0:3
+        @test testctx.results[1].cols[2][1:3] == 1:3
+        @test testctx.results[1].row_statuses[4] == ChunkedCSV.RowStatus.HasColumnIndicators
+        @test testctx.results[1].column_indicators[1] == UInt8(1) << 1
+    end
+
+    @testset "decimals" begin
+        testctx = TestContext()
+        parse_file(IOBuffer("""
+            a,b
+            0,1\r
+            1,1.0\r
+            2,10.0e-1\r
+            3,\r
+            """),
+            [Int,FixedDecimal{Int,4}],
+            testctx,
+        )
+        @test testctx.header == [:a, :b]
+        @test testctx.schema == [Int,FixedDecimal{Int,4}]
+        @test length(testctx.results) == 1
+        @test testctx.results[1].cols[1][1:4] == 0:3
+        @test testctx.results[1].cols[2][1:3] == fill(FixedDecimal{Int,4}(1), 3)
+        @test testctx.results[1].row_statuses[4] == ChunkedCSV.RowStatus.HasColumnIndicators
+        @test testctx.results[1].column_indicators[1] == UInt8(1) << 1
+    end
+
+    @testset "datetimes" begin
+        testctx = TestContext()
+        parse_file(IOBuffer("""
+            a,b
+            0,1969-07-20\r
+            1,1969-07-20 00:00:00\r
+            2,1969-07-20 00:00:00.00\r
+            3,1969-07-20 00:00:00.000UTC\r
+            4,1969-07-19 17:00:00.000America/Los_Angeles\r
+            5,1969-07-20 00:00:00.00-0000\r
+            6,\r
+            """),
+            [Int,DateTime],
+            testctx,
+        )
+        @test testctx.header == [:a, :b]
+        @test testctx.schema == [Int,DateTime]
+        @test length(testctx.results) == 1
+        @test testctx.results[1].cols[1][1:7] == 0:6
+        @test testctx.results[1].cols[2][1:6] == fill(DateTime(1969, 7, 20), 6)
+        @test testctx.results[1].row_statuses[7] == ChunkedCSV.RowStatus.HasColumnIndicators
+        @test testctx.results[1].column_indicators[1] == UInt8(1) << 1
+    end
+end

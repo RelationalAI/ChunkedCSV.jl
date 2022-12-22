@@ -201,6 +201,8 @@ function _dec_grp_exp_end(buf, pos, len, b, code, options)
             break
         elseif UInt8('0') <= b <= UInt8('9')
             found_any_number = true
+        elseif b in (UInt8('\n'), UInt8('\r'))
+            break
         else
             code |= Parsers.INVALID
             break

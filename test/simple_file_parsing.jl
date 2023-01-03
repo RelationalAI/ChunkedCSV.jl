@@ -1675,3 +1675,75 @@ end
         @test testctx.results[1].column_indicators[1] == UInt8(1) << 1
     end
 end
+
+@testset "Quoted fields" begin
+    @testset "floats" begin
+        testctx = TestContext()
+        parse_file(IOBuffer("""
+            a,b,c,d,e
+            0,1,"1",1,"1"\r
+            1,1.0,"1.0",1.0,"1.0"
+            2,10.0e-1,"10.0e-1",10.0e-1,"10.0e-1"\r
+            """),
+            [Int,Float64,Float64,Float64,Float64],
+            testctx,
+        )
+        @test testctx.header == [:a, :b, :c, :d, :e]
+        @test testctx.schema == [Int,Float64,Float64,Float64,Float64]
+        @test length(testctx.results) == 1
+        @test testctx.results[1].cols[1][1:3] == 0:2
+        @test testctx.results[1].cols[2][1:3] == fill(1.0, 3)
+        @test testctx.results[1].cols[3][1:3] == fill(1.0, 3)
+        @test testctx.results[1].cols[4][1:3] == fill(1.0, 3)
+        @test testctx.results[1].cols[5][1:3] == fill(1.0, 3)
+        @test testctx.results[1].row_statuses[1:3] == fill(ChunkedCSV.RowStatus.Ok, 3)
+    end
+
+    @testset "datetimes" begin
+        testctx = TestContext()
+        parse_file(IOBuffer("""
+            a,b,c,d,e
+            0,1969-07-20,"1969-07-20",1969-07-20,"1969-07-20"
+            1,1969-07-20 00:00:00,"1969-07-20 00:00:00",1969-07-20 00:00:00,"1969-07-20 00:00:00"\r
+            2,1969-07-20 00:00:00.00,"1969-07-20 00:00:00.00",1969-07-20 00:00:00.00,"1969-07-20 00:00:00.00"
+            3,1969-07-20 00:00:00.000UTC,"1969-07-20 00:00:00.000UTC",1969-07-20 00:00:00.000UTC,"1969-07-20 00:00:00.000UTC"
+            4,1969-07-19 17:00:00.000America/Los_Angeles,"1969-07-19 17:00:00.000America/Los_Angeles",1969-07-19 17:00:00.000America/Los_Angeles,"1969-07-19 17:00:00.000America/Los_Angeles"\r
+            5,1969-07-20 00:00:00.00-0000,"1969-07-20 00:00:00.00-0000",1969-07-20 00:00:00.00-0000,"1969-07-20 00:00:00.00-0000"
+            6,1969-07-20 00:00:00.00Z,"1969-07-20 00:00:00.00Z","1969-07-20 00:00:00.00Z","1969-07-20T00:00:00Z"
+            """),
+            [Int,DateTime,DateTime,DateTime,DateTime],
+            testctx,
+        )
+        @test testctx.header == [:a, :b, :c, :d, :e]
+        @test testctx.schema == [Int,DateTime,DateTime,DateTime,DateTime]
+        @test length(testctx.results) == 1
+        @test testctx.results[1].cols[1][1:7] == 0:6
+        @test testctx.results[1].cols[2][1:7] == fill(DateTime(1969, 7, 20), 7)
+        @test testctx.results[1].cols[3][1:7] == fill(DateTime(1969, 7, 20), 7)
+        @test testctx.results[1].cols[4][1:7] == fill(DateTime(1969, 7, 20), 7)
+        @test testctx.results[1].cols[5][1:7] == fill(DateTime(1969, 7, 20), 7)
+        @test testctx.results[1].row_statuses[1:7] == fill(ChunkedCSV.RowStatus.Ok, 7)
+    end
+
+    @testset "decimals" begin
+        testctx = TestContext()
+        parse_file(IOBuffer("""
+            a,b,c,d,e
+            0,1,"1",1,"1"\r
+            1,1.0,"1.0",1.0,"1.0"
+            2,10.0e-1,"10.0e-1",10.0e-1,"10.0e-1"\r
+            """),
+            [Int,FixedDecimal{Int,4},FixedDecimal{Int,4},FixedDecimal{Int,4},FixedDecimal{Int,4}],
+            testctx,
+        )
+        @test testctx.header == [:a, :b, :c, :d, :e]
+        @test testctx.schema == [Int,FixedDecimal{Int,4},FixedDecimal{Int,4},FixedDecimal{Int,4},FixedDecimal{Int,4}]
+        @test length(testctx.results) == 1
+        @test testctx.results[1].cols[1][1:3] == 0:2
+        @test testctx.results[1].cols[2][1:3] == fill(FixedDecimal{Int,4}(1), 3)
+        @test testctx.results[1].cols[3][1:3] == fill(FixedDecimal{Int,4}(1), 3)
+        @test testctx.results[1].cols[4][1:3] == fill(FixedDecimal{Int,4}(1), 3)
+        @test testctx.results[1].cols[5][1:3] == fill(FixedDecimal{Int,4}(1), 3)
+        @test testctx.results[1].row_statuses[1:3] == fill(ChunkedCSV.RowStatus.Ok, 3)
+    end
+end

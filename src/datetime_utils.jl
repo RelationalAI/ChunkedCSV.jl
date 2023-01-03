@@ -175,7 +175,7 @@ const _Z = SubString("Z", 1:1)
             return (_Z, pos+3, code) # GMT
         end
     elseif b == UInt8('z') || b == UInt8('Z')
-        return (_Z, pos, code)       # [Zz]
+        return (_Z, pos+1, code)     # [Zz]
     elseif b == UInt8('U')
         if nb > 1 && buf[pos+1] == UInt8('T') && buf[pos+2] == UInt8('C')
             return (_Z, pos+3, code) # UTC

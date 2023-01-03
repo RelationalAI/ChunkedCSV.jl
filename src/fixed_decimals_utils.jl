@@ -248,7 +248,7 @@ Base.@propagate_inbounds function _typeparser(::Type{T}, f, buf::AbstractVector{
 
     last_byte_to_parse = max(pos, exp_position == 0 ? field_end - !Parsers.eof(code) - Parsers.quoted(code) : exp_position - 1)
     if exp_position != 0
-        exp_result = Parsers.xparse(Int, buf, exp_position+1, field_end, options)
+        exp_result = Parsers.xparse(Int, buf, exp_position+1, field_end - Parsers.quoted(code), options)
         exp_val = exp_result.val
         !Parsers.ok(exp_result.code) && return (T(0), code |= exp_result.code, field_end)
     else

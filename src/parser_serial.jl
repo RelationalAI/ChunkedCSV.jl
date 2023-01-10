@@ -20,7 +20,7 @@ function _parse_file_serial(lexer_state::LexerState, parsing_ctx::ParsingContext
             read_and_lex!(lexer_state, parsing_ctx, options)
         end # while true
     catch e
-        @lock parsing_ctx.cond.cond_wait begin
+        Base.@lock parsing_ctx.cond.cond_wait begin
             notify(parsing_ctx.cond.cond_wait, e, all=true, error=true)
         end
         cleanup(consume_ctx, e)

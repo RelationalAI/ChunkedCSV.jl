@@ -24,7 +24,8 @@ function prepare_buffer!(io::IO, buf::Vector{UInt8}, last_newline_at)
     if last_newline_at == 0 # this is the first time we saw the buffer, we'll just fill it up
         bytes_read_in = readbytesall!(io, buf, buffersize)
         if bytes_read_in > 2 && hasBOM(buf)
-            bytes_read_in -= (prepare_buffer!(io, buf, UInt32(3)) + UInt32(3))
+            n = prepare_buffer!(io, buf, UInt32(3))
+            bytes_read_in -= UInt32(3) - n
         end
     elseif last_newline_at < buffersize
         # We'll keep the bytes that are past the last newline, shifting them to the left
@@ -36,6 +37,10 @@ function prepare_buffer!(io::IO, buf::Vector{UInt8}, last_newline_at)
         bytes_read_in = readbytesall!(io, buf, buffersize)
     end
     return bytes_read_in
+end
+
+struct InvalidStateException <: Exception
+    msg::String
 end
 
 # We process input data iteratively by populating a buffer from IO.
@@ -58,6 +63,7 @@ function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, 
     reached_end_of_file = end_of_stream(lexer_state.io)
 
     bytes_to_search = UInt(bytes_read_in)
+    @assert bytes_to_search <= buffersize
     if lexer_state.last_newline_at == UInt(0) # first time populating the buffer
         bytes_carried_over_from_previous_chunk = UInt32(0)
         offset = bytes_carried_over_from_previous_chunk
@@ -71,12 +77,14 @@ function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, 
                     # The last byte of the previous chunk was actually escaping a quote or escape char
                     # we can just skip over it
                     offset += UInt32(1)
+                    bytes_to_search -= 1
                 else
                     # The last byte of the previous chunk was actually a closing quote
                     quoted = false
                 end
             else
                 offset += UInt32(1)
+                bytes_to_search -= 1
             end
         end
         ptr += offset
@@ -85,6 +93,9 @@ function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, 
     lexer_state.ended_on_escape = false
     @inbounds while bytes_to_search > UInt(0)
         pos_to_check = findmark(ptr, bytes_to_search, B)
+        if pos_to_check > typemax(UInt32)
+            throw(InvalidStateException("pos_to_check = $pos_to_check, bytes_to_search = $bytes_to_search, offset = $offset, buffersize = $(length(buf))"))
+        end
         offset += UInt32(pos_to_check)
         if pos_to_check == UInt(0)
             if (length(eols) == 0 || (length(eols) == 1 && first(eols) == 0)) && !reached_end_of_file

@@ -11,6 +11,7 @@ using Dates
 using FixedPointDecimals
 using TimeZones
 using Mmap
+using SnoopPrecompile
 
 # IDEA: Instead of having SoA layout in TaskResultBuffer, we could try AoS using "reinterpretable bytes"
 # IDEA: For result_buffers, and possibly elsewhere, use "PreallocatedChannels" that don't call popfirst! and push!, but getindex and setindex! + index
@@ -208,18 +209,17 @@ function parse_file(
 )
     _force in (:none, :serial, :singlebuffer, :doublebuffer) || throw(ArgumentError("`_force` argument must be one of (:none, :serial, :singlebuffer, :doublebuffer)."))
     schema = parsing_ctx.schema
-    N = length(schema)
-    M = _bounding_flag_type(N)
+    M = _bounding_flag_type(length(schema))
     if _force === :doublebuffer
-        _parse_file_doublebuffer(lexer_state, parsing_ctx, consume_ctx, options, Val(N), Val(M))
+        _parse_file_doublebuffer(lexer_state, parsing_ctx, consume_ctx, options, Val(M))
     elseif _force === :singlebuffer
-        _parse_file_singlebuffer(lexer_state, parsing_ctx, consume_ctx, options, Val(N), Val(M))
+        _parse_file_singlebuffer(lexer_state, parsing_ctx, consume_ctx, options, Val(M))
     elseif _force === :serial || Threads.nthreads() == 1 || parsing_ctx.nworkers == 1 || parsing_ctx.maxtasks == 1 || lexer_state.last_newline_at < MIN_TASK_SIZE_IN_BYTES
-              _parse_file_serial(lexer_state, parsing_ctx, consume_ctx, options, Val(N), Val(M))
+              _parse_file_serial(lexer_state, parsing_ctx, consume_ctx, options, Val(M))
     elseif !lexer_state.done
-        _parse_file_doublebuffer(lexer_state, parsing_ctx, consume_ctx, options, Val(N), Val(M))
+        _parse_file_doublebuffer(lexer_state, parsing_ctx, consume_ctx, options, Val(M))
     else
-        _parse_file_singlebuffer(lexer_state, parsing_ctx, consume_ctx, options, Val(N), Val(M))
+        _parse_file_singlebuffer(lexer_state, parsing_ctx, consume_ctx, options, Val(M))
     end
     return nothing
 end
@@ -262,5 +262,12 @@ function parse_file(
     should_close && close(lexer_state.io)
     return nothing
 end
+
+# if Base.VERSION >= v"1.4.2"
+#     include("precompile.jl")
+#     _precompile_()
+# end
+
+include("precompile.jl")
 
 end # module

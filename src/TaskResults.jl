@@ -18,16 +18,15 @@ module RowStatus
 end
 
 
-struct TaskResultBuffer{N,M}
+struct TaskResultBuffer{M}
     id::Int
     cols::Vector{BufferedVector}
     row_statuses::BufferedVector{RowStatus.T}
     column_indicators::BufferedVector{M}
 
-    function TaskResultBuffer{N,M}(id, cols, row_statuses, column_indicators) where {N,M}
-        @assert N isa Integer
+    function TaskResultBuffer{M}(id, cols, row_statuses, column_indicators) where {M}
         @assert M isa DataType
-        return new{N,M}(id, cols, row_statuses, column_indicators)
+        return new{M}(id, cols, row_statuses, column_indicators)
     end
 end
 
@@ -39,25 +38,14 @@ end
 _translate_to_buffer_type(::Type{String}) = Parsers.PosLen
 _translate_to_buffer_type(::Type{T}) where {T} = T
 
-TaskResultBuffer(id, schema) = TaskResultBuffer{length(schema)}(id, schema)
-TaskResultBuffer{N}(id, schema::Vector{DataType}) where N = TaskResultBuffer{N, _bounding_flag_type(N)}(
-    id,
-    BufferedVector[BufferedVector{_translate_to_buffer_type(schema[i])}() for i in 1:N],
-    BufferedVector{RowStatus.T}(),
-    BufferedVector{_bounding_flag_type(N)}(),
-)
+TaskResultBuffer(id, schema) = TaskResultBuffer{_bounding_flag_type(length(schema))}(id, schema)
+
 
 # Prealocate BufferedVectors with `n` values
-TaskResultBuffer(id, schema, n) = TaskResultBuffer{length(schema)}(id, schema, n)
-TaskResultBuffer{N}(id, schema::Vector{DataType}, n::Int) where N = TaskResultBuffer{N, _bounding_flag_type(N)}(
+TaskResultBuffer(id, schema, n) = TaskResultBuffer{_bounding_flag_type(length(schema))}(id, schema, n)
+TaskResultBuffer{M}(id, schema::Vector{DataType}, n::Int) where {M} = TaskResultBuffer{M}(
     id,
-    BufferedVector[BufferedVector{_translate_to_buffer_type(schema[i])}(Vector{_translate_to_buffer_type(schema[i])}(undef, n), 0) for i in 1:N],
-    BufferedVector{RowStatus.T}(Vector{RowStatus.T}(undef, n), 0),
-    BufferedVector{_bounding_flag_type(N)}(),
-)
-TaskResultBuffer{N,M}(id, schema::Vector{DataType}, n::Int) where {N,M} = TaskResultBuffer{N, M}(
-    id,
-    BufferedVector[BufferedVector{_translate_to_buffer_type(schema[i])}(Vector{_translate_to_buffer_type(schema[i])}(undef, n), 0) for i in 1:N],
+    BufferedVector[BufferedVector{_translate_to_buffer_type(schema[i])}(Vector{_translate_to_buffer_type(schema[i])}(undef, n), 0) for i in 1:length(schema)],
     BufferedVector{RowStatus.T}(Vector{RowStatus.T}(undef, n), 0),
     BufferedVector{M}(),
 )

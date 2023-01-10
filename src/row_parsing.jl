@@ -1,5 +1,5 @@
-skip_commented_row!(result_buf::TaskResultBuffer{N,M}, row_bytes, comment::Nothing) where {N,M} = false
-function skip_commented_row!(result_buf::TaskResultBuffer{N,M}, row_bytes, comment::Vector{UInt8}) where {N,M}
+skip_commented_row!(result_buf::TaskResultBuffer{M}, row_bytes, comment::Nothing) where {M} = false
+function skip_commented_row!(result_buf::TaskResultBuffer{M}, row_bytes, comment::Vector{UInt8}) where {M}
     if _startswith(row_bytes, comment)
         foreach(skip_element!, result_buf.cols)
         unsafe_push!(result_buf.row_statuses, RowStatus.SkippedRow)
@@ -9,8 +9,9 @@ function skip_commented_row!(result_buf::TaskResultBuffer{N,M}, row_bytes, comme
     return false
 end
 
-function _parse_rows_forloop!(result_buf::TaskResultBuffer{N,M}, task::AbstractVector{UInt32}, buf, schema, options, comment::Union{Nothing,Vector{UInt8}}) where {N,M}
+function _parse_rows_forloop!(result_buf::TaskResultBuffer{M}, task::AbstractVector{UInt32}, buf, schema, options, comment::Union{Nothing,Vector{UInt8}}) where {M}
     empty!(result_buf)
+    N = length(schema)
     Base.ensureroom(result_buf, ceil(Int, length(task) * 1.01))
     for chunk_row_idx in 2:length(task)
         @inbounds prev_newline = task[chunk_row_idx - 1]

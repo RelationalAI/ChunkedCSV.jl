@@ -1,6 +1,6 @@
-function _parse_file_serial(lexer_state::LexerState, parsing_ctx::ParsingContext, consume_ctx::AbstractConsumeContext, options::Parsers.Options, ::Val{N}, ::Val{M}) where {N,M}
+function _parse_file_serial(lexer_state::LexerState, parsing_ctx::ParsingContext, consume_ctx::AbstractConsumeContext, options::Parsers.Options, ::Val{M}) where {M}
     row_num = UInt32(1)
-    result_buf = TaskResultBuffer{N,M}(0, parsing_ctx.schema, cld(length(parsing_ctx.eols), parsing_ctx.maxtasks))
+    result_buf = TaskResultBuffer{M}(0, parsing_ctx.schema, cld(length(parsing_ctx.eols), parsing_ctx.maxtasks))
     try
         while true
             limit_eols!(parsing_ctx, row_num) && break

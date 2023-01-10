@@ -15,7 +15,7 @@ function setup_tasks!(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingC
         parsing_ctx.cond.ntasks = ntasks
     end
 end
-function task_done!(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext, result_buf::TaskResultBuffer{N,M}) where {N,M}
+function task_done!(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext, result_buf::TaskResultBuffer{M}) where {M}
     Base.@lock parsing_ctx.cond.cond_wait begin
         parsing_ctx.cond.ntasks -= 1
         notify(parsing_ctx.cond.cond_wait)
@@ -55,7 +55,7 @@ function debug_eols(x::BufferedVector{UInt32}, parsing_ctx, consume_ctx)
 end
 
 
-function consume!(consume_ctx::DebugContext, parsing_ctx::ParsingContext, task_buf::TaskResultBuffer{N,M}, row_num::UInt32, eol_idx::UInt32) where {N,M}
+function consume!(consume_ctx::DebugContext, parsing_ctx::ParsingContext, task_buf::TaskResultBuffer{M}, row_num::UInt32, eol_idx::UInt32) where {M}
     status_counts = zeros(Int, length(RowStatus.Marks))
     io = IOBuffer()
     @inbounds for i in 1:length(task_buf.row_statuses)
@@ -151,6 +151,6 @@ end
 struct SkipContext <: AbstractConsumeContext
     SkipContext() = new()
 end
-function consume!(consume_ctx::SkipContext, parsing_ctx::ParsingContext, task_buf::TaskResultBuffer{N,M}, row_num::UInt32, eol_idx::UInt32) where {N,M}
+function consume!(consume_ctx::SkipContext, parsing_ctx::ParsingContext, task_buf::TaskResultBuffer{M}, row_num::UInt32, eol_idx::UInt32) where {M}
     return nothing
 end

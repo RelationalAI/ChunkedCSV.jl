@@ -10,6 +10,7 @@ FixedPointDecimals = "fb4d412d-6eee-574d-9565-ede6634db7b0"
 Mmap = "a63ad114-7e13-5084-954f-fe012c677804"
 Parsers = "69de0a69-1ddd-5017-9359-2bf0b02dc9f0"
 ScanByte = "7b38b023-a4d7-4c5e-8d43-3f3097f304eb"
+SnoopPrecompile = "66db9d55-30c0-4569-8b51-7e840670fc0c"
 TimeZones = "f269a46b-ccf7-5d73-abea-4c690281aa53"
 TranscodingStreams = "3bb67fe8-82b1-5028-8e26-92a6c54297fa"
 

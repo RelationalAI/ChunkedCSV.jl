@@ -35,7 +35,7 @@ function read_and_lex_task!(parsing_queue::Channel{T}, lexer_state::LexerState{B
     end
 end
 
-function process_and_consume_task(parsing_queue::Channel{T}, result_buffers::Vector{TaskResultBuffer{N,M}}, consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext, parsing_ctx_next::ParsingContext, options::Parsers.Options) where {T,N,M}
+function process_and_consume_task(parsing_queue::Channel{T}, result_buffers::Vector{TaskResultBuffer{M}}, consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext, parsing_ctx_next::ParsingContext, options::Parsers.Options) where {T,M}
     try
         @inbounds while true
             (task_start, task_end, row_num, task_num, use_current_context) = take!(parsing_queue)
@@ -60,9 +60,9 @@ function process_and_consume_task(parsing_queue::Channel{T}, result_buffers::Vec
     end
 end
 
-function _parse_file_doublebuffer(lexer_state::LexerState, parsing_ctx::ParsingContext, consume_ctx::AbstractConsumeContext, options::Parsers.Options, ::Val{N}, ::Val{M}) where {N,M}
+function _parse_file_doublebuffer(lexer_state::LexerState, parsing_ctx::ParsingContext, consume_ctx::AbstractConsumeContext, options::Parsers.Options, ::Val{M}) where {M}
     parsing_queue = Channel{Tuple{UInt32,UInt32,UInt32,UInt32,Bool}}(Inf)
-    result_buffers = TaskResultBuffer{N,M}[TaskResultBuffer{N,M}(id, parsing_ctx.schema, cld(length(parsing_ctx.eols), parsing_ctx.maxtasks)) for id in 1:parsing_ctx.nresults]
+    result_buffers = TaskResultBuffer{M}[TaskResultBuffer{M}(id, parsing_ctx.schema, cld(length(parsing_ctx.eols), parsing_ctx.maxtasks)) for id in 1:parsing_ctx.nresults]
     parsing_ctx_next = ParsingContext(
         parsing_ctx.schema,
         parsing_ctx.header,

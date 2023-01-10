@@ -23,7 +23,7 @@ function read_and_lex_task!(parsing_queue::Channel{T}, lexer_state::LexerState{B
     end # while true
 end
 
-function process_and_consume_task(parsing_queue::Channel{T}, result_buffers::Vector{TaskResultBuffer{N,M}}, consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext, options::Parsers.Options) where {T,N,M}
+function process_and_consume_task(parsing_queue::Channel{T}, result_buffers::Vector{TaskResultBuffer{M}}, consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext, options::Parsers.Options) where {T,M}
     try
         @inbounds while true
             task_start, task_end, row_num, task_num = take!(parsing_queue)
@@ -44,9 +44,9 @@ function process_and_consume_task(parsing_queue::Channel{T}, result_buffers::Vec
     end
 end
 
-function _parse_file_singlebuffer(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, consume_ctx::AbstractConsumeContext, options::Parsers.Options, ::Val{N}, ::Val{M}) where {B,N,M}
+function _parse_file_singlebuffer(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, consume_ctx::AbstractConsumeContext, options::Parsers.Options, ::Val{M}) where {B,M}
     parsing_queue = Channel{Tuple{UInt32,UInt32,UInt32,UInt32}}(Inf)
-    result_buffers = TaskResultBuffer{N,M}[TaskResultBuffer{N,M}(id, parsing_ctx.schema, cld(length(parsing_ctx.eols), parsing_ctx.maxtasks)) for id in 1:parsing_ctx.nresults]
+    result_buffers = TaskResultBuffer{M}[TaskResultBuffer{M}(id, parsing_ctx.schema, cld(length(parsing_ctx.eols), parsing_ctx.maxtasks)) for id in 1:parsing_ctx.nresults]
     parser_tasks = Task[]
     for i in 1:parsing_ctx.nworkers
         t = Threads.@spawn process_and_consume_task($parsing_queue, $result_buffers, $consume_ctx, $parsing_ctx, $options)

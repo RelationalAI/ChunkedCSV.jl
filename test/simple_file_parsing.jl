@@ -1380,7 +1380,7 @@ end
 
 @testset "BOM" begin
     for alg in [:serial, :singlebuffer, :doublebuffer]
-        @testset "$alg" begin
+        @testset "$alg, buffersize=10" begin
             testctx = TestContext()
             parse_file(IOBuffer("""
                 \xef\xbb\xbfa,b
@@ -1389,7 +1389,29 @@ end
                 nothing,
                 testctx,
                 _force=alg,
-                escapechar='\\'
+                escapechar='\\',
+                buffersize=10,
+            )
+            @test testctx.header == [:a, :b]
+            @test testctx.results[1].cols[1].elements[1:1] == [Parsers.PosLen(2, 1)]
+            @test testctx.results[1].cols[2].elements[1:1] == [Parsers.PosLen(6, 3, false, true)]
+            @test length(testctx.results[1].cols[1]) == 1
+            @test length(testctx.results[1].cols[2]) == 1
+        end
+    end
+
+    for alg in [:serial, :singlebuffer, :doublebuffer]
+        @testset "$alg, buffersize=200" begin
+            testctx = TestContext()
+            parse_file(IOBuffer("""
+                \xef\xbb\xbfa,b
+                "a","b\\\\"
+                """),
+                nothing,
+                testctx,
+                _force=alg,
+                escapechar='\\',
+                buffersize=200,
             )
             @test testctx.header == [:a, :b]
             @test testctx.results[1].cols[1].elements[1:1] == [Parsers.PosLen(6, 1)]

@@ -263,11 +263,7 @@ function parse_file(
     return nothing
 end
 
-# if Base.VERSION >= v"1.4.2"
-#     include("precompile.jl")
-#     _precompile_()
-# end
-
-include("precompile.jl")
+# NOTE: Disabled for now to try and work around PackageCompiler issues
+# include("precompile.jl")
 
 end # module

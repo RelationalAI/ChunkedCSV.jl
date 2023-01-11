@@ -43,6 +43,13 @@ struct InvalidStateException <: Exception
     msg::String
 end
 
+function check_any_valid_rows(eols, lexer_state, reached_end_of_file, buffersize)
+    if (length(eols) == 0 || (length(eols) == 1 && first(eols) == 0)) && !reached_end_of_file
+        close(lexer_state.io)
+        throw(NoValidRowsInBufferError(buffersize))
+    end
+end
+
 # We process input data iteratively by populating a buffer from IO.
 # In each iteration we first lex the newlines and then parse them in parallel.
 # Assumption: we can find all valid endlines only by observing quotes (currently hardcoded to double quote)
@@ -98,10 +105,6 @@ function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, 
         end
         offset += UInt32(pos_to_check)
         if pos_to_check == UInt(0)
-            if (length(eols) == 0 || (length(eols) == 1 && first(eols) == 0)) && !reached_end_of_file
-                close(lexer_state.io)
-                throw(NoValidRowsInBufferError(UInt32(length(buf))))
-            end
             break
         else
             byte_to_check = buf[offset]
@@ -152,6 +155,8 @@ function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, 
             bytes_to_search -= pos_to_check
         end
     end
+
+    check_any_valid_rows(eols, lexer_state, reached_end_of_file, buffersize)
 
     @inbounds if reached_end_of_file
         quoted && (close(lexer_state.io); throw(UnmatchedQuoteError()))

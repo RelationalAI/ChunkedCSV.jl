@@ -1587,8 +1587,8 @@ end
         @test length(testctx.results) == 2
         @test testctx.results[1].cols[1][1] == 0
         @test testctx.results[2].cols[1][1] == 1
-        @test testctx.results[1].cols[2][1] == PosLen(7,1)
-        @test testctx.results[2].cols[2][1] == PosLen(4,3,false,true)
+        @test testctx.results[1].cols[2][1] == Parsers.PosLen(7,1)
+        @test testctx.results[2].cols[2][1] == Parsers.PosLen(4,3,false,true)
 
         testctx = TestContext()
         parse_file(IOBuffer("""
@@ -1606,8 +1606,8 @@ end
         @test length(testctx.results) == 2
         @test testctx.results[1].cols[1][1] == 0
         @test testctx.results[2].cols[1][1] == 1
-        @test testctx.results[1].cols[2][1] == PosLen(7,1)
-        @test testctx.results[2].cols[2][1] == PosLen(4,3,false,true)
+        @test testctx.results[1].cols[2][1] == Parsers.PosLen(7,1)
+        @test testctx.results[2].cols[2][1] == Parsers.PosLen(4,3,false,true)
 
         testctx = TestContext()
         parse_file(IOBuffer("""
@@ -1625,8 +1625,41 @@ end
         @test length(testctx.results) == 2
         @test testctx.results[1].cols[1][1] == 0
         @test testctx.results[2].cols[1][1] == 1
-        @test testctx.results[1].cols[2][1] == PosLen(7,1)
-        @test testctx.results[2].cols[2][1] == PosLen(3,6,false,false)
+        @test testctx.results[1].cols[2][1] == Parsers.PosLen(7,1)
+        @test testctx.results[2].cols[2][1] == Parsers.PosLen(3,6,false,false)
+
+        @testset "multiple chunks end on an escape, $buffersize" begin
+            testctx = TestContext()
+            parse_file(IOBuffer("""
+                a,b
+                0,z
+                1,"S\"\"\"
+                2,z
+                3,"S\"\"\"
+                4,z
+                5,"S\"\"\"
+                6,z
+                7,"S\"\"\"
+                """),
+                [Int,String],
+                testctx,
+                buffersize=buffersize, # first S in on position 12, second on 24...
+                escapechar='"',
+            )
+            @test testctx.header == [:a, :b]
+            @test testctx.schema == [Int,String]
+            @test length(testctx.results) == 5
+            @test testctx.results[1].cols[1][1] == 0
+            @test testctx.results[2].cols[1] == 1:2
+            @test testctx.results[3].cols[1] == 3:4
+            @test testctx.results[4].cols[1] == 5:6
+            @test testctx.results[5].cols[1][1] == 7
+            @test testctx.results[1].cols[2][1] == Parsers.PosLen(7,1)
+            @test testctx.results[2].cols[2] == [Parsers.PosLen(4,3,false,true), Parsers.PosLen(11,1)]
+            @test testctx.results[3].cols[2] == [Parsers.PosLen(4,3,false,true), Parsers.PosLen(11,1)]
+            @test testctx.results[4].cols[2] == [Parsers.PosLen(4,3,false,true), Parsers.PosLen(11,1)]
+            @test testctx.results[5].cols[2][1] == Parsers.PosLen(4,3,false,true)
+        end
     end
 end
 
@@ -1768,4 +1801,32 @@ end
         @test testctx.results[1].cols[5][1:3] == fill(FixedDecimal{Int,4}(1), 3)
         @test testctx.results[1].row_statuses[1:3] == fill(ChunkedCSV.RowStatus.Ok, 3)
     end
+end
+
+@testset "Each chunk ends on a quote" begin
+    testctx = TestContext()
+    parse_file(IOBuffer("""
+        0,"S\"\"\"
+        1,"S\"\"\"
+        2,"S\"\"\"
+        3,"S\"\"\"
+        4,"S\"\"\""""),
+        [Int,String],
+        testctx,
+        buffersize=8,
+        escapechar='"',
+        header=false,
+    )
+    @test testctx.schema == [Int,String]
+    @test length(testctx.results) == 5
+    @test testctx.results[1].cols[1][1] == 0
+    @test testctx.results[2].cols[1][1] == 1
+    @test testctx.results[3].cols[1][1] == 2
+    @test testctx.results[4].cols[1][1] == 3
+    @test testctx.results[5].cols[1][1] == 4
+    @test testctx.results[1].cols[2][1] == Parsers.PosLen(4,3,false,true)
+    @test testctx.results[2].cols[2][1] == Parsers.PosLen(4,3,false,true)
+    @test testctx.results[3].cols[2][1] == Parsers.PosLen(4,3,false,true)
+    @test testctx.results[4].cols[2][1] == Parsers.PosLen(4,3,false,true)
+    @test testctx.results[5].cols[2][1] == Parsers.PosLen(4,3,false,true)
 end

@@ -24,6 +24,73 @@ function ChunkedCSV.consume!(ctx::TestThrowingContext, parsing_ctx::ParsingConte
 end
 
 @testset "Exception Handling" begin
+    @testset "Lexing errors" begin
+        @testset "NoValidRowsInBufferError" begin
+            @test_throws ChunkedCSV.NoValidRowsInBufferError begin
+                parse_file(IOBuffer("""
+                    a,b
+                    1,23
+                    3,4
+                    """),
+                    nothing,
+                    ChunkedCSV.SkipContext(),
+                    buffersize=4,
+                )
+            end
+
+            @test_throws ChunkedCSV.NoValidRowsInBufferError begin
+                parse_file(IOBuffer("""
+                    0,"S\"\"\"
+                    1,"S\"\"\"
+                    """),
+                    nothing,
+                    ChunkedCSV.SkipContext(),
+                    header=false,
+                    buffersize=7,
+                )
+            end
+
+            @test_throws ChunkedCSV.NoValidRowsInBufferError begin
+                parse_file(IOBuffer("""
+                    0,"S\\\\"
+                    1,"S\\\\"
+                    """),
+                    nothing,
+                    ChunkedCSV.SkipContext(),
+                    header=false,
+                    buffersize=7,
+                    escapechar='\\'
+                )
+            end
+
+            @test_throws ChunkedCSV.NoValidRowsInBufferError begin
+                parse_file(IOBuffer("""
+                    a,b
+                    1,"2
+                    3,4"
+                    """),
+                    nothing,
+                    ChunkedCSV.SkipContext(),
+                    buffersize=5,
+                )
+            end
+        end
+        
+        @testset "UnmatchedQuoteError" begin
+            @test_throws ChunkedCSV.UnmatchedQuoteError begin
+                parse_file(IOBuffer("""
+                    a,b
+                    1,2
+                    3,"4
+                    """),
+                    nothing,
+                    ChunkedCSV.SkipContext(),
+                    buffersize=5,
+                )
+            end
+        end
+    end
+
     @testset "consume!" begin
         @testset "serial" begin
             test_logger = TestLogger(catch_exceptions=true);

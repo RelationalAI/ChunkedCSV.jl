@@ -9,7 +9,7 @@ function skip_commented_row!(result_buf::TaskResultBuffer{M}, row_bytes, comment
     return false
 end
 
-function _parse_rows_forloop!(result_buf::TaskResultBuffer{M}, task::AbstractVector{UInt32}, buf, schema, options, comment::Union{Nothing,Vector{UInt8}}) where {M}
+function _parse_rows_forloop!(result_buf::TaskResultBuffer{M}, task::AbstractVector{Int32}, buf, schema, options, comment::Union{Nothing,Vector{UInt8}}) where {M}
     empty!(result_buf)
     N = length(schema)
     Base.ensureroom(result_buf, ceil(Int, length(task) * 1.01))
@@ -17,7 +17,7 @@ function _parse_rows_forloop!(result_buf::TaskResultBuffer{M}, task::AbstractVec
         @inbounds prev_newline = task[chunk_row_idx - 1]
         @inbounds curr_newline = task[chunk_row_idx]
         # +1 -1 to exclude newline chars
-        @inbounds row_bytes = view(buf, prev_newline+UInt32(1):curr_newline-UInt32(1))
+        @inbounds row_bytes = view(buf, prev_newline+Int32(1):curr_newline-Int32(1))
         skip_commented_row!(result_buf, row_bytes, comment) && continue
 
         pos = 1

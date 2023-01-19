@@ -14,12 +14,12 @@ struct ThrowingIO <: IO
     io::IOBuffer
 end
 ThrowingIO(s::String) = ThrowingIO(IOBuffer(s))
-ChunkedCSV.readbytesall!(io::ThrowingIO, buf, n) = io.io.ptr > 6 ? error("That should be enough data for everyone") : ChunkedCSV.readbytesall!(io.io, buf, n)
+ChunkedCSV.readbytesall!(io::ThrowingIO, buf, n::Int) = io.io.ptr > 6 ? error("That should be enough data for everyone") : ChunkedCSV.readbytesall!(io.io, buf, n)
 Base.eof(io::ThrowingIO) = Base.eof(io.io)
 
 
 const throw_ctx = TestThrowingContext()
-function ChunkedCSV.consume!(ctx::TestThrowingContext, parsing_ctx::ParsingContext, task_buf::TaskResultBuffer{M}, row_num::UInt32, eol_idx::UInt32) where {M}
+function ChunkedCSV.consume!(ctx::TestThrowingContext, parsing_ctx::ParsingContext, task_buf::TaskResultBuffer{M}, row_num::Int, eol_idx::Int32) where {M}
     error("These contexts are for throwing, and that's all what they do")
 end
 
@@ -75,7 +75,7 @@ end
                 )
             end
         end
-        
+
         @testset "UnmatchedQuoteError" begin
             @test_throws ChunkedCSV.UnmatchedQuoteError begin
                 parse_file(IOBuffer("""

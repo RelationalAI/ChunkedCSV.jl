@@ -5,9 +5,9 @@ Base.showerror(io::IO, e::FatalLexingError) = print(io, e.msg)
 #       and/or the quote character.
 struct NoValidRowsInBufferError <: FatalLexingError
     msg::String
-    buffersize::UInt32
+    buffersize::Int
 
-    function NoValidRowsInBufferError(buffersize::UInt32)
+    function NoValidRowsInBufferError(buffersize)
         return new(
             string(
                 "CSV parse job failed on lexing newlines. There was no linebreak (outside a quoted string field) ",

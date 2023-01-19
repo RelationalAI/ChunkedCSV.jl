@@ -6,7 +6,7 @@ end
 function apply_types_from_mapping!(schema, header, settings, header_provided)
     mapping = settings.schema::Dict{Symbol,DataType}
     if !(!settings.validate_type_map || header_provided || issubset(keys(mapping), header))
-        throw(ArgumentError("Unknown columns from schema mapping: $(setdiff(keys(mapping), header)), parsed header: $(header), row $(Int(settings.header_at))"))
+        throw(ArgumentError("Unknown columns from schema mapping: $(setdiff(keys(mapping), header)), parsed header: $(header), row $(settings.header_at)"))
     end
     @inbounds for (i, (colname, default_type)) in enumerate(zip(header, schema))
         schema[i] = get(mapping, colname, default_type)
@@ -78,7 +78,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
         schema,
         Symbol[],
         Vector{UInt8}(undef, settings.buffersize),
-        BufferedVector{UInt32}(),
+        BufferedVector{Int32}(),
         settings.limit,
         settings.nworkers,
         settings.maxtasks,
@@ -93,7 +93,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
     input_is_empty = lexer_state.last_newline_at == UInt(0)
 
     # First skip over commented lines, then jump to header / data row
-    pre_header_skiprows = (should_parse_header ? Int(settings.header_at) : Int(settings.data_at)) - 1
+    pre_header_skiprows = (should_parse_header ? settings.header_at : settings.data_at) - 1
     lines_skipped_total = skip_rows_init!(lexer_state, parsing_ctx, options, pre_header_skiprows, parsing_ctx.comment)
 
     @inbounds if schema_provided & header_provided
@@ -185,7 +185,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
     end
 
     # Skip over commented lines, then jump to data row if needed
-    post_header_skiprows = should_parse_header ? Int(settings.data_at) - Int(settings.header_at) - 1 : 0
+    post_header_skiprows = should_parse_header ? settings.data_at - settings.header_at - 1 : 0
     skip_rows_init!(lexer_state, parsing_ctx, options, post_header_skiprows, parsing_ctx.comment)
 
     return (parsing_ctx, lexer_state)

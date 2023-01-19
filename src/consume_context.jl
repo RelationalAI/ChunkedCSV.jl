@@ -46,7 +46,7 @@ function debug(x::BufferedVector{Parsers.PosLen}, i, parsing_ctx, consume_ctx)
     repr(Parsers.getstring(parsing_ctx.bytes, pl, parsing_ctx.escapechar))
 end
 debug(x::BufferedVector, i, parsing_ctx, consume_ctx) = string(x.elements[i])
-function debug_eols(x::BufferedVector{UInt32}, parsing_ctx, consume_ctx)
+function debug_eols(x::BufferedVector{Int32}, parsing_ctx, consume_ctx)
     eols = x.elements[1:min(consume_ctx.n+1, x.occupied)]
     return map(zip(eols[1:end-1], eols[2:end])) do (i)
         (s,e) = i
@@ -55,7 +55,7 @@ function debug_eols(x::BufferedVector{UInt32}, parsing_ctx, consume_ctx)
 end
 
 
-function consume!(consume_ctx::DebugContext, parsing_ctx::ParsingContext, task_buf::TaskResultBuffer{M}, row_num::UInt32, eol_idx::UInt32) where {M}
+function consume!(consume_ctx::DebugContext, parsing_ctx::ParsingContext, task_buf::TaskResultBuffer{M}, row_num::Int, eol_idx::Int32) where {M}
     status_counts = zeros(Int, length(RowStatus.Marks))
     io = IOBuffer()
     @inbounds for i in 1:length(task_buf.row_statuses)
@@ -151,6 +151,6 @@ end
 struct SkipContext <: AbstractConsumeContext
     SkipContext() = new()
 end
-function consume!(consume_ctx::SkipContext, parsing_ctx::ParsingContext, task_buf::TaskResultBuffer{M}, row_num::UInt32, eol_idx::UInt32) where {M}
+function consume!(consume_ctx::SkipContext, parsing_ctx::ParsingContext, task_buf::TaskResultBuffer{M}, row_num::Int, eol_idx::Int32) where {M}
     return nothing
 end

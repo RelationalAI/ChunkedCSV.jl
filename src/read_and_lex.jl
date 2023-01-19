@@ -2,7 +2,7 @@ mutable struct LexerState{B #=`ByteSet` for ScanByte.jl=#, IO_t<:IO}
     io::IO_t
     # The position of the last newline in the previous chunk. We don't need to check the first
     # `buffersize - last_newline_at` bytes for newlines, as we already search them last time.
-    last_newline_at::UInt32
+    last_newline_at::Int32
     # Last chunk ended inside quoted field, next chunk will start looking for newlines in "quoted" mode
     quoted::Bool
     # We've reached end of stream
@@ -10,22 +10,22 @@ mutable struct LexerState{B #=`ByteSet` for ScanByte.jl=#, IO_t<:IO}
     # Last chunk ended with an escape control character (we'll skip one byte in the next chunk)
     ended_on_escape::Bool
 
-    LexerState{B}(input::IO) where {B} = new{B, typeof(input)}(input, UInt32(0), false, false, false)
+    LexerState{B}(input::IO) where {B} = new{B, typeof(input)}(input, 0, false, false, false)
 end
 
 end_of_stream(io::IO) = eof(io)
 end_of_stream(io::GzipDecompressorStream) = eof(io)
 
-readbytesall!(io::IOStream, buf, n) = UInt32(Base.readbytes!(io, buf, n; all = true))
-readbytesall!(io::IO, buf, n) = UInt32(Base.readbytes!(io, buf, n))
-function prepare_buffer!(io::IO, buf::Vector{UInt8}, last_newline_at)
+readbytesall!(io::IOStream, buf, n::Int) = Base.readbytes!(io, buf, n; all = true)
+readbytesall!(io::IO, buf, n::Int) = Base.readbytes!(io, buf, n)
+function prepare_buffer!(io::IO, buf::Vector{UInt8}, last_newline_at::Int)
     ptr = pointer(buf)
-    buffersize = UInt32(length(buf))
-    if last_newline_at == 0 # this is the first time we saw the buffer, we'll just fill it up
+    buffersize = length(buf)
+    @inbounds if last_newline_at == 0 # this is the first time we saw the buffer, we'll just fill it up
         bytes_read_in = readbytesall!(io, buf, buffersize)
         if bytes_read_in > 2 && hasBOM(buf)
-            n = prepare_buffer!(io, buf, UInt32(3))
-            bytes_read_in -= UInt32(3) - n
+            n = prepare_buffer!(io, buf, 3)
+            bytes_read_in -= 3 - n
         end
     elseif last_newline_at < buffersize
         # We'll keep the bytes that are past the last newline, shifting them to the left
@@ -50,70 +50,86 @@ function check_any_valid_rows(eols, lexer_state, reached_end_of_file, buffersize
     end
 end
 
+@noinline function invalid_state_exception(ptr, base_ptr, buffersize, bytes_to_search, offset, pos_to_check, bytes_read_in, reached_end_of_file, bytes_carried_over_from_previous_chunk)
+    throw(InvalidStateException(string((;ptr, base_ptr, buffersize, bytes_to_search, offset, pos_to_check, bytes_read_in, reached_end_of_file, bytes_carried_over_from_previous_chunk))))
+end
 # We process input data iteratively by populating a buffer from IO.
 # In each iteration we first lex the newlines and then parse them in parallel.
 # Assumption: we can find all valid endlines only by observing quotes (currently hardcoded to double quote)
 #             and newline characters.
-findmark(ptr, bytes_to_search, ::Val{B}) where B = something(memchr(ptr, bytes_to_search, B), zero(UInt))
+function findmark(ptr, bytes_to_search, ::Val{B}) where B
+    return Base.bitcast(Int, something(memchr(ptr, Base.bitcast(UInt, bytes_to_search), B), 0))
+end
 function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, options::Parsers.Options) where B
+    @assert !lexer_state.done
+    # local offset::Int32
     ptr = pointer(parsing_ctx.bytes) # We never resize the buffer, the array shouldn't need to relocate
+    base_ptr = ptr
     (e, oq, cq) = (options.e, options.oq.token, options.cq.token)::Tuple{UInt8,UInt8,UInt8}
     buf = parsing_ctx.bytes
 
     empty!(parsing_ctx.eols)
-    push!(parsing_ctx.eols, UInt32(0))
+    push!(parsing_ctx.eols, Int32(0))
     eols = parsing_ctx.eols
     quoted = lexer_state.quoted
-    buffersize = UInt32(length(buf))
+    buffersize = length(buf)
+    @assert 0 < buffersize <= typemax(Int32)
 
-    bytes_read_in = prepare_buffer!(lexer_state.io, parsing_ctx.bytes, lexer_state.last_newline_at)
+    bytes_read_in = prepare_buffer!(lexer_state.io, parsing_ctx.bytes, Int(lexer_state.last_newline_at))
+    @assert 0 <= bytes_read_in <= buffersize
     reached_end_of_file = end_of_stream(lexer_state.io)
 
-    bytes_to_search = UInt(bytes_read_in)
-    @assert bytes_to_search <= buffersize
+    bytes_to_search = bytes_read_in
     if lexer_state.last_newline_at == UInt(0) # first time populating the buffer
-        bytes_carried_over_from_previous_chunk = UInt32(0)
+        bytes_carried_over_from_previous_chunk = Int32(0)
         offset = bytes_carried_over_from_previous_chunk
     else
         # First length(buf) - last_newline_at bytes we've already seen in the previous round
-        bytes_carried_over_from_previous_chunk = buffersize - lexer_state.last_newline_at
+        bytes_carried_over_from_previous_chunk = Int32(buffersize) - lexer_state.last_newline_at
         offset = bytes_carried_over_from_previous_chunk
         if lexer_state.ended_on_escape
             if e == cq # Here is where we resolve the ambiguity from the last chunk
                 if @inbounds buf[1] == e
                     # The last byte of the previous chunk was actually escaping a quote or escape char
                     # we can just skip over it
-                    offset += UInt32(1)
+                    offset += Int32(1)
                     bytes_to_search -= 1
                 else
                     # The last byte of the previous chunk was actually a closing quote
                     quoted = false
                 end
             else
-                offset += UInt32(1)
+                offset += Int32(1)
                 bytes_to_search -= 1
             end
         end
         ptr += offset
     end
 
+    pos_to_check = 0
     lexer_state.ended_on_escape = false
-    @inbounds while bytes_to_search > UInt(0)
+    (0 <= bytes_to_search <= bytes_read_in <= buffersize &&
+        0 <= offset <= buffersize &&
+        (reached_end_of_file || ((bytes_read_in + bytes_carried_over_from_previous_chunk) == buffersize)) &&
+        (ptr - base_ptr + bytes_to_search == bytes_read_in + bytes_carried_over_from_previous_chunk) &&
+        (ptr - base_ptr == offset)) ||
+        invalid_state_exception(ptr, base_ptr, buffersize, bytes_to_search, offset, pos_to_check, bytes_read_in, reached_end_of_file, bytes_carried_over_from_previous_chunk)
+    @inbounds while bytes_to_search > 0
+        ((ptr - base_ptr + bytes_to_search == bytes_read_in + bytes_carried_over_from_previous_chunk) &&
+            (ptr - base_ptr == offset)) ||
+            invalid_state_exception(ptr, base_ptr, buffersize, bytes_to_search, offset, pos_to_check, bytes_read_in, reached_end_of_file, bytes_carried_over_from_previous_chunk)
         pos_to_check = findmark(ptr, bytes_to_search, B)
-        if pos_to_check > typemax(UInt32)
-            throw(InvalidStateException("pos_to_check = $pos_to_check, bytes_to_search = $bytes_to_search, offset = $offset, buffersize = $(length(buf))"))
-        end
-        offset += UInt32(pos_to_check)
-        if pos_to_check == UInt(0)
+        offset += Int32(pos_to_check)
+        if pos_to_check == 0
             break
         else
             byte_to_check = buf[offset]
             if quoted # We're inside a quoted field
                 if byte_to_check == e
                     if offset < buffersize
-                        if buf[offset+UInt32(1)] in (e, cq)
-                            pos_to_check += UInt(1)
-                            offset += UInt32(1)
+                        if buf[offset+Int32(1)] in (e, cq)
+                            pos_to_check += 1
+                            offset += Int32(1)
                         elseif e == cq
                             quoted = false
                         end
@@ -133,21 +149,9 @@ function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, 
             else
                 if byte_to_check == oq
                     quoted = true
-                elseif byte_to_check == UInt8('\r')
-                    if offset < buffersize && buf[offset+UInt32(1)] == UInt8('\n')
-                        pos_to_check += UInt(1)
-                        offset += UInt32(1)
-                    end
-                    push!(eols, offset)
-                elseif byte_to_check == e # This is to allow that fields like `16\"` without quotes
-                    # If we're here it implies oq != e
-                    if offset < buffersize
-                        pos_to_check += UInt(1)
-                        offset += UInt32(1)
-                    else # end of chunk
-                        lexer_state.ended_on_escape = true
-                    end
-                else
+                elseif byte_to_check == e || byte_to_check == cq
+                    # this will most likely trigger a parser error
+                else # newline
                     push!(eols, offset)
                 end
             end
@@ -163,8 +167,8 @@ function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, 
         lexer_state.done = true
         # Insert a newline at the end of the file if there wasn't one
         # This is just to make `eols` contain both start and end `pos` of every single line
-        last_byte = bytes_carried_over_from_previous_chunk + bytes_read_in
-        last(eols) < last_byte && push!(eols, last_byte + UInt32(1))
+        last_byte = bytes_carried_over_from_previous_chunk + Int32(bytes_read_in)
+        last(eols) < last_byte && push!(eols, last_byte + Int32(1))
     else
         lexer_state.done = false
     end
@@ -185,7 +189,7 @@ function readbytesall!(io::MmapStream, buf, n)
     bytes_to_read = min(bytesavailable(io), n)
     unsafe_copyto!(pointer(buf), pointer(io.x) + io.pos - 1, bytes_to_read)
     io.pos += bytes_to_read
-    return UInt32(bytes_to_read)
+    return bytes_to_read
 end
 # Interop with GzipDecompressorStream
 Base.bytesavailable(m::MmapStream) = length(m.x) - m.pos

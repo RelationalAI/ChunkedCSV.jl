@@ -1,5 +1,5 @@
 function read_and_lex_task!(parsing_queue::Channel{T}, lexer_state::LexerState{B}, parsing_ctx::ParsingContext, consume_ctx::AbstractConsumeContext, options::Parsers.Options) where {T,B}
-    row_num = UInt32(1)
+    row_num = 1
     @inbounds while true
         limit_eols!(parsing_ctx, row_num) && break
         task_size = estimate_task_size(parsing_ctx)
@@ -7,14 +7,14 @@ function read_and_lex_task!(parsing_queue::Channel{T}, lexer_state::LexerState{B
         # Set the expected number of parsing tasks
         setup_tasks!(consume_ctx, parsing_ctx, ntasks)
         # Send task definitions (segmenf of `eols` to process) to the queue
-        task_start = UInt32(1)
-        task_num = UInt32(1)
+        task_start = Int32(1)
+        task_num = Int32(1)
         for task in Iterators.partition(eachindex(parsing_ctx.eols), task_size)
-            task_end = UInt32(last(task))
+            task_end = Int32(last(task))
             put!(parsing_queue, (task_start, task_end, row_num, task_num))
-            row_num += task_end - task_start
+            row_num += Int(task_end - task_start)
             task_start = task_end
-            task_num += UInt32(1)
+            task_num += Int32(1)
         end
         # Wait for parsers to finish processing current chunk
         sync_tasks(consume_ctx, parsing_ctx, ntasks)
@@ -45,7 +45,7 @@ function process_and_consume_task(parsing_queue::Channel{T}, result_buffers::Vec
 end
 
 function _parse_file_singlebuffer(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, consume_ctx::AbstractConsumeContext, options::Parsers.Options, ::Val{M}) where {B,M}
-    parsing_queue = Channel{Tuple{UInt32,UInt32,UInt32,UInt32}}(Inf)
+    parsing_queue = Channel{Tuple{Int32,Int32,Int,Int32}}(Inf)
     result_buffers = TaskResultBuffer{M}[TaskResultBuffer{M}(id, parsing_ctx.schema, cld(length(parsing_ctx.eols), parsing_ctx.maxtasks)) for id in 1:parsing_ctx.nresults]
     parser_tasks = Task[]
     for i in 1:parsing_ctx.nworkers
@@ -65,7 +65,7 @@ function _parse_file_singlebuffer(lexer_state::LexerState{B}, parsing_ctx::Parsi
     end
     # Cleanup
     for _ in 1:parsing_ctx.nworkers
-        put!(parsing_queue, (UInt32(0), UInt32(0), UInt32(0), UInt32(0)))
+        put!(parsing_queue, (Int32(0), Int32(0), 0, Int32(0)))
     end
     foreach(wait, parser_tasks)
     close(parsing_queue)

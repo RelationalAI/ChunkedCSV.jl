@@ -41,8 +41,8 @@ struct ParsingContext
     schema::Vector{DataType}
     header::Vector{Symbol}
     bytes::Vector{UInt8}
-    eols::BufferedVector{UInt32}
-    limit::UInt32
+    eols::BufferedVector{Int32}
+    limit::Int
     nworkers::UInt8
     maxtasks::UInt8
     nresults::UInt8
@@ -58,31 +58,31 @@ end
 struct ParserSettings
     schema::Union{Nothing,Vector{DataType},Dict{Symbol,DataType}}
     header::Union{Nothing,Vector{Symbol}}
-    header_at::UInt
-    data_at::UInt
-    limit::UInt32
+    header_at::Int
+    data_at::Int
+    limit::Int
     validate_type_map::Bool
     default_colname_prefix::String
-    buffersize::UInt32
+    buffersize::Int32
     nworkers::UInt8
     maxtasks::UInt8
     nresults::UInt8
     comment::Union{Nothing,Vector{UInt8}}
 end
 function ParserSettings(schema, header::Vector{Symbol}, data_at, limit, validate_type_map, default_colname_prefix, buffersize, nworkers, maxtasks, nresults, comment)
-    ParserSettings(schema, header, UInt(0), UInt(data_at), limit, validate_type_map, default_colname_prefix, buffersize, nworkers, maxtasks, nresults, comment)
+    ParserSettings(schema, header, 0, Int(data_at), Int(limit), validate_type_map, default_colname_prefix, buffersize, nworkers, maxtasks, nresults, comment)
 end
 
 function ParserSettings(schema, header::Integer, data_at, limit, validate_type_map, default_colname_prefix, buffersize, nworkers, maxtasks, nresults, comment)
-    ParserSettings(schema, nothing, UInt(header), UInt(data_at), limit, validate_type_map, default_colname_prefix, buffersize, nworkers, maxtasks, nresults, comment)
+    ParserSettings(schema, nothing, Int(header), Int(data_at), Int(limit), validate_type_map, default_colname_prefix, buffersize, nworkers, maxtasks, nresults, comment)
 end
 
 function limit_eols!(parsing_ctx::ParsingContext, row_num)
     parsing_ctx.limit == 0 && return false
     if row_num > parsing_ctx.limit
         return true
-    elseif row_num <= parsing_ctx.limit < row_num + UInt32(length(parsing_ctx.eols) - 1)
-        parsing_ctx.eols.occupied -= (row_num + UInt32(length(parsing_ctx.eols) - 1) - parsing_ctx.limit - UInt32(1))
+    elseif row_num <= parsing_ctx.limit < row_num + length(parsing_ctx.eols) - 1
+        parsing_ctx.eols.occupied -= (row_num + length(parsing_ctx.eols) - 1) - parsing_ctx.limit - 1
     end
     return false
 end
@@ -110,18 +110,21 @@ include("parser_singlebuffer.jl")
 include("parser_doublebuffer.jl")
 
 function _create_options(;
-    delim::Char=',',
-    openquotechar::Char='"',
-    closequotechar::Char='"',
-    escapechar::Char='"',
+    delim::Union{UInt8,Char}=',',
+    openquotechar::Union{UInt8,Char}='"',
+    closequotechar::Union{UInt8,Char}='"',
+    escapechar::Union{UInt8,Char}='"',
     sentinel::Union{Missing,Nothing,Vector{String}}=missing,
     groupmark::Union{Char,UInt8,Nothing}=nothing,
     stripwhitespace::Bool=false,
     truestrings::Union{Nothing,Vector{String}}=["true", "True", "1", "t", "T"],
     falsestrings::Union{Nothing,Vector{String}}=["false", "False", "0", "f", "F"],
+    newlinechar::Union{UInt8,Char}='\n', # only for validation
 )
-    (UInt8(openquotechar) == 0xff || UInt8(closequotechar) == 0xff || UInt8(escapechar) == 0xff) &&
-        throw(ArgumentError("`escapechar`, `openquotechar` and `closequotechar` must not be a `0xff` byte."))
+    (0xff in (UInt8(openquotechar), UInt8(closequotechar), UInt8(escapechar), UInt8(delim), UInt8(newlinechar))) &&
+        throw(ArgumentError("`delim`, `escapechar`, `openquotechar`, `closequotechar` and `newlinechar` must not be a `0xff` byte."))
+    (UInt8(newlinechar) in (UInt8(openquotechar), UInt8(closequotechar), UInt8(escapechar), UInt8(delim))) &&
+        throw(ArgumentError("`newlinechar` must be different from `delim`, `escapechar`, `openquotechar` and `closequotechar`"))
     return Parsers.Options(
         sentinel=sentinel,
         wh1=delim ==  ' ' ? '\v' : ' ',
@@ -153,12 +156,13 @@ function setup_parser(
     input,
     schema::Union{Nothing,Vector{DataType},Dict{Symbol,DataType}}=nothing;
     header::Union{Vector{Symbol},Integer}=true,
-    skipto::Integer=UInt32(0),
-    limit::Integer=UInt32(0),
+    skipto::Integer=0,
+    limit::Integer=0,
     delim::Union{UInt8,Char}=',',
     openquotechar::Union{UInt8,Char}='"',
     closequotechar::Union{UInt8,Char}='"',
     escapechar::Union{UInt8,Char}='"',
+    newlinechar::Union{UInt8,Char}='\n',
     sentinel::Union{Missing,Nothing,Vector{String}}=missing,
     groupmark::Union{Char,UInt8,Nothing}=nothing,
     stripwhitespace::Bool=false,
@@ -168,19 +172,26 @@ function setup_parser(
     comment::Union{Nothing,AbstractString,Char,UInt8}=nothing,
     # In bytes. This absolutely has to be larger than any single row.
     # Much safer if any two consecutive rows are smaller than this threshold.
-    buffersize::Integer=UInt32(Threads.nthreads() * 1024 * 1024),
+    buffersize::Integer=(Threads.nthreads() * 1024 * 1024),
     nworkers::Integer=Threads.nthreads(),
     maxtasks::Integer=2nworkers,
     nresults::Integer=maxtasks,
     default_colname_prefix::String="COL_",
     use_mmap::Bool=false,
 )
-    0 < buffersize < typemax(UInt32) || throw(ArgumentError("`buffersize` argument must be larger than 0 and smaller than 4_294_967_295 bytes."))
+    0 < buffersize <= typemax(Int32) || throw(ArgumentError("`buffersize` argument must be larger than 0 and smaller than 2_147_483_648 bytes."))
     0 < nworkers < 256 || throw(ArgumentError("`nworkers` argument must be larger than 0 and smaller than 256."))
     0 < nresults < 256 || throw(ArgumentError("`nresults` argument must be larger than 0 and smaller than 256."))
     0 < maxtasks < 256 || throw(ArgumentError("`maxtasks` argument must be larger than 0 and smaller than 256."))
-    skipto >= 0 || throw(ArgumentError("`skipto` argument must be larger than 0."))
-    limit >= 0 || throw(ArgumentError("`limit` argument must be larger than 0."))
+    0 <= skipto <= typemax(Int) || throw(ArgumentError("`skipto` argument must be positive and smaller than 9_223_372_036_854_775_808 rows."))
+    0 <= limit <= typemax(Int) || throw(ArgumentError("`limit` argument must be positive and smaller than 9_223_372_036_854_775_808 rows."))
+
+    sizeof(openquotechar) > 1 || throw(ArgumentError("`openquotechar` must be a single-byte character."))
+    sizeof(closequotechar) > 1 || throw(ArgumentError("`closequotechar` must be a single-byte character."))
+    sizeof(delim) > 1 || throw(ArgumentError("`delim` must be a single-byte character."))
+    sizeof(escapechar) > 1 || throw(ArgumentError("`escapechar` must be a single-byte character."))
+    sizeof(newlinechar) > 1 || throw(ArgumentError("`newlinechar` must be a single-byte character."))
+
     maxtasks >= nworkers || throw(ArgumentError("`maxtasks` argument must be larger of equal to the `nworkers` argument."))
     # otherwise not implemented; implementation postponed once we know why take!/wait allocates
     nresults == maxtasks || throw(ArgumentError("Currently, `nresults` argument must be equal to the `maxtasks` argument."))
@@ -188,14 +199,14 @@ function setup_parser(
 
     should_close, io = _input_to_io(input, use_mmap)
     settings = ParserSettings(
-        schema, header, UInt(skipto), UInt32(limit), validate_type_map, default_colname_prefix,
-        UInt32(buffersize), UInt8(nworkers), UInt8(maxtasks), UInt8(nresults), _comment_to_bytes(comment),
+        schema, header, Int(skipto), Int(limit), validate_type_map, default_colname_prefix,
+        Int32(buffersize), UInt8(nworkers), UInt8(maxtasks), UInt8(nresults), _comment_to_bytes(comment),
     )
     options = _create_options(;
         delim, openquotechar, closequotechar, escapechar, sentinel, groupmark, stripwhitespace,
-        truestrings, falsestrings,
+        truestrings, falsestrings, newlinechar
     )
-    byteset = Val(ByteSet((UInt8(options.e), UInt8(options.oq.token),  UInt8(options.cq.token), UInt8('\n'), UInt8('\r'))))
+    byteset = Val(ByteSet((UInt8(options.e), UInt8(options.oq.token),  UInt8(options.cq.token), UInt8(newlinechar))))
     (parsing_ctx, lexer_state) = init_parsing!(io, settings, options, Val(byteset))
     return should_close, parsing_ctx, lexer_state, options
 end
@@ -229,12 +240,13 @@ function parse_file(
     schema::Union{Nothing,Vector{DataType},Dict{Symbol,DataType}}=nothing,
     consume_ctx::AbstractConsumeContext=DebugContext();
     header::Union{Nothing,Vector{Symbol},Integer}=true,
-    skipto::Integer=UInt32(0),
-    limit::Integer=UInt32(0),
+    skipto::Integer=0,
+    limit::Integer=0,
     delim::Union{UInt8,Char}=',',
     openquotechar::Union{UInt8,Char}='"',
     closequotechar::Union{UInt8,Char}='"',
     escapechar::Union{UInt8,Char}='"',
+    newlinechar::Union{UInt8,Char}='\n',
     sentinel::Union{Missing,Nothing,Vector{String}}=missing,
     groupmark::Union{Char,UInt8,Nothing}=nothing,
     stripwhitespace::Bool=false,
@@ -244,7 +256,7 @@ function parse_file(
     comment::Union{Nothing,String,Char,UInt8}=nothing,
     # In bytes. This absolutely has to be larger than any single row.
     # Much safer if any two consecutive rows are smaller than this threshold.
-    buffersize::Integer=UInt32(Threads.nthreads() * 1024 * 1024),
+    buffersize::Integer=Int32(Threads.nthreads() * 1024 * 1024),
     nworkers::Integer=Threads.nthreads(),
     maxtasks::Integer=2nworkers,
     nresults::Integer=maxtasks,
@@ -254,9 +266,10 @@ function parse_file(
 )
     (should_close, parsing_ctx, lexer_state, options) = setup_parser(
         input, schema;
-        header, skipto, delim, openquotechar, closequotechar, limit, escapechar, sentinel,
-        groupmark, stripwhitespace, truestrings, falsestrings, comment, validate_type_map,
-        default_colname_prefix, buffersize, nworkers, maxtasks, nresults, use_mmap
+        header, skipto, delim, openquotechar, closequotechar, limit, escapechar, newlinechar,
+        sentinel, groupmark, stripwhitespace, truestrings, falsestrings, comment,
+        validate_type_map, default_colname_prefix, buffersize, nworkers, maxtasks, nresults,
+        use_mmap,
     )
     parse_file(lexer_state, parsing_ctx, consume_ctx, options, _force)
     should_close && close(lexer_state.io)

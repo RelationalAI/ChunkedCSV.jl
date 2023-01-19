@@ -10,10 +10,19 @@ csvrand(::Type{Bool}, quotechar, escapechar, delim) = rand(Bool)
 csvrand(::Type{Char}, quotechar, escapechar, delim) = rand('a':'z')
 csvrand(::Type{Float64}, quotechar, escapechar, delim) = rand((typemin(Float64), typemax(Float64), nextfloat(typemin(Float64)), prevfloat(typemax(Float64)), 0.0, -1.0, 1.0))
 csvrand(::Type{FixedDecimal{Int64,4}}, quotechar, escapechar, delim) = rand(("99.9999", "999999e-4", "0.009999991111e4", "-99.9999", "-999999e-4", "-0.009999991111e4"))
-# csvrand(::Type{String}, quotechar, escapechar, delim) = rand(Bool) ?
-#     string(quotechar, 'S', randstring(['\n', delim, 'a', 'z'], rand(2:27)), escapechar, quotechar, escapechar, quotechar, 'E', quotechar) :
-#     string('S', randstring(['a', 'z'], rand(4:27)), 'E')
-csvrand(::Type{String}, quotechar, escapechar, delim) = string('S', randstring(['a', 'z'], rand(4:27)), 'E')
+csvrand(::Type{String}, quotechar, escapechar, delim) = rand(Bool) ?
+    string(quotechar, 'S', randstring(['\n', delim, 'a', 'z'], rand(2:27)), escapechar, quotechar, escapechar, quotechar, 'E', quotechar) :
+    string('S', randstring(['a', 'z'], rand(4:27)), 'E')
+
+
+csvrand(::Type{String}, quotechar, escapechar, delim) = rand(Bool) ?
+    string(quotechar, 'S', randstring(['\n', delim, 'a', 'z'], rand(2:1000000)), escapechar, quotechar, escapechar, quotechar, 'E', quotechar) :
+    string('S', randstring(['a', 'z'], rand(4:1000000)), 'E')
+
+csvrand(::Type{String}, quotechar, escapechar, delim) = rand(Bool) ?
+    string(quotechar, 'S', randstring([escapechar], rand(2:2:1000000)), escapechar, quotechar, escapechar, quotechar, 'E', quotechar) :
+    string('S', randstring(['a', 'z'], rand(4:1000000)), 'E')
+# csvrand(::Type{String}, quotechar, escapechar, delim) = string('S', randstring(['a', 'z'], rand(4:27)), 'E')
 
 function csvrand!(::Type{T}, buf::AbstractVector{String}, quotechar, escapechar, delim) where {T}
     if T === Int
@@ -35,7 +44,7 @@ function csvrand!(::Type{T}, buf::AbstractVector{String}, quotechar, escapechar,
     end
 end
 
-function generatecsv(path, schema, rows, header=string.("COL_", 1:length(schema)+1), delim=',', quotechar='"', escapechar='"')
+function generatecsv(path, schema, rows; header=string.("COL_", 1:length(schema)+1), delim=',', quotechar='"', escapechar='"')
     iobuf = IOBuffer()
     max_task_size = min(rows, 32768)
     colbufs = [Vector{String}(undef, max_task_size) for _ in schema]

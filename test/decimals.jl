@@ -7,7 +7,7 @@ const DEFAULT_OPTIONS = Parsers.Options(delim=',', quoted=true)
 const DEFAULT_OPTIONS_GROUPMARK = Parsers.Options(delim=',', quoted=true, groupmark=' ')
 _typeparser2(::Type{T}, f, buf, r=RoundNearest, options=DEFAULT_OPTIONS) where {T} = _typeparser(T, f, buf, 1, length(buf), UInt8(first(buf)), Int16(0), options, r)
 
-@testset "decimals" begin
+@testset "Decimals" begin
     function exhaustive_tests()
         @testset "$T" for T in (Int8, Int16)
             @testset "$f" for f in (0, 1, 2)

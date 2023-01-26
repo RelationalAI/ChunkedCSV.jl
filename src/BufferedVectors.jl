@@ -25,7 +25,6 @@ Base.isempty(x::BufferedVector) = x.occupied == 0
 Base.IndexStyle(::BufferedVector) = Base.IndexLinear()
 Base.IteratorSize(::BufferedVector) = Base.HasLength()
 Base.IteratorEltype(::BufferedVector) = Base.HasEltype()
-Base.iterate(A::BufferedVector, i=1) = (@inline; (i % UInt) - 1 < length(A) ? (@inbounds A[i], i + 1) : nothing)
 Base.collect(x::BufferedVector{T}) where {T} = length(x) > 0 ? @inbounds(x.elements[1:length(x)]) : T[]
 Base.eltype(::BufferedVector{T}) where T = T
 @inline function Base.push!(buffer::BufferedVector{T}, x::T) where {T}

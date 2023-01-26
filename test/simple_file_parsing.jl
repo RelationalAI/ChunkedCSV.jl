@@ -1928,4 +1928,46 @@ for io_t in (IOBuffer, noop_stream, iostream, gzip_stream, gzip_stream_autodetec
         @test testctx.results[2].cols[2][1] == Parsers.PosLen(4,3,false,true)
         @test testctx.results[3].cols[2][1] == Parsers.PosLen(4,3,false,true)
     end
+
+    @testset "Escape in a header ($(io_t))" begin
+        testctx = TestContext()
+        parse_file(io_t("""
+            a,"b", "c\"\""
+            """),
+            [String,String,String],
+            testctx,
+            escapechar='"',
+        )
+        @test testctx.header == [:a, :b, Symbol("c\"")]
+
+        testctx = TestContext()
+        parse_file(io_t("""
+            a,"b", "c\\\""
+            """),
+            [String,String,String],
+            testctx,
+            escapechar='\\',
+        )
+        @test testctx.header == [:a, :b, Symbol("c\"")]
+
+        testctx = TestContext()
+            parse_file(io_t("""
+                a,"b", "c\"\""
+                """),
+            nothing,
+            testctx,
+            escapechar='"',
+        )
+        @test testctx.header == [:a, :b, Symbol("c\"")]
+
+        testctx = TestContext()
+            parse_file(io_t("""
+            a,"b", "c\\\""
+            """),
+            nothing,
+            testctx,
+            escapechar='\\',
+        )
+        @test testctx.header == [:a, :b, Symbol("c\"")]
+    end
 end # for io_t

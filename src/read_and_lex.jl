@@ -126,7 +126,7 @@ function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, 
             byte_to_check = buf[offset]
             if quoted # We're inside a quoted field
                 if byte_to_check == e
-                    if offset < buffersize
+                    if offset < (bytes_read_in + bytes_carried_over_from_previous_chunk)
                         if buf[offset+Int32(1)] in (e, cq)
                             pos_to_check += 1
                             offset += Int32(1)

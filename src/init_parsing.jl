@@ -124,7 +124,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
                     close(io);
                     throw(HeaderParsingError("Error parsing header for column $i at $(lines_skipped_total+1):$(pos) (row:col)."))
                 else
-                    push!(parsing_ctx.header, Symbol(strip(String(v[val.pos:val.pos+val.len-1]))))
+                    push!(parsing_ctx.header, Symbol(strip(Parsers.getstring(v, val, options.e))))
                 end
                 pos += tlen
             end
@@ -166,7 +166,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
                 close(io)
                 throw(HeaderParsingError("Error parsing header for column $i at $(lines_skipped_total+1):$(pos) (row:col)."))
             else
-                @inbounds push!(parsing_ctx.header, Symbol(strip(String(v[val.pos:val.pos+val.len-1]))))
+                @inbounds push!(parsing_ctx.header, Symbol(strip(Parsers.getstring(v, val, options.e))))
             end
             pos += tlen
             i += 1

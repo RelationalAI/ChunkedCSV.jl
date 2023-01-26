@@ -88,6 +88,17 @@ end
                     buffersize=5,
                 )
             end
+            @test_throws ChunkedCSV.UnmatchedQuoteError begin
+                parse_file(IOBuffer("""
+                    a,b
+                    1,2
+                    3,"4\\
+                    """),
+                    nothing,
+                    ChunkedCSV.SkipContext(),
+                    escapechar='\\',
+                )
+            end
         end
     end
 

@@ -107,6 +107,7 @@ function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, 
     end
 
     pos_to_check = 0
+    last_byte = bytes_carried_over_from_previous_chunk + Int32(bytes_read_in)
     lexer_state.ended_on_escape = false
     (0 <= bytes_to_search <= bytes_read_in <= buffersize &&
         0 <= offset <= buffersize &&
@@ -126,7 +127,7 @@ function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, 
             byte_to_check = buf[offset]
             if quoted # We're inside a quoted field
                 if byte_to_check == e
-                    if offset < (bytes_read_in + bytes_carried_over_from_previous_chunk)
+                    if offset < last_byte
                         if buf[offset+Int32(1)] in (e, cq)
                             pos_to_check += 1
                             offset += Int32(1)
@@ -167,7 +168,6 @@ function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, 
         lexer_state.done = true
         # Insert a newline at the end of the file if there wasn't one
         # This is just to make `eols` contain both start and end `pos` of every single line
-        last_byte = bytes_carried_over_from_previous_chunk + Int32(bytes_read_in)
         last(eols) < last_byte && push!(eols, last_byte + Int32(1))
     else
         lexer_state.done = false

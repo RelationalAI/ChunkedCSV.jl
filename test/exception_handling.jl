@@ -74,6 +74,18 @@ end
                     buffersize=5,
                 )
             end
+
+            @test_throws ChunkedCSV.NoValidRowsInBufferError begin
+                ChunkedCSV.parse_file(IOBuffer("""
+                    1234567
+                    \"\\\"a\\\\\\\\\\"\""""),
+                    nothing,
+                    ChunkedCSV.SkipContext(),
+                    header=false,
+                    buffersize=8,
+                    escapechar='\\',
+                )
+            end
         end
 
         @testset "UnmatchedQuoteError" begin

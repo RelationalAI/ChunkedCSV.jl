@@ -63,7 +63,6 @@ module TestContexts
     end
 end
 using .TestContexts
-TestContext()
 
 
 const _EXISTING_TEST_FILES = Dict{String,String}()
@@ -91,9 +90,9 @@ function gzip_stream(x::String)
     return path
 end
 
-# const alg=:serial
-# const sentinel=""
-# const io_t = iobuffer
+alg=:serial
+sentinel=""
+io_t = iobuffer
 for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial, :singlebuffer, :doublebuffer))
     @testset "Simple file single chunk ($(io_t), $(alg))" begin
         @testset "int" begin
@@ -1844,6 +1843,81 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                     @test testctx.strings[5][2][1] == "S\""
                 end
             end
+        end
+
+        @testset "Ending on an escapechar misc" begin
+            testctx = TestContext()
+            ChunkedCSV.parse_file(io_t("""
+                123456
+                \"\"\"a\"\"\""""),
+                nothing,
+                testctx,
+                header=false,
+                buffersize=8,
+                escapechar='"',
+                _force=alg,
+            )
+            @test testctx.results[1].cols[1] == [Parsers.PosLen(1, 6)]
+            @test testctx.results[2].cols[1] == [Parsers.PosLen(2, 5, false, true)]
+            @test testctx.strings[1][1] == ["123456"]
+            @test testctx.strings[2][1] == ["\"a\""]
+            @test length(testctx.results[1].cols[1]) == 1
+            @test length(testctx.results[2].cols[1]) == 1
+
+            testctx = TestContext()
+            ChunkedCSV.parse_file(io_t("""
+                12345
+                \"\"\"a\"\"\""""),
+                nothing,
+                testctx,
+                header=false,
+                buffersize=8,
+                escapechar='"',
+                _force=alg,
+            )
+            @test testctx.results[1].cols[1] == [Parsers.PosLen(1, 5)]
+            @test testctx.results[2].cols[1] == [Parsers.PosLen(2, 5, false, true)]
+            @test testctx.strings[1][1] == ["12345"]
+            @test testctx.strings[2][1] == ["\"a\""]
+            @test length(testctx.results[1].cols[1]) == 1
+            @test length(testctx.results[2].cols[1]) == 1
+
+            testctx = TestContext()
+            ChunkedCSV.parse_file(io_t("""
+                12345
+                \"\\\"a\\\"\""""),
+                nothing,
+                testctx,
+                header=false,
+                buffersize=8,
+                escapechar='\\',
+                _force=alg,
+            )
+            @test testctx.results[1].cols[1] == [Parsers.PosLen(1, 5)]
+            @test testctx.results[2].cols[1] == [Parsers.PosLen(2, 5, false, true)]
+            @test testctx.strings[1][1] == ["12345"]
+            @test testctx.strings[2][1] == ["\"a\""]
+            @test length(testctx.results[1].cols[1]) == 1
+            @test length(testctx.results[2].cols[1]) == 1
+
+            # This example is set up so that the last partially filled buffer
+            # ends on a quote and the next byte (from previous chunk) is an escape
+            testctx = TestContext()
+            ChunkedCSV.parse_file(IOBuffer("""
+                \"\\\"data\\\"\"
+                \"\\\"end\""""),
+                nothing,
+                testctx,
+                header=false,
+                buffersize=13,
+                escapechar='\\',
+            )
+            @test testctx.results[1].cols[1] == [Parsers.PosLen(2, 8, false, true)]
+            @test testctx.results[2].cols[1] == [Parsers.PosLen(2, 5, false, true)]
+            @test testctx.strings[1][1] == ["\"data\""]
+            @test testctx.strings[2][1] == ["\"end"]
+            @test length(testctx.results[1].cols[1]) == 1
+            @test length(testctx.results[2].cols[1]) == 1
         end
     end
 end # for (io_t, alg)

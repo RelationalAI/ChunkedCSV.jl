@@ -185,7 +185,7 @@ end
 MmapStream(ios::IO) = MmapStream(ios, mmap(ios, grow=false, shared=false), 1)
 Base.close(m::MmapStream) = close(m.ios)
 Base.eof(m::MmapStream) = m.pos == length(m.x)
-function readbytesall!(io::MmapStream, buf, n)
+function readbytesall!(io::MmapStream, buf, n::Int)
     bytes_to_read = min(bytesavailable(io), n)
     unsafe_copyto!(pointer(buf), pointer(io.x) + io.pos - 1, bytes_to_read)
     io.pos += bytes_to_read

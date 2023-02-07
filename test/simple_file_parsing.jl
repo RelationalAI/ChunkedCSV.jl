@@ -37,8 +37,8 @@ module TestContexts
             insert!(ctx.results, idx, deepcopy(task_buf))
             strings = Vector{String}[]
             for (T, col) in zip(ctx.schema, task_buf.cols)
-                if eltype(col) === Parsers.PosLen
-                    push!(strings, [Parsers.getstring(parsing_ctx.bytes, x, parsing_ctx.escapechar) for x in col::ChunkedCSV.BufferedVector{Parsers.PosLen}])
+                if eltype(col) === Parsers.PosLen31
+                    push!(strings, [Parsers.getstring(parsing_ctx.bytes, x, parsing_ctx.escapechar) for x in col::ChunkedCSV.BufferedVector{Parsers.PosLen31}])
                 else
                     push!(strings, String[])
                 end
@@ -57,7 +57,7 @@ module TestContexts
                 in enumerate(testctx.schema)
             ]
             for (s, r)
-            in zip(strings, results)
+            in zip(testctx.strings, testctx.results)
         ]
         (; zip(testctx.header, reduce((x,y)-> append!.(x, y), vals, init=init))...)
     end
@@ -221,8 +221,8 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             )
             @test testctx.header == [:a, :b]
             @test testctx.schema == [String, String]
-            @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen(6, 1), Parsers.PosLen(14, 1)]
-            @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen(10, 1), Parsers.PosLen(18, 1)]
+            @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen31(6, 1), Parsers.PosLen31(14, 1)]
+            @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen31(10, 1), Parsers.PosLen31(18, 1)]
             @test testctx.strings[1][1][1:2] == ["1", "3"]
             @test testctx.strings[1][2][1:2] == ["2", "4"]
             @test length(testctx.results[1].cols[1]) == 2
@@ -240,9 +240,9 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test testctx.header == [:a, :b, :c]
             @test testctx.schema == [String, String, String]
             # https://github.com/JuliaData/Parsers.jl/issues/138
-            @test testctx.results[1].cols[1][1] == Parsers.PosLen(8,0)
-            @test testctx.results[1].cols[2][1] == Parsers.PosLen(11,0)
-            @test testctx.results[1].cols[3][1] == Parsers.PosLen(14,0)
+            @test testctx.results[1].cols[1][1] == Parsers.PosLen31(8,0)
+            @test testctx.results[1].cols[2][1] == Parsers.PosLen31(11,0)
+            @test testctx.results[1].cols[3][1] == Parsers.PosLen31(14,0)
             @test testctx.strings[1][1][1] == ""
             @test testctx.strings[1][2][1] == ""
             @test testctx.strings[1][3][1] == ""
@@ -261,9 +261,9 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test testctx.header == [:a, :b, :c]
             @test testctx.schema == [String, String, String]
             # https://github.com/JuliaData/Parsers.jl/issues/138
-            @test testctx.results[1].cols[1][1] == Parsers.PosLen(7,0)
-            @test testctx.results[1].cols[2][1] == Parsers.PosLen(8,0)
-            @test testctx.results[1].cols[3][1] == Parsers.PosLen(9,0)
+            @test testctx.results[1].cols[1][1] == Parsers.PosLen31(7,0)
+            @test testctx.results[1].cols[2][1] == Parsers.PosLen31(8,0)
+            @test testctx.results[1].cols[3][1] == Parsers.PosLen31(9,0)
             @test testctx.strings[1][1][1] == ""
             @test testctx.strings[1][2][1] == ""
             @test testctx.strings[1][3][1] == ""
@@ -390,10 +390,10 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             )
             @test testctx.header == [:a, :b]
             @test testctx.schema == [String, String]
-            @test testctx.results[1].cols[1][1] == Parsers.PosLen(2, 1)
-            @test testctx.results[1].cols[2][1] == Parsers.PosLen(6, 1)
-            @test testctx.results[2].cols[1][1] == Parsers.PosLen(2, 1)
-            @test testctx.results[2].cols[2][1] == Parsers.PosLen(6, 1)
+            @test testctx.results[1].cols[1][1] == Parsers.PosLen31(2, 1)
+            @test testctx.results[1].cols[2][1] == Parsers.PosLen31(6, 1)
+            @test testctx.results[2].cols[1][1] == Parsers.PosLen31(2, 1)
+            @test testctx.results[2].cols[2][1] == Parsers.PosLen31(6, 1)
             @test testctx.strings[1][1][1] == "1"
             @test testctx.strings[1][2][1] == "2"
             @test testctx.strings[2][1][1] == "3"
@@ -428,12 +428,12 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             )
             @test testctx.header == [:a, :b]
             @test testctx.schema == [String, String]
-            @test testctx.results[1].cols[1][1] == Parsers.PosLen(2, 1)
-            @test testctx.results[1].cols[2][1] == Parsers.PosLen(6, 1)
-            @test testctx.results[2].cols[1][1] == Parsers.PosLen(2, 1)
-            @test testctx.results[2].cols[2][1] == Parsers.PosLen(6, 1)
-            @test testctx.results[3].cols[1][1] == Parsers.PosLen(2, 1)
-            @test testctx.results[3].cols[2][1] == Parsers.PosLen(6, 1)
+            @test testctx.results[1].cols[1][1] == Parsers.PosLen31(2, 1)
+            @test testctx.results[1].cols[2][1] == Parsers.PosLen31(6, 1)
+            @test testctx.results[2].cols[1][1] == Parsers.PosLen31(2, 1)
+            @test testctx.results[2].cols[2][1] == Parsers.PosLen31(6, 1)
+            @test testctx.results[3].cols[1][1] == Parsers.PosLen31(2, 1)
+            @test testctx.results[3].cols[2][1] == Parsers.PosLen31(6, 1)
             @test testctx.strings[1][1][1] == "1"
             @test testctx.strings[1][2][1] == "2"
             @test testctx.strings[2][1][1] == "3"
@@ -886,8 +886,8 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             )
             @test testctx.header == [:COL_1, :COL_2]
             @test testctx.schema == [String, String]
-            @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen(1, 1), Parsers.PosLen(5, 1)]
-            @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen(3, 1), Parsers.PosLen(7, 1)]
+            @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen31(1, 1), Parsers.PosLen31(5, 1)]
+            @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen31(3, 1), Parsers.PosLen31(7, 1)]
             @test testctx.strings[1][1][1:2] == ["1", "3"]
             @test testctx.strings[1][2][1:2] == ["2", "4"]
             @test length(testctx.results[1].cols[1]) == 2
@@ -908,8 +908,8 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             )
             @test testctx.header == [:COL_1, :COL_2]
             @test testctx.schema == [String, String]
-            @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen(9, 1), Parsers.PosLen(13, 1)]
-            @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen(11, 1), Parsers.PosLen(15, 1)]
+            @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen31(9, 1), Parsers.PosLen31(13, 1)]
+            @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen31(11, 1), Parsers.PosLen31(15, 1)]
             @test testctx.strings[1][1][1:2] == ["1", "3"]
             @test testctx.strings[1][2][1:2] == ["2", "4"]
             @test length(testctx.results[1].cols[1]) == 2
@@ -1122,9 +1122,9 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
         @testset "Each record is located on a separate line, delimited by a line break (CRLF)." begin
             testctx = TestContext()
             parse_file(io_t("aaa,bbb,ccc\nzzz,yyy,xxx\n"), nothing, testctx, _force=alg, header=false)
-            @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen(1, 3), Parsers.PosLen(13, 3)]
-            @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen(5, 3), Parsers.PosLen(17, 3)]
-            @test testctx.results[1].cols[3][1:2] == [Parsers.PosLen(9, 3), Parsers.PosLen(21, 3)]
+            @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen31(1, 3), Parsers.PosLen31(13, 3)]
+            @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen31(5, 3), Parsers.PosLen31(17, 3)]
+            @test testctx.results[1].cols[3][1:2] == [Parsers.PosLen31(9, 3), Parsers.PosLen31(21, 3)]
             @test testctx.strings[1][1][1:2] == ["aaa", "zzz"]
             @test testctx.strings[1][2][1:2] == ["bbb", "yyy"]
             @test testctx.strings[1][3][1:2] == ["ccc", "xxx"]
@@ -1134,9 +1134,9 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
 
             testctx = TestContext()
             parse_file(io_t("aaa,bbb,ccc\r\nzzz,yyy,xxx\r\n"), nothing, testctx, _force=alg, header=false)
-            @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen(1, 3), Parsers.PosLen(14, 3)]
-            @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen(5, 3), Parsers.PosLen(18, 3)]
-            @test testctx.results[1].cols[3][1:2] == [Parsers.PosLen(9, 3), Parsers.PosLen(22, 3)]
+            @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen31(1, 3), Parsers.PosLen31(14, 3)]
+            @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen31(5, 3), Parsers.PosLen31(18, 3)]
+            @test testctx.results[1].cols[3][1:2] == [Parsers.PosLen31(9, 3), Parsers.PosLen31(22, 3)]
             @test testctx.strings[1][1][1:2] == ["aaa", "zzz"]
             @test testctx.strings[1][2][1:2] == ["bbb", "yyy"]
             @test testctx.strings[1][3][1:2] == ["ccc", "xxx"]
@@ -1148,9 +1148,9 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
         @testset "The last record in the file may or may not have an ending line break." begin
             testctx = TestContext()
             parse_file(io_t("aaa,bbb,ccc\nzzz,yyy,xxx"), nothing, testctx, _force=alg, header=false)
-            @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen(1, 3), Parsers.PosLen(13, 3)]
-            @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen(5, 3), Parsers.PosLen(17, 3)]
-            @test testctx.results[1].cols[3][1:2] == [Parsers.PosLen(9, 3), Parsers.PosLen(21, 3)]
+            @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen31(1, 3), Parsers.PosLen31(13, 3)]
+            @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen31(5, 3), Parsers.PosLen31(17, 3)]
+            @test testctx.results[1].cols[3][1:2] == [Parsers.PosLen31(9, 3), Parsers.PosLen31(21, 3)]
             @test testctx.strings[1][1][1:2] == ["aaa", "zzz"]
             @test testctx.strings[1][2][1:2] == ["bbb", "yyy"]
             @test testctx.strings[1][3][1:2] == ["ccc", "xxx"]
@@ -1160,9 +1160,9 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
 
             testctx = TestContext()
             parse_file(io_t("aaa,bbb,ccc\r\nzzz,yyy,xxx"), nothing, testctx, _force=alg, header=false)
-            @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen(1, 3), Parsers.PosLen(14, 3)]
-            @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen(5, 3), Parsers.PosLen(18, 3)]
-            @test testctx.results[1].cols[3][1:2] == [Parsers.PosLen(9, 3), Parsers.PosLen(22, 3)]
+            @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen31(1, 3), Parsers.PosLen31(14, 3)]
+            @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen31(5, 3), Parsers.PosLen31(18, 3)]
+            @test testctx.results[1].cols[3][1:2] == [Parsers.PosLen31(9, 3), Parsers.PosLen31(22, 3)]
             @test testctx.strings[1][1][1:2] == ["aaa", "zzz"]
             @test testctx.strings[1][2][1:2] == ["bbb", "yyy"]
             @test testctx.strings[1][3][1:2] == ["ccc", "xxx"]
@@ -1182,9 +1182,9 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             testctx = TestContext()
             parse_file(io_t("field_name,field_name,field_name\naaa,bbb,ccc\nzzz,yyy,xxx"), nothing, testctx, _force=alg)
             @test testctx.header == [:field_name, :field_name, :field_name]
-            @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen(33+1, 3), Parsers.PosLen(33+13, 3)]
-            @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen(33+5, 3), Parsers.PosLen(33+17, 3)]
-            @test testctx.results[1].cols[3][1:2] == [Parsers.PosLen(33+9, 3), Parsers.PosLen(33+21, 3)]
+            @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen31(33+1, 3), Parsers.PosLen31(33+13, 3)]
+            @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen31(33+5, 3), Parsers.PosLen31(33+17, 3)]
+            @test testctx.results[1].cols[3][1:2] == [Parsers.PosLen31(33+9, 3), Parsers.PosLen31(33+21, 3)]
             @test testctx.strings[1][1][1:2] == ["aaa", "zzz"]
             @test testctx.strings[1][2][1:2] == ["bbb", "yyy"]
             @test testctx.strings[1][3][1:2] == ["ccc", "xxx"]
@@ -1195,9 +1195,9 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             testctx = TestContext()
             parse_file(io_t("field_name,field_name,field_name\r\naaa,bbb,ccc\r\nzzz,yyy,xxx"), nothing, testctx, _force=alg)
             @test testctx.header == [:field_name, :field_name, :field_name]
-            @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen(34+1, 3), Parsers.PosLen(34+14, 3)]
-            @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen(34+5, 3), Parsers.PosLen(34+18, 3)]
-            @test testctx.results[1].cols[3][1:2] == [Parsers.PosLen(34+9, 3), Parsers.PosLen(34+22, 3)]
+            @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen31(34+1, 3), Parsers.PosLen31(34+14, 3)]
+            @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen31(34+5, 3), Parsers.PosLen31(34+18, 3)]
+            @test testctx.results[1].cols[3][1:2] == [Parsers.PosLen31(34+9, 3), Parsers.PosLen31(34+22, 3)]
             @test testctx.strings[1][1][1:2] == ["aaa", "zzz"]
             @test testctx.strings[1][2][1:2] == ["bbb", "yyy"]
             @test testctx.strings[1][3][1:2] == ["ccc", "xxx"]
@@ -1215,9 +1215,9 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             """ begin
             testctx = TestContext()
             parse_file(io_t("aaa,bbb,ccc"), nothing, testctx, _force=alg, header=false)
-            @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen(1, 3)]
-            @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen(5, 3)]
-            @test testctx.results[1].cols[3][1:1] == [Parsers.PosLen(9, 3)]
+            @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen31(1, 3)]
+            @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen31(5, 3)]
+            @test testctx.results[1].cols[3][1:1] == [Parsers.PosLen31(9, 3)]
             @test testctx.strings[1][1][1:1] == ["aaa"]
             @test testctx.strings[1][2][1:1] == ["bbb"]
             @test testctx.strings[1][3][1:1] == ["ccc"]
@@ -1233,9 +1233,9 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             double quotes may not appear inside the fields. """ begin
             testctx = TestContext()
             parse_file(io_t("\"aaa\",\"bbb\",\"ccc\"\nzzz,yyy,xxx"), nothing, testctx, _force=alg, header=false)
-            @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen(2, 3), Parsers.PosLen(19, 3)]
-            @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen(8, 3), Parsers.PosLen(23, 3)]
-            @test testctx.results[1].cols[3][1:2] == [Parsers.PosLen(14, 3), Parsers.PosLen(27, 3)]
+            @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen31(2, 3), Parsers.PosLen31(19, 3)]
+            @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen31(8, 3), Parsers.PosLen31(23, 3)]
+            @test testctx.results[1].cols[3][1:2] == [Parsers.PosLen31(14, 3), Parsers.PosLen31(27, 3)]
             @test testctx.strings[1][1][1:2] == ["aaa", "zzz"]
             @test testctx.strings[1][2][1:2] == ["bbb", "yyy"]
             @test testctx.strings[1][3][1:2] == ["ccc", "xxx"]
@@ -1245,9 +1245,9 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
 
             testctx = TestContext()
             parse_file(io_t("\"aaa\",\"bbb\",\"ccc\"\r\nzzz,yyy,xxx"), nothing, testctx, _force=alg, header=false)
-            @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen(2, 3), Parsers.PosLen(20, 3)]
-            @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen(8, 3), Parsers.PosLen(24, 3)]
-            @test testctx.results[1].cols[3][1:2] == [Parsers.PosLen(14, 3), Parsers.PosLen(28, 3)]
+            @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen31(2, 3), Parsers.PosLen31(20, 3)]
+            @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen31(8, 3), Parsers.PosLen31(24, 3)]
+            @test testctx.results[1].cols[3][1:2] == [Parsers.PosLen31(14, 3), Parsers.PosLen31(28, 3)]
             @test testctx.strings[1][1][1:2] == ["aaa", "zzz"]
             @test testctx.strings[1][2][1:2] == ["bbb", "yyy"]
             @test testctx.strings[1][3][1:2] == ["ccc", "xxx"]
@@ -1261,9 +1261,9 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             should be enclosed in double-quotes.""" begin
             testctx = TestContext()
             parse_file(io_t("\"aaa\",\"b\nbb\",\"ccc\"\nzzz,yyy,xxx"), nothing, testctx, _force=alg, header=false)
-            @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen(2, 3), Parsers.PosLen(20, 3)]
-            @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen(8, 4), Parsers.PosLen(24, 3)]
-            @test testctx.results[1].cols[3][1:2] == [Parsers.PosLen(15, 3), Parsers.PosLen(28, 3)]
+            @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen31(2, 3), Parsers.PosLen31(20, 3)]
+            @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen31(8, 4), Parsers.PosLen31(24, 3)]
+            @test testctx.results[1].cols[3][1:2] == [Parsers.PosLen31(15, 3), Parsers.PosLen31(28, 3)]
             @test testctx.strings[1][1][1:2] == ["aaa", "zzz"]
             @test testctx.strings[1][2][1:2] == ["b\nbb", "yyy"]
             @test testctx.strings[1][3][1:2] == ["ccc", "xxx"]
@@ -1273,9 +1273,9 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
 
             testctx = TestContext()
             parse_file(io_t("\"aaa\",\"b\r\nbb\",\"ccc\"\r\nzzz,yyy,xxx"), nothing, testctx, _force=alg, header=false)
-            @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen(2, 3), Parsers.PosLen(22, 3)]
-            @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen(8, 5), Parsers.PosLen(26, 3)]
-            @test testctx.results[1].cols[3][1:2] == [Parsers.PosLen(16, 3), Parsers.PosLen(30, 3)]
+            @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen31(2, 3), Parsers.PosLen31(22, 3)]
+            @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen31(8, 5), Parsers.PosLen31(26, 3)]
+            @test testctx.results[1].cols[3][1:2] == [Parsers.PosLen31(16, 3), Parsers.PosLen31(30, 3)]
             @test testctx.strings[1][1][1:2] == ["aaa", "zzz"]
             @test testctx.strings[1][2][1:2] == ["b\r\nbb", "yyy"]
             @test testctx.strings[1][3][1:2] == ["ccc", "xxx"]
@@ -1290,9 +1290,9 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             another double quote. """ begin
             testctx = TestContext()
             parse_file(io_t("\"aaa\",\"b\"\"bb\",\"ccc\""), nothing, testctx, _force=alg, header=false)
-            @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen(2, 3)]
-            @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen(8, 5, false, true)]
-            @test testctx.results[1].cols[3][1:1] == [Parsers.PosLen(16, 3)]
+            @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen31(2, 3)]
+            @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen31(8, 5, false, true)]
+            @test testctx.results[1].cols[3][1:1] == [Parsers.PosLen31(16, 3)]
             @test testctx.strings[1][1][1:1] == ["aaa"]
             @test testctx.strings[1][2][1:1] == ["b\"bb"]
             @test testctx.strings[1][3][1:1] == ["ccc"]
@@ -1308,8 +1308,8 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             testctx = TestContext()
             parse_file(io_t("""a, b\n  foo  , "bar"    \n"""), nothing, testctx, _force=alg)
             @test testctx.header == [:a, :b]
-            @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen(6, 7)]
-            @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen(16, 3)]
+            @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen31(6, 7)]
+            @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen31(16, 3)]
             @test testctx.strings[1][1][1:1] == ["  foo  "]
             @test testctx.strings[1][2][1:1] == ["bar"]
             @test length(testctx.results[1].cols[1]) == 1
@@ -1320,8 +1320,8 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             testctx = TestContext()
             parse_file(io_t("""a, b\n  "foo"  , "bar"    \n"""), nothing, testctx, _force=alg)
             @test testctx.header == [:a, :b]
-            @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen(9, 3)]
-            @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen(18, 3)]
+            @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen31(9, 3)]
+            @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen31(18, 3)]
             @test testctx.strings[1][1][1:1] == ["foo"]
             @test testctx.strings[1][2][1:1] == ["bar"]
             @test length(testctx.results[1].cols[1]) == 1
@@ -1330,8 +1330,8 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             testctx = TestContext()
             parse_file(io_t("""a, b\n"foo"  , "bar"    \n"""), nothing, testctx, _force=alg)
             @test testctx.header == [:a, :b]
-            @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen(7, 3)]
-            @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen(16, 3)]
+            @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen31(7, 3)]
+            @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen31(16, 3)]
             @test testctx.strings[1][1][1:1] == ["foo"]
             @test testctx.strings[1][2][1:1] == ["bar"]
             @test length(testctx.results[1].cols[1]) == 1
@@ -1342,8 +1342,8 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             testctx = TestContext()
             parse_file(io_t("""a, b\n     "foo", "bar\n     acsas"\n"""), nothing, testctx, _force=alg)
             @test testctx.header == [:a, :b]
-            @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen(12, 3)]
-            @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen(19, 14)]
+            @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen31(12, 3)]
+            @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen31(19, 14)]
             @test testctx.strings[1][1][1:1] == ["foo"]
             @test testctx.strings[1][2][1:1] == ["bar\n     acsas"]
             @test length(testctx.results[1].cols[1]) == 1
@@ -1352,8 +1352,8 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             testctx = TestContext()
             parse_file(io_t("""a, b\n     "foo", "bar\n\r     acsas"\n"""), nothing, testctx, _force=alg)
             @test testctx.header == [:a, :b]
-            @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen(12, 3)]
-            @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen(19, 15)]
+            @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen31(12, 3)]
+            @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen31(19, 15)]
             @test testctx.strings[1][1][1:1] == ["foo"]
             @test testctx.strings[1][2][1:1] == ["bar\n\r     acsas"]
             @test length(testctx.results[1].cols[1]) == 1
@@ -1364,8 +1364,8 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             testctx = TestContext()
             parse_file(io_t("""a, b\n"foo"  ,"The cat said, ""meow"" "\n"""), nothing, testctx, _force=alg)
             @test testctx.header == [:a, :b]
-            @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen(7, 3)]
-            @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen(15, 23, false, true)]
+            @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen31(7, 3)]
+            @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen31(15, 23, false, true)]
             @test testctx.strings[1][1][1:1] == ["foo"]
             @test testctx.strings[1][2][1:1] == ["The cat said, \"meow\" "]
             @test length(testctx.results[1].cols[1]) == 1
@@ -1374,8 +1374,8 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             testctx = TestContext()
             parse_file(io_t("""a, b\n"foo"  ,"The cat said, \\"meow\\" "\n"""), nothing, testctx, _force=alg, escapechar='\\')
             @test testctx.header == [:a, :b]
-            @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen(7, 3)]
-            @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen(15, 23, false, true)]
+            @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen31(7, 3)]
+            @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen31(15, 23, false, true)]
             @test testctx.strings[1][1][1:1] == ["foo"]
             @test testctx.strings[1][2][1:1] == ["The cat said, \"meow\" "]
             @test length(testctx.results[1].cols[1]) == 1
@@ -1386,7 +1386,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             testctx = TestContext()
             parse_file(io_t("""a, b\n"foo"  , "bar"         234235\n"""), nothing, testctx, _force=alg)
             @test testctx.header == [:a, :b]
-            @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen(7, 3)]
+            @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen31(7, 3)]
             @test testctx.strings[1][1][1:1] == ["foo"]
             @test testctx.results[1].row_statuses[1] & ChunkedCSV.RowStatus.ValueParsingError > 0
             @test ChunkedCSV.isflagset(testctx.results[1].column_indicators[1], 2)
@@ -1508,9 +1508,9 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
         @test testctx.results[1].cols[1][1] == 0
         @test testctx.results[2].cols[1][1] == 1
         @test testctx.results[3].cols[1][1] == 2
-        @test testctx.results[1].cols[2][1] == Parsers.PosLen(7,1)
-        @test testctx.results[2].cols[2][1] == Parsers.PosLen(4,3,false,true)
-        @test testctx.results[3].cols[2][1] == Parsers.PosLen(4,3,false,true)
+        @test testctx.results[1].cols[2][1] == Parsers.PosLen31(7,1)
+        @test testctx.results[2].cols[2][1] == Parsers.PosLen31(4,3,false,true)
+        @test testctx.results[3].cols[2][1] == Parsers.PosLen31(4,3,false,true)
         @test testctx.strings[1][2][1] == "z"
         @test testctx.strings[2][2][1] == "S\""
         @test testctx.strings[3][2][1] == "S\""
@@ -1534,9 +1534,9 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
         @test testctx.results[1].cols[1][1] == 0
         @test testctx.results[2].cols[1][1] == 1
         @test testctx.results[3].cols[1][1] == 2
-        @test testctx.results[1].cols[2][1] == Parsers.PosLen(7,1)
-        @test testctx.results[2].cols[2][1] == Parsers.PosLen(4,3,false,true)
-        @test testctx.results[3].cols[2][1] == Parsers.PosLen(4,3,false,true)
+        @test testctx.results[1].cols[2][1] == Parsers.PosLen31(7,1)
+        @test testctx.results[2].cols[2][1] == Parsers.PosLen31(4,3,false,true)
+        @test testctx.results[3].cols[2][1] == Parsers.PosLen31(4,3,false,true)
         @test testctx.strings[1][2][1] == "z"
         @test testctx.strings[2][2][1] == "S\""
         @test testctx.strings[3][2][1] == "S\""
@@ -1631,8 +1631,8 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 closequotechar='E',
             )
             @test testctx.header == [:a, :b]
-            @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen(5, 1), Parsers.PosLen(11, 1)]
-            @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen(8, 1), Parsers.PosLen(14, 6, false, true)]
+            @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen31(5, 1), Parsers.PosLen31(11, 1)]
+            @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen31(8, 1), Parsers.PosLen31(14, 6, false, true)]
             @test testctx.strings[1][1][1:2] == ["1", "3"]
             @test testctx.strings[1][2][1:2] == ["2", "ES4E"]
             @test length(testctx.results[1].cols[1]) == 2
@@ -1661,11 +1661,11 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test testctx.results[3].cols[1][1] == 2
             @test testctx.results[4].cols[1][1] == 3
             @test testctx.results[5].cols[1][1] == 4
-            @test testctx.results[1].cols[2][1] == Parsers.PosLen(4,3,false,true)
-            @test testctx.results[2].cols[2][1] == Parsers.PosLen(4,3,false,true)
-            @test testctx.results[3].cols[2][1] == Parsers.PosLen(4,3,false,true)
-            @test testctx.results[4].cols[2][1] == Parsers.PosLen(4,3,false,true)
-            @test testctx.results[5].cols[2][1] == Parsers.PosLen(4,3,false,true)
+            @test testctx.results[1].cols[2][1] == Parsers.PosLen31(4,3,false,true)
+            @test testctx.results[2].cols[2][1] == Parsers.PosLen31(4,3,false,true)
+            @test testctx.results[3].cols[2][1] == Parsers.PosLen31(4,3,false,true)
+            @test testctx.results[4].cols[2][1] == Parsers.PosLen31(4,3,false,true)
+            @test testctx.results[5].cols[2][1] == Parsers.PosLen31(4,3,false,true)
             @test testctx.strings[1][2][1] == "S\""
             @test testctx.strings[2][2][1] == "S\""
             @test testctx.strings[3][2][1] == "S\""
@@ -1690,8 +1690,8 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 delim='|',
             )
             @test testctx.header == [:a, :b]
-            @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen(5, 1), Parsers.PosLen(13, 1)]
-            @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen(8, 3, false, true), Parsers.PosLen(15, 1)]
+            @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen31(5, 1), Parsers.PosLen31(13, 1)]
+            @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen31(8, 3, false, true), Parsers.PosLen31(15, 1)]
             @test testctx.strings[1][1][1:2] == ["1", "3"]
             @test testctx.strings[1][2][1:2] == ["2\"", "4"]
             @test length(testctx.results[1].cols[1]) == 2
@@ -1707,8 +1707,8 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 delim='|',
             )
             @test testctx.header == [:a, :b]
-            @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen(5, 1)]
-            @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen(8, 3, false, true)]
+            @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen31(5, 1)]
+            @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen31(8, 3, false, true)]
             @test testctx.strings[1][1][1:1] == ["1"]
             @test testctx.strings[1][2][1:1] == ["2\""]
             @test length(testctx.results[1].cols[1]) == 1
@@ -1727,8 +1727,8 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 escapechar='\\'
             )
             @test testctx.header == [:a, :b]
-            @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen(6, 1)]
-            @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen(10, 3, false, true)]
+            @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen31(6, 1)]
+            @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen31(10, 3, false, true)]
             @test testctx.strings[1][1][1:1] == ["a"]
             @test testctx.strings[1][2][1:1] == ["b\\"]
             @test length(testctx.results[1].cols[1]) == 1
@@ -1755,8 +1755,8 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 @test length(testctx.results) == 2
                 @test testctx.results[1].cols[1][1] == 0
                 @test testctx.results[2].cols[1][1] == 1
-                @test testctx.results[1].cols[2][1] == Parsers.PosLen(7,1)
-                @test testctx.results[2].cols[2][1] == Parsers.PosLen(4,3,false,true)
+                @test testctx.results[1].cols[2][1] == Parsers.PosLen31(7,1)
+                @test testctx.results[2].cols[2][1] == Parsers.PosLen31(4,3,false,true)
                 @test testctx.strings[1][2][1] == "z"
                 @test testctx.strings[2][2][1] == "S\""
 
@@ -1777,8 +1777,8 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 @test length(testctx.results) == 2
                 @test testctx.results[1].cols[1][1] == 0
                 @test testctx.results[2].cols[1][1] == 1
-                @test testctx.results[1].cols[2][1] == Parsers.PosLen(7,1)
-                @test testctx.results[2].cols[2][1] == Parsers.PosLen(4,3,false,true)
+                @test testctx.results[1].cols[2][1] == Parsers.PosLen31(7,1)
+                @test testctx.results[2].cols[2][1] == Parsers.PosLen31(4,3,false,true)
                 @test testctx.strings[1][2][1] == "z"
                 @test testctx.strings[2][2][1] == "S\\"
 
@@ -1799,8 +1799,8 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 @test length(testctx.results) == 2
                 @test testctx.results[1].cols[1][1] == 0
                 @test testctx.results[2].cols[1][1] == 1
-                @test testctx.results[1].cols[2][1] == Parsers.PosLen(7,1)
-                @test testctx.results[2].cols[2][1] == Parsers.PosLen(4,5,false,true)
+                @test testctx.results[1].cols[2][1] == Parsers.PosLen31(7,1)
+                @test testctx.results[2].cols[2][1] == Parsers.PosLen31(4,5,false,true)
                 @test testctx.strings[1][2][1] == "z"
                 @test testctx.strings[2][2][1] == "S\"\""
 
@@ -1831,11 +1831,11 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                     @test testctx.results[3].cols[1] == 3:4
                     @test testctx.results[4].cols[1] == 5:6
                     @test testctx.results[5].cols[1][1] == 7
-                    @test testctx.results[1].cols[2][1] == Parsers.PosLen(7,1)
-                    @test testctx.results[2].cols[2] == [Parsers.PosLen(4,3,false,true), Parsers.PosLen(11,1)]
-                    @test testctx.results[3].cols[2] == [Parsers.PosLen(4,3,false,true), Parsers.PosLen(11,1)]
-                    @test testctx.results[4].cols[2] == [Parsers.PosLen(4,3,false,true), Parsers.PosLen(11,1)]
-                    @test testctx.results[5].cols[2][1] == Parsers.PosLen(4,3,false,true)
+                    @test testctx.results[1].cols[2][1] == Parsers.PosLen31(7,1)
+                    @test testctx.results[2].cols[2] == [Parsers.PosLen31(4,3,false,true), Parsers.PosLen31(11,1)]
+                    @test testctx.results[3].cols[2] == [Parsers.PosLen31(4,3,false,true), Parsers.PosLen31(11,1)]
+                    @test testctx.results[4].cols[2] == [Parsers.PosLen31(4,3,false,true), Parsers.PosLen31(11,1)]
+                    @test testctx.results[5].cols[2][1] == Parsers.PosLen31(4,3,false,true)
                     @test testctx.strings[1][2][1] == "z"
                     @test testctx.strings[2][2] == ["S\"", "z"]
                     @test testctx.strings[3][2] == ["S\"", "z"]
@@ -1857,8 +1857,8 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 escapechar='"',
                 _force=alg,
             )
-            @test testctx.results[1].cols[1] == [Parsers.PosLen(1, 6)]
-            @test testctx.results[2].cols[1] == [Parsers.PosLen(2, 5, false, true)]
+            @test testctx.results[1].cols[1] == [Parsers.PosLen31(1, 6)]
+            @test testctx.results[2].cols[1] == [Parsers.PosLen31(2, 5, false, true)]
             @test testctx.strings[1][1] == ["123456"]
             @test testctx.strings[2][1] == ["\"a\""]
             @test length(testctx.results[1].cols[1]) == 1
@@ -1875,8 +1875,8 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 escapechar='"',
                 _force=alg,
             )
-            @test testctx.results[1].cols[1] == [Parsers.PosLen(1, 5)]
-            @test testctx.results[2].cols[1] == [Parsers.PosLen(2, 5, false, true)]
+            @test testctx.results[1].cols[1] == [Parsers.PosLen31(1, 5)]
+            @test testctx.results[2].cols[1] == [Parsers.PosLen31(2, 5, false, true)]
             @test testctx.strings[1][1] == ["12345"]
             @test testctx.strings[2][1] == ["\"a\""]
             @test length(testctx.results[1].cols[1]) == 1
@@ -1893,8 +1893,8 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 escapechar='\\',
                 _force=alg,
             )
-            @test testctx.results[1].cols[1] == [Parsers.PosLen(1, 5)]
-            @test testctx.results[2].cols[1] == [Parsers.PosLen(2, 5, false, true)]
+            @test testctx.results[1].cols[1] == [Parsers.PosLen31(1, 5)]
+            @test testctx.results[2].cols[1] == [Parsers.PosLen31(2, 5, false, true)]
             @test testctx.strings[1][1] == ["12345"]
             @test testctx.strings[2][1] == ["\"a\""]
             @test length(testctx.results[1].cols[1]) == 1
@@ -1912,8 +1912,8 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 buffersize=13,
                 escapechar='\\',
             )
-            @test testctx.results[1].cols[1] == [Parsers.PosLen(2, 8, false, true)]
-            @test testctx.results[2].cols[1] == [Parsers.PosLen(2, 5, false, true)]
+            @test testctx.results[1].cols[1] == [Parsers.PosLen31(2, 8, false, true)]
+            @test testctx.results[2].cols[1] == [Parsers.PosLen31(2, 5, false, true)]
             @test testctx.strings[1][1] == ["\"data\""]
             @test testctx.strings[2][1] == ["\"end"]
             @test length(testctx.results[1].cols[1]) == 1
@@ -1936,8 +1936,8 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 buffersize=10,
             )
             @test testctx.header == [:a, :b]
-            @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen(2, 1)]
-            @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen(6, 3, false, true)]
+            @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen31(2, 1)]
+            @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen31(6, 3, false, true)]
             @test testctx.strings[1][1][1:1] == ["a"]
             @test testctx.strings[1][2][1:1] == ["b\\"]
             @test length(testctx.results[1].cols[1]) == 1
@@ -1957,8 +1957,8 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 buffersize=200,
             )
             @test testctx.header == [:a, :b]
-            @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen(6, 1)]
-            @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen(10, 3, false, true)]
+            @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen31(6, 1)]
+            @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen31(10, 3, false, true)]
             @test testctx.strings[1][1][1:1] == ["a"]
             @test testctx.strings[1][2][1:1] == ["b\\"]
             @test length(testctx.results[1].cols[1]) == 1

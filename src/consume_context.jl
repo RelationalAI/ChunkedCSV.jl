@@ -40,7 +40,7 @@ struct DebugContext <: AbstractConsumeContext
     DebugContext(error_only::Bool=true, n::Int=3, err_len::Int=255, show_values::Bool=false) = new(error_only, n, err_len, show_values)
 end
 
-function debug(x::BufferedVector{Parsers.PosLen}, i, parsing_ctx, consume_ctx)
+function debug(x::BufferedVector{Parsers.PosLen31}, i, parsing_ctx, consume_ctx)
     pl = x.elements[i]
     pl.missingvalue && return "missing"
     repr(Parsers.getstring(parsing_ctx.bytes, pl, parsing_ctx.escapechar))

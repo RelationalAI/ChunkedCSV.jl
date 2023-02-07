@@ -59,8 +59,8 @@ function _parse_rows_forloop!(result_buf::TaskResultBuffer{M}, task::AbstractVec
                 (;val, tlen, code) = Parsers.xparse(Char, row_bytes, pos, len, options)::Parsers.Result{Char}
                 unsafe_push!(cols[col_idx]::BufferedVector{Char}, val)
             elseif type === String
-                (;val, tlen, code) = Parsers.xparse(String, row_bytes, pos, len, options)::Parsers.Result{Parsers.PosLen}
-                unsafe_push!(cols[col_idx]::BufferedVector{Parsers.PosLen}, Parsers.PosLen(prev_newline+val.pos, val.len, val.missingvalue, val.escapedvalue))
+                (;val, tlen, code) = Parsers.xparse(String, row_bytes, pos, len, options, Parsers.PosLen31)::Parsers.Result{Parsers.PosLen31}
+                unsafe_push!(cols[col_idx]::BufferedVector{Parsers.PosLen31}, Parsers.PosLen31(prev_newline+val.pos, val.len, val.missingvalue, val.escapedvalue))
             # TODO: We currently support only 8 digits after decimal point. We need to update Parsers.jl to accept runtime params, then we'd provide `f`
             #       param at runtime, and we'll only have to unroll on T (Int8,Int16,Int32,Int64,Int128)
             elseif type === FixedDecimal{Int8,0}
@@ -279,7 +279,7 @@ function _parse_rows_forloop!(result_buf::TaskResultBuffer{M}, task::AbstractVec
                 row_status |= RowStatus.HasColumnIndicators
                 column_indicators = setflag(column_indicators, col_idx)
                 skip_element!(cols[col_idx])
-                (;val, tlen, code) = Parsers.xparse(String, row_bytes, pos, len, options)::Parsers.Result{Parsers.PosLen}
+                (;val, tlen, code) = Parsers.xparse(String, row_bytes, pos, len, options, Parsers.PosLen31)::Parsers.Result{Parsers.PosLen31}
                 # NOTE: Trying out parsing as much as possible now
                 # for _col_idx in col_idx+1:N
                 #     skip_element!(getindex(cols, _col_idx))

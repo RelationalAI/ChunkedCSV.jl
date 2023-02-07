@@ -117,7 +117,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
             pos = 1
             code = Parsers.OK
             for i in 1:length(settings.schema)
-                (;val, tlen, code) = Parsers.xparse(String, v, pos, length(v), options)
+                (;val, tlen, code) = Parsers.xparse(String, v, pos, length(v), options, Parsers.PosLen31)
                 if Parsers.sentinel(code)
                     push!(parsing_ctx.header, Symbol(string(settings.default_colname_prefix, i)))
                 elseif !Parsers.ok(code)
@@ -140,7 +140,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
         code = Parsers.OK
         i = 1
         while !(Parsers.eof(code) || Parsers.newline(code))
-            (;val, tlen, code) = Parsers.xparse(String, v, pos, length(v), options)
+            (;val, tlen, code) = Parsers.xparse(String, v, pos, length(v), options, Parsers.PosLen31)
             !Parsers.ok(code) && (close(io); throw(HeaderParsingError("Error parsing header for column $i at $(lines_skipped_total+1):$(pos) (row:col).")))
             pos += tlen
             push!(parsing_ctx.header, Symbol(string(settings.default_colname_prefix, i)))
@@ -159,7 +159,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
         code = Parsers.OK
         i = 1
         while !((Parsers.eof(code) && !Parsers.delimited(code)) || Parsers.newline(code))
-            (;val, tlen, code) = Parsers.xparse(String, v, pos, length(v), options)
+            (;val, tlen, code) = Parsers.xparse(String, v, pos, length(v), options, Parsers.PosLen31)
             if Parsers.sentinel(code)
                 push!(parsing_ctx.header, Symbol(string(settings.default_colname_prefix, i)))
             elseif !Parsers.ok(code)

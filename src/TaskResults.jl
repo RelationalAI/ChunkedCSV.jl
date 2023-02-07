@@ -35,7 +35,7 @@ end
     N > 32 ? UInt64 :
     N > 16 ? UInt32 :
     N > 8 ? UInt16 : UInt8
-_translate_to_buffer_type(::Type{String}) = Parsers.PosLen
+_translate_to_buffer_type(::Type{String}) = Parsers.PosLen31
 _translate_to_buffer_type(::Type{T}) where {T} = T
 
 TaskResultBuffer(id, schema) = TaskResultBuffer{_bounding_flag_type(length(schema))}(id, schema)

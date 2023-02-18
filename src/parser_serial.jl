@@ -9,7 +9,7 @@ function _parse_file_serial(lexer_state::LexerState, parsing_ctx::ParsingContext
             for task in Iterators.partition(eachindex(parsing_ctx.eols), task_size)
                 setup_tasks!(consume_ctx, parsing_ctx, 1)
                 task_end = Int32(last(task))
-                _parse_rows_forloop!(result_buf, view(parsing_ctx.eols, task_start:task_end), parsing_ctx.bytes, parsing_ctx.schema, options, parsing_ctx.comment)
+                _parse_rows_forloop!(result_buf, view(parsing_ctx.eols, task_start:task_end), parsing_ctx.bytes, parsing_ctx.enum_schema, options, parsing_ctx.comment)
                 consume!(consume_ctx, parsing_ctx, result_buf, row_num, task_start)
                 row_num += Int(task_end - task_start)
                 task_start = task_end

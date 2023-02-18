@@ -76,6 +76,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
 
     parsing_ctx = ParsingContext(
         schema,
+        Enums.CSV_TYPE[],
         Symbol[],
         Vector{UInt8}(undef, settings.buffersize),
         BufferedVector{Int32}(),
@@ -187,6 +188,9 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
     # Skip over commented lines, then jump to data row if needed
     post_header_skiprows = should_parse_header ? settings.data_at - settings.header_at - 1 : 0
     skip_rows_init!(lexer_state, parsing_ctx, options, post_header_skiprows, parsing_ctx.comment)
+
+    # This is where we create the enum'd counterpart of parsing_ctx.schema, parsing_ctx.enum_schema
+    append!(parsing_ctx.enum_schema, map(Enums.to_enum, parsing_ctx.schema))
 
     return (parsing_ctx, lexer_state)
 end

@@ -18,6 +18,7 @@ using SnoopPrecompile
 
 const MIN_TASK_SIZE_IN_BYTES = 16 * 1024
 
+include("Enums.jl")
 include("BufferedVectors.jl")
 include("TaskResults.jl")
 
@@ -39,6 +40,7 @@ TaskCondition() = TaskCondition(0, Threads.Condition(ReentrantLock()))
 
 struct ParsingContext
     schema::Vector{DataType}
+    enum_schema::Vector{Enums.CSV_TYPE}
     header::Vector{Symbol}
     bytes::Vector{UInt8}
     eols::BufferedVector{Int32}

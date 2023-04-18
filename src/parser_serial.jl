@@ -21,6 +21,7 @@ function _parse_file_serial(lexer_state::LexerState, parsing_ctx::ParsingContext
         end # while true
     catch e
         Base.@lock parsing_ctx.cond.cond_wait begin
+            isnothing(parsing_ctx.cond.exception) || (parsing_ctx.cond.exception = e)
             notify(parsing_ctx.cond.cond_wait, e, all=true, error=true)
         end
         cleanup(consume_ctx, e)

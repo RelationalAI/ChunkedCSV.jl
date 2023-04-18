@@ -39,6 +39,7 @@ function process_and_consume_task(parsing_queue::Channel{T}, result_buffers::Vec
         isopen(parsing_queue) && close(parsing_queue, e)
         # if the io/lexing was waiting for work to finish, we'll interrupt it here
         Base.@lock parsing_ctx.cond.cond_wait begin
+            isnothing(parsing_ctx.cond.exception) || (parsing_ctx.cond.exception = e)
             notify(parsing_ctx.cond.cond_wait, e, all=true, error=true)
         end
     end

@@ -1918,6 +1918,41 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test testctx.strings[2][1] == ["\"end"]
             @test length(testctx.results[1].cols[1]) == 1
             @test length(testctx.results[2].cols[1]) == 1
+
+            testctx = TestContext()
+            ChunkedCSV.parse_file(IOBuffer("""
+                \"\"\"data\"\"\"
+                \"\"\"end\""""),
+                nothing,
+                testctx,
+                header=false,
+                buffersize=13,
+                escapechar='"',
+            )
+            @test testctx.results[1].cols[1] == [Parsers.PosLen31(2, 8, false, true)]
+            @test testctx.results[2].cols[1] == [Parsers.PosLen31(2, 5, false, true)]
+            @test testctx.strings[1][1] == ["\"data\""]
+            @test testctx.strings[2][1] == ["\"end"]
+            @test length(testctx.results[1].cols[1]) == 1
+            @test length(testctx.results[2].cols[1]) == 1
+
+            # Ending on an escapechar and the next character is not an escape
+            testctx = TestContext()
+            ChunkedCSV.parse_file(IOBuffer("""
+                \"\"\"data\"\"\"
+                \"\"\n"""),
+                nothing,
+                testctx,
+                header=false,
+                buffersize=13,
+                escapechar='"',
+            )
+            @test testctx.results[1].cols[1] == [Parsers.PosLen31(2, 8, false, true)]
+            @test testctx.results[2].cols[1] == [Parsers.PosLen31(2, 0, false, false)]
+            @test testctx.strings[1][1] == ["\"data\""]
+            @test testctx.strings[2][1] == [""]
+            @test length(testctx.results[1].cols[1]) == 1
+            @test length(testctx.results[2].cols[1]) == 1
         end
     end
 end # for (io_t, alg)

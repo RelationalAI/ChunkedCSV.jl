@@ -89,7 +89,7 @@ function read_and_lex!(lexer_state::LexerState{B}, parsing_ctx::ParsingContext, 
         offset = bytes_carried_over_from_previous_chunk
         if lexer_state.ended_on_escape
             if e == cq # Here is where we resolve the ambiguity from the last chunk
-                if @inbounds buf[1] == e
+                if @inbounds buf[offset+1] == e
                     # The last byte of the previous chunk was actually escaping a quote or escape char
                     # we can just skip over it
                     offset += Int32(1)

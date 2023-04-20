@@ -1,5 +1,4 @@
 using Test
-using Logging
 using .Threads
 using ChunkedCSV
 using ChunkedCSV: TaskResultBuffer, ParsingContext
@@ -9,18 +8,31 @@ struct CustomType
     x::Any
 end
 
-struct TestThrowingContext <: AbstractConsumeContext end
+# Throws when a specified row is greater than the first row of a task buffer
+struct TestThrowingContext <: AbstractConsumeContext 
+    tasks::Vector{Task}
+    conds::Vector{ChunkedCSV.TaskCondition}
+    throw_row::Int
+end
+TestThrowingContext(throw_row) = TestThrowingContext(Task[], ChunkedCSV.TaskCondition[], throw_row)
+
+# Throws in the last quarter of the buffer
 struct ThrowingIO <: IO
     io::IOBuffer
+    throw_byte::Int
 end
-ThrowingIO(s::String) = ThrowingIO(IOBuffer(s))
-ChunkedCSV.readbytesall!(io::ThrowingIO, buf, n::Int) = io.io.ptr > 6 ? error("That should be enough data for everyone") : ChunkedCSV.readbytesall!(io.io, buf, n)
+ThrowingIO(s::String) = ThrowingIO(IOBuffer(s), length(s) - cld(length(s), 4))
+ChunkedCSV.readbytesall!(io::ThrowingIO, buf, n::Int) = io.io.ptr > io.throw_byte ? error("That should be enough data for everyone") : ChunkedCSV.readbytesall!(io.io, buf, n)
 Base.eof(io::ThrowingIO) = Base.eof(io.io)
 
-
-const throw_ctx = TestThrowingContext()
 function ChunkedCSV.consume!(ctx::TestThrowingContext, parsing_ctx::ParsingContext, task_buf::TaskResultBuffer{M}, row_num::Int, eol_idx::Int32) where {M}
-    error("These contexts are for throwing, and that's all what they do")
+    t = current_task()
+    c = parsing_ctx.cond
+    c in ctx.conds || push!(ctx.conds, c)
+    t in ctx.tasks || push!(ctx.tasks, t)
+    row_num >= ctx.throw_row && error("These contexts are for throwing, and that's all what they do")
+    sleep(0.01) # trying to get the task off a fast path to claim everything from the parsing queue
+    return nothing
 end
 
 @testset "Exception Handling" begin
@@ -116,124 +128,114 @@ end
 
     @testset "consume!" begin
         @testset "serial" begin
-            test_logger = TestLogger(catch_exceptions=true);
-            with_logger(test_logger) do
-                @test_throws "These contexts are for throwing, and that's all what they do" parse_file(IOBuffer("""
-                    a,b
-                    1,2
-                    3,4
-                    """),
-                    [Int,Int],
-                    throw_ctx,
-                    _force=:serial,
-                )
-            end
+            throw_ctx = TestThrowingContext(2)
+            @test_throws ErrorException("These contexts are for throwing, and that's all what they do") parse_file(IOBuffer("""
+                a,b
+                1,2
+                3,4
+                """),
+                [Int,Int],
+                throw_ctx,
+                _force=:serial,
+                buffersize=6
+            )
+            @assert !isempty(throw_ctx.tasks)
+            @test throw_ctx.tasks[1] === current_task()
+            @test throw_ctx.conds[1].exception isa ErrorException
         end
 
         @testset "singlebuffer" begin
-            test_logger = TestLogger(catch_exceptions=true);
-            with_logger(test_logger) do
-                @test_throws "These contexts are for throwing, and that's all what they do" parse_file(IOBuffer("""
-                    a,b
-                    1,2
-                    3,4
-                    """),
-                    [Int,Int],
-                    throw_ctx,
-                    nworkers=nthreads(),
-                    _force=:singlebuffer,
-                )
-                sleep(0.2)
-            end
-            @test length(test_logger.logs) == nthreads()
-            @test test_logger.logs[1].message == "Task failed"
-            @test test_logger.logs[1].kwargs[1][1].msg == "These contexts are for throwing, and that's all what they do"
+            # 1500 rows should be enough to get each of the 3 task at least one consume!
+            throw_ctx = TestThrowingContext(1500) 
+            @test_throws TaskFailedException parse_file(
+                IOBuffer("a,b\n" * ("1,2\n3,4\n" ^ 800)), # 1600 rows total
+                [Int,Int],
+                throw_ctx,
+                nworkers=min(3, nthreads()),
+                _force=:singlebuffer,
+                buffersize=12,
+            )
+            sleep(0.2)
+            @test length(throw_ctx.tasks) == min(3, nthreads())
+            @test all(istaskdone, throw_ctx.tasks)
+            @test throw_ctx.conds[1].exception isa CapturedException
+            @test throw_ctx.conds[1].exception.ex.msg == "These contexts are for throwing, and that's all what they do"
         end
 
         @testset "doublebuffer" begin
-            test_logger = TestLogger(catch_exceptions=true);
-            with_logger(test_logger) do
-                @test_throws "These contexts are for throwing, and that's all what they do" parse_file(IOBuffer("""
-                    a,b
-                    1,2
-                    3,4
-                    """),
-                    [Int,Int],
-                    throw_ctx,
-                    nworkers=nthreads(),
-                    _force=:doublebuffer,
-                )
-                sleep(0.2)
-            end
-            @test length(test_logger.logs) == nthreads()
-            @test test_logger.logs[1].message == "Task failed"
-            @test test_logger.logs[1].kwargs[1][1].msg == "These contexts are for throwing, and that's all what they do"
+            # 1500 rows should be enough to get each of the 3 task at least one consume!
+            throw_ctx = TestThrowingContext(1500) 
+            @test_throws TaskFailedException parse_file(
+                IOBuffer("a,b\n" * ("1,2\n3,4\n" ^ 800)), # 1600 rows total
+                [Int,Int],
+                throw_ctx,
+                nworkers=min(3, nthreads()),
+                _force=:doublebuffer,
+                buffersize=12,
+            )
+            sleep(0.2)
+            @test length(throw_ctx.tasks) == min(3, nthreads())
+            @test all(istaskdone, throw_ctx.tasks)
+            @test throw_ctx.conds[1].exception isa CapturedException
+            @test throw_ctx.conds[1].exception.ex.msg == "These contexts are for throwing, and that's all what they do"
         end
     end
 
     @testset "io" begin
         @testset "serial" begin
-            test_logger = TestLogger(catch_exceptions=true);
-            with_logger(test_logger) do
-                @test_throws "That should be enough data for everyone" parse_file(ThrowingIO("""
-                    a,b
-                    1,2
-                    3,4
-                    """),
-                    [Int,Int],
-                    ChunkedCSV.SkipContext(),
-                    _force=:serial,
-                    buffersize=4,
-                )
-            end
+            throw_ctx = TestThrowingContext(typemax(Int)) # Only capture tasks, let IO do the throwing
+            @test_throws ErrorException("That should be enough data for everyone") parse_file(
+                ThrowingIO("a,b\n" * ("1,2\n3,4\n" ^ 10)), # 20 rows total
+                [Int,Int],
+                throw_ctx,
+                _force=:serial,
+                buffersize=6,
+            )
+            @assert !isempty(throw_ctx.tasks)
+            @test throw_ctx.tasks[1] === current_task()
+            @test throw_ctx.conds[1].exception isa ErrorException
         end
 
         @testset "singlebuffer" begin
-            test_logger = TestLogger(catch_exceptions=true);
-            with_logger(test_logger) do
-                @test_throws "That should be enough data for everyone" parse_file(ThrowingIO("""
-                    a,b
-                    1,2
-                    3,4
-                    """),
-                    [Int,Int],
-                    ChunkedCSV.SkipContext(),
-                    nworkers=nthreads(),
-                    _force=:singlebuffer,
-                    buffersize=4,
-                )
-                sleep(0.2)
-            end
-            @test length(test_logger.logs) == nthreads()
-            @test test_logger.logs[1].message == "Task failed"
-            @test test_logger.logs[1].kwargs[1][1].task.result.msg == "That should be enough data for everyone"
+            throw_ctx = TestThrowingContext(typemax(Int)) # Only capture tasks, let IO do the throwing
+            @test_throws TaskFailedException parse_file(
+                ThrowingIO("a,b\n" * ("1,2\n3,4\n" ^ 800)), # 1600 rows total
+                [Int,Int],
+                throw_ctx,
+                nworkers=min(3, nthreads()),
+                _force=:singlebuffer,
+                buffersize=12,
+            )
+            sleep(0.2)
+            @test length(throw_ctx.tasks) == min(3, nthreads())
+            @test all(istaskdone, throw_ctx.tasks)
+            @test throw_ctx.conds[1].exception isa CapturedException
+            @test throw_ctx.conds[1].exception.ex.task.result.msg == "That should be enough data for everyone"
         end
 
         @testset "doublebuffer" begin
-            test_logger = TestLogger(catch_exceptions=true);
-            with_logger(test_logger) do
-                @test_throws "That should be enough data for everyone" parse_file(ThrowingIO("""
-                    a,b
-                    1,2
-                    3,4
-                    """),
-                    [Int,Int],
-                    ChunkedCSV.SkipContext(),
-                    nworkers=nthreads(),
-                    _force=:doublebuffer,
-                    buffersize=4,
-                )
-                sleep(0.2)
-            end
-            @test length(test_logger.logs) == nthreads()
-            @test test_logger.logs[1].message == "Task failed"
-            @test test_logger.logs[1].kwargs[1][1].task.result.msg == "That should be enough data for everyone"
+            throw_ctx = TestThrowingContext(typemax(Int)) # Only capture tasks, let IO do the throwing
+            @test_throws TaskFailedException parse_file(
+                ThrowingIO("a,b\n" * ("1,2\n3,4\n" ^ 800)), # 1600 rows total
+                [Int,Int],
+                throw_ctx,
+                nworkers=min(3, nthreads()),
+                _force=:doublebuffer,
+                buffersize=12,
+            )
+            sleep(0.2)
+            @test length(throw_ctx.tasks) == min(3, nthreads())
+            @test all(istaskdone, throw_ctx.tasks)
+            @test throw_ctx.conds[1].exception isa CapturedException
+            @test throw_ctx.conds[1].exception.ex.task.result.msg == "That should be enough data for everyone"
+            @test throw_ctx.conds[2].exception isa CapturedException
+            @test throw_ctx.conds[2].exception.ex.task.result.msg == "That should be enough data for everyone"
         end
     end
 end
 
 @testset "Schema and header validation" begin
-    @test_throws "Provided header and schema lengths don't match. Header has 3 columns, schema has 2." parse_file(IOBuffer("""
+    @test_throws ArgumentError("Provided header and schema lengths don't match. Header has 3 columns, schema has 2.") parse_file(IOBuffer("""
         a,b,c
         1,2,3
         3,4,5
@@ -242,7 +244,7 @@ end
         header=[:a, :b, :c],
     )
 
-    @test_throws "Error parsing header, there are more columns than provided types in schema" parse_file(IOBuffer("""
+    @test_throws ChunkedCSV.HeaderParsingError("Error parsing header, there are more columns than provided types in schema") parse_file(IOBuffer("""
         a,b,c
         1,2,3
         3,4,5
@@ -251,7 +253,7 @@ end
         header=true,
     )
 
-    @test_throws "Provided header and schema names don't match. In schema, not in header: Set([:q])). In header, not in schema: [:a, :b, :c]" parse_file(IOBuffer("""
+    @test_throws ArgumentError("Provided header and schema names don't match. In schema, not in header: Set([:q])). In header, not in schema: [:a, :b, :c]") parse_file(IOBuffer("""
         a,b,c
         1,2,3
         3,4,5
@@ -261,7 +263,7 @@ end
         validate_type_map=true,
     )
 
-    @test_throws "Unknown columns from schema mapping: Set([:q]), parsed header: [:a, :b, :c]" parse_file(IOBuffer("""
+    @test_throws ArgumentError("Unknown columns from schema mapping: Set([:q]), parsed header: [:a, :b, :c], row 1") parse_file(IOBuffer("""
         a,b,c
         1,2,3
         3,4,5
@@ -271,7 +273,7 @@ end
         validate_type_map=true,
     )
 
-    @test_throws "Provided schema contains unsupported types: FixedDecimal{Int64, 9}, CustomType" parse_file(IOBuffer("""
+    @test_throws ArgumentError("Provided schema contains unsupported types: FixedDecimal{Int64, 9}, CustomType. Note: Currently, only decimals with less than 9 decimal places are supported.") parse_file(IOBuffer("""
         a,b,c,d
         1,2,3,"00000000-0000-0000-0000-000000000000"
         3,4,5,"00000000-0000-0000-0000-000000000000"

@@ -34,13 +34,13 @@ function process_and_consume_task(parsing_queue::Channel{T}, result_buffers::Vec
             task_done!(consume_ctx, parsing_ctx, result_buf)
         end
     catch e
-        @error "Task failed" exception=(e, catch_backtrace())
+        ce = CapturedException(e, catch_backtrace())
         # If there was an exception, immediately stop processing the queue
-        isopen(parsing_queue) && close(parsing_queue, e)
+        isopen(parsing_queue) && close(parsing_queue, ce)
         # if the io/lexing was waiting for work to finish, we'll interrupt it here
         Base.@lock parsing_ctx.cond.cond_wait begin
-            isnothing(parsing_ctx.cond.exception) || (parsing_ctx.cond.exception = e)
-            notify(parsing_ctx.cond.cond_wait, e, all=true, error=true)
+            isnothing(parsing_ctx.cond.exception) && (parsing_ctx.cond.exception = ce)
+            notify(parsing_ctx.cond.cond_wait, ce, all=true, error=true)
         end
     end
 end

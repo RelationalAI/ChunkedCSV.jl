@@ -69,7 +69,7 @@ initflagset(::Type{NTuple{N,T}}) where {N,T<:Unsigned} = ntuple(_->~zero(T), N)
 
 function isflagset(x::NTuple{N,T}, n) where {T,N}
     d, r = fldmod1(n, 8sizeof(T))
-    @inbounds N >= d & (((x[N - d + 1] >> (r - 1)) & one(T)) == one(T))
+    @inbounds (N >= d) & (((x[N - d + 1] >> (r - 1)) & one(T)) == one(T))
 end
 isflagset(x::UInt128, n) = (UInt32((x >> (n - 1)) % UInt32) & UInt32(1)) == UInt32(1)
 isflagset(x::T, n) where {T<:Union{UInt64, UInt32, UInt16, UInt8}} = ((x >> (n - 1)) & T(1)) == T(1)

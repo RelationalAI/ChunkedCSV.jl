@@ -15,6 +15,7 @@ TimeZones = "f269a46b-ccf7-5d73-abea-4c690281aa53"
 TranscodingStreams = "3bb67fe8-82b1-5028-8e26-92a6c54297fa"
 
 [compat]
+CodecZlib = "0.7"
 Parsers = "~2.5.5"
 
 [extras]

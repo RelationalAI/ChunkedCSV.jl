@@ -24,7 +24,7 @@ end
 function sync_tasks(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext, ntasks::Int)
     Base.@lock parsing_ctx.cond.cond_wait begin
         while true
-            parsing_ctx.cond.exception !== nothing && rethrow(parsing_ctx.cond.exception)
+            parsing_ctx.cond.exception !== nothing && throw(parsing_ctx.cond.exception)
             parsing_ctx.cond.ntasks == 0 && break
             wait(parsing_ctx.cond.cond_wait)
         end

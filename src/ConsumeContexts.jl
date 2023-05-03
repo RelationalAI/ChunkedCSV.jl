@@ -1,5 +1,12 @@
+module ConsumeContexts
+
+using ..ChunkedCSV: TaskResultBuffer, ParsingContext, BufferedVector, RowStatus, ChunkedCSV
+import Parsers
+
+export AbstractConsumeContext, DebugContext, SkipContext, TestContext
+export setup_tasks!, consume!, task_done!, sync_tasks, cleanup
+
 abstract type AbstractConsumeContext end
-abstract type AbstractTaskLocalConsumeContext <: AbstractConsumeContext end
 
 function setup_tasks! end
 function consume! end
@@ -7,28 +14,34 @@ function task_done! end
 function sync_tasks end
 function cleanup end
 
-maybe_deepcopy(x::AbstractConsumeContext) = x
-maybe_deepcopy(x::AbstractTaskLocalConsumeContext) = deepcopy(x)
 
 function setup_tasks!(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext, ntasks::Int)
-    Base.@lock parsing_ctx.cond.cond_wait begin
-        parsing_ctx.cond.ntasks = ntasks
+    parsing_ctx.id == 1 ? push!(ChunkedCSV.T1, time_ns()) : push!(ChunkedCSV.T2, time_ns())
+    cond = parsing_ctx.cond
+    Base.@lock cond begin
+        cond.ntasks = ntasks
     end
+    return nothing
 end
-function task_done!(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext, result_buf::TaskResultBuffer{M}) where {M}
-    Base.@lock parsing_ctx.cond.cond_wait begin
-        parsing_ctx.cond.ntasks -= 1
-        notify(parsing_ctx.cond.cond_wait)
+function task_done!(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext, result::TaskResultBuffer{M}) where {M}
+    cond = parsing_ctx.cond
+    Base.@lock cond begin
+        cond.ntasks -= 1
+        notify(cond.cond_wait)
     end
+    return nothing
 end
-function sync_tasks(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext, ntasks::Int)
-    Base.@lock parsing_ctx.cond.cond_wait begin
+function sync_tasks(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext)
+    cond = parsing_ctx.cond
+    Base.@lock cond begin
         while true
-            parsing_ctx.cond.exception !== nothing && throw(parsing_ctx.cond.exception)
-            parsing_ctx.cond.ntasks == 0 && break
-            wait(parsing_ctx.cond.cond_wait)
+            cond.exception !== nothing && throw(cond.exception)
+            cond.ntasks == 0 && break
+            wait(cond.cond_wait)
         end
     end
+    parsing_ctx.id == 1 ? push!(ChunkedCSV.T1, time_ns()) : push!(ChunkedCSV.T2, time_ns())
+    return nothing
 end
 cleanup(consume_ctx::AbstractConsumeContext, e::Exception) = nothing
 
@@ -55,7 +68,6 @@ function debug_eols(x::BufferedVector{Int32}, parsing_ctx, consume_ctx)
     end
 end
 
-
 function consume!(consume_ctx::DebugContext, parsing_ctx::ParsingContext, task_buf::TaskResultBuffer{M}, row_num::Int, eol_idx::Int32) where {M}
     status_counts = zeros(Int, length(RowStatus.Marks))
     io = IOBuffer()
@@ -66,7 +78,7 @@ function consume!(consume_ctx::DebugContext, parsing_ctx::ParsingContext, task_b
             status_counts[j + 1] += f & s > 0
         end
     end
-    write(io, string("Start row: ", row_num, ", nrows: ", length(task_buf.cols[1]), ", $(Base.current_task()) "))
+    write(io, string("Start row: ", row_num, ", nrows: ", isempty(task_buf.cols) ? 0 : length(task_buf.cols[1]), ", $(Base.current_task()) "))
     printstyled(IOContext(io, :color => true), "❚", color=Int(hash(Base.current_task()) % UInt8))
     println(io)
     anyerrs = sum(status_counts[3:end]) > 0
@@ -88,7 +100,7 @@ function consume!(consume_ctx::DebugContext, parsing_ctx::ParsingContext, task_b
                         n != 1 && print(io, ", ")
                         n -= 1
                     elseif task_buf.row_statuses[j] == RowStatus.HasColumnIndicators
-                        write(io, isflagset(task_buf.column_indicators[c], k) ? "?" : debug(col, j, parsing_ctx, consume_ctx))
+                        write(io, k in task_buf.column_indicators[c] ? "?" : debug(col, j, parsing_ctx, consume_ctx))
                         n != 1 && print(io, ", ")
                         c += 1
                         n -= 1
@@ -113,7 +125,7 @@ function consume!(consume_ctx::DebugContext, parsing_ctx::ParsingContext, task_b
                 consume_ctx.show_values && print(io, "\t$(name): [")
                 for j in 1:length(task_buf.row_statuses)
                     if (task_buf.row_statuses[j] & S) > 0
-                        has_missing = isflagset(task_buf.row_statuses[j], 1) && isflagset(task_buf.column_indicators[c], k)
+                        has_missing = has_missing(task_buf.row_statuses[j]) && k in task_buf.column_indicators[c]
                         consume_ctx.show_values && write(io, has_missing ? "?" : debug(col, j, parsing_ctx, consume_ctx))
                         consume_ctx.show_values && n != 1 && print(io, ", ")
                         has_missing && (c += 1)
@@ -155,3 +167,55 @@ end
 function consume!(consume_ctx::SkipContext, parsing_ctx::ParsingContext, task_buf::TaskResultBuffer{M}, row_num::Int, eol_idx::Int32) where {M}
     return nothing
 end
+
+function insertsorted!(arr::Vector{T}, x::T, by=identity) where {T}
+    idx = searchsortedfirst(arr, x, by=by)
+    insert!(arr, idx, x)
+    return idx
+end
+
+struct TestContext <: AbstractConsumeContext
+    results::Vector{TaskResultBuffer}
+    strings::Vector{Vector{Vector{String}}}
+    header::Vector{Symbol}
+    schema::Vector{DataType}
+    lock::ReentrantLock
+    rownums::Vector{Int}
+end
+TestContext() = TestContext([], [], [], [], ReentrantLock(), [])
+function consume!(ctx::TestContext, parsing_ctx::ParsingContext, task_buf::TaskResultBuffer{M}, row_num::Int, eol_idx::Int32) where {M}
+    strings = Vector{String}[]
+    for col in task_buf.cols
+        if eltype(col) === Parsers.PosLen31
+            push!(strings, [Parsers.getstring(parsing_ctx.bytes, x, parsing_ctx.escapechar) for x in col::BufferedVector{Parsers.PosLen31}])
+        else
+            push!(strings, String[])
+        end
+    end
+    Base.@lock ctx.lock begin
+        isempty(ctx.header) && append!(ctx.header, copy(parsing_ctx.header))
+        isempty(ctx.schema) && append!(ctx.schema, copy(parsing_ctx.schema))
+        idx = insertsorted!(ctx.rownums, row_num)
+        insert!(ctx.results, idx, deepcopy(task_buf))
+        insert!(ctx.strings, idx, strings)
+    end
+    return nothing
+end
+
+Base.empty!(ctx::TestContext) = (empty!(ctx.results); empty!(ctx.strings); empty!(ctx.header); empty!(ctx.schema); empty!(ctx.rownums); ctx)
+
+function Base.collect(testctx::TestContext)
+    init = [Vector{T}() for T in testctx.schema]
+    vals = [
+        [
+            T === String ? s[i] : r.cols[i]
+            for (i, T)
+            in enumerate(testctx.schema)
+        ]
+        for (s, r)
+        in zip(testctx.strings, testctx.results)
+    ]
+    (; zip(testctx.header, reduce((x,y)-> append!.(x, y), vals, init=init))...)
+end
+
+end # module

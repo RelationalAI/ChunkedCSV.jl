@@ -1,8 +1,8 @@
-function _parse_file_serial(lexer_state::LexerState, parsing_ctx::ParsingContext, consume_ctx::AbstractConsumeContext, options::Parsers.Options, ::Val{M}) where {M}
+function _parse_file_serial(lexer::Lexer, parsing_ctx::ParsingContext, consume_ctx::AbstractConsumeContext, options::Parsers.Options, ::Val{M}) where {M}
     row_num = 1
-    result_buf = TaskResultBuffer{M}(0, parsing_ctx.schema, cld(length(parsing_ctx.eols), parsing_ctx.maxtasks))
+    result_buf = TaskResultBuffer{M}(0, parsing_ctx.schema, cld(length(parsing_ctx.eols), tasks_per_chunk(parsing_ctx)))
     try
-        while true
+        @inbounds while true
             limit_eols!(parsing_ctx, row_num) && break
             task_size = estimate_task_size(parsing_ctx)
             task_start = Int32(1)
@@ -14,10 +14,10 @@ function _parse_file_serial(lexer_state::LexerState, parsing_ctx::ParsingContext
                 row_num += Int(task_end - task_start)
                 task_start = task_end
                 task_done!(consume_ctx, parsing_ctx, result_buf)
-                sync_tasks(consume_ctx, parsing_ctx, 1)
+                sync_tasks(consume_ctx, parsing_ctx)
             end
-            lexer_state.done && break
-            read_and_lex!(lexer_state, parsing_ctx, options)
+            lexer.done && break
+            read_and_lex!(lexer, parsing_ctx)
         end # while true
     catch e
         Base.@lock parsing_ctx.cond.cond_wait begin

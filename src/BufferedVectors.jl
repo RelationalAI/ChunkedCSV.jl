@@ -1,4 +1,6 @@
-""" A Vector that doesn't call `_growend!` quite as often (copy-pasted from ProtoBuf.jl) """
+module BufferedVectors
+
+export BufferedVector, skip_element!, shiftleft!, unsafe_push!
 mutable struct BufferedVector{T} <: AbstractArray{T,1}
     elements::Vector{T}
     occupied::Int
@@ -9,18 +11,18 @@ BufferedVector(v::Vector{T}) where {T} = BufferedVector{T}(v, length(v))
 Base.length(x::BufferedVector) = x.occupied
 Base.size(x::BufferedVector) = (x.occupied,)
 Base.@propagate_inbounds function Base.last(x::BufferedVector)
-    x.elements[x.occupied]
+    return x.elements[x.occupied]
 end
 @inline function Base.first(x::BufferedVector)
-    @boundscheck x.occupied > 0
-    @inbounds x.elements[1]
+    @boundscheck((x.occupied > 0) || Base.throw_boundserror(x, 1))
+    return @inbounds(x.elements[1])
 end
 @inline function Base.getindex(x::BufferedVector, i::Int)
-    @boundscheck x.occupied >= i && i > 0
-    @inbounds x.elements[i]
+    @boundscheck((x.occupied >= i && i > 0) || Base.throw_boundserror(x, i))
+    return @inbounds(x.elements[i])
 end
 Base.ndims(x::BufferedVector) = 1
-Base.empty!(x::BufferedVector) = x.occupied = 0
+Base.empty!(x::BufferedVector) = (x.occupied = 0; x)
 Base.isempty(x::BufferedVector) = x.occupied == 0
 Base.IndexStyle(::BufferedVector) = Base.IndexLinear()
 Base.IteratorSize(::BufferedVector) = Base.HasLength()
@@ -34,7 +36,6 @@ Base.eltype(::BufferedVector{T}) where T = T
     buffer.occupied += 1
     @inbounds buffer.elements[buffer.occupied] = x
 end
-_grow_by(::Type{T}) where {T<:Union{UInt32,UInt64,Int64,Int32,Enum{Int32},Enum{UInt32}}} = div(128, sizeof(T))
 _grow_by(::Type) = 16
 _grow_by(::Type{T}) where {T<:Union{Bool,UInt8}} = 64
 
@@ -45,9 +46,16 @@ end
 Base.ensureroom(x::BufferedVector, n) = ((length(x.elements) < n) && Base._growend!(x.elements, n - length(x.elements)); return nothing)
 skip_element!(x::BufferedVector) = x.occupied += 1
 function shiftleft!(x::BufferedVector, n)
-    n <= 0 && return
+    n < 0 && throw(ArgumentError("n must be >= 0"))
+    n == 0 && return
     len = length(x)
+    if n >= len
+        empty!(x)
+        return nothing
+    end
     unsafe_copyto!(x.elements, 1, x.elements, 1 + n, len - n + 1)
     x.occupied -= n
     return nothing
 end
+
+end # module

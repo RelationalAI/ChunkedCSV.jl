@@ -140,11 +140,11 @@ end
                 buffersize=6
             )
             @assert !isempty(throw_ctx.tasks)
-            @test throw_ctx.tasks[1] === current_task()
+            @test throw_ctx.tasks[1] == current_task()
             @test throw_ctx.conds[1].exception isa ErrorException
         end
 
-        @testset "singlebuffer" begin
+        @testset "parallel" begin
             # 1500 rows should be enough to get each of the 3 task at least one consume!
             throw_ctx = TestThrowingContext(1500) 
             @test_throws TaskFailedException parse_file(
@@ -152,7 +152,7 @@ end
                 [Int,Int],
                 throw_ctx,
                 nworkers=min(3, nthreads()),
-                _force=:singlebuffer,
+                _force=:parallel,
                 buffersize=12,
             )
             sleep(0.2)
@@ -160,24 +160,8 @@ end
             @test all(istaskdone, throw_ctx.tasks)
             @test throw_ctx.conds[1].exception isa CapturedException
             @test throw_ctx.conds[1].exception.ex.msg == "These contexts are for throwing, and that's all what they do"
-        end
-
-        @testset "doublebuffer" begin
-            # 1500 rows should be enough to get each of the 3 task at least one consume!
-            throw_ctx = TestThrowingContext(1500) 
-            @test_throws TaskFailedException parse_file(
-                IOBuffer("a,b\n" * ("1,2\n3,4\n" ^ 800)), # 1600 rows total
-                [Int,Int],
-                throw_ctx,
-                nworkers=min(3, nthreads()),
-                _force=:doublebuffer,
-                buffersize=12,
-            )
-            sleep(0.2)
-            @test length(throw_ctx.tasks) == min(3, nthreads())
-            @test all(istaskdone, throw_ctx.tasks)
-            @test throw_ctx.conds[1].exception isa CapturedException
-            @test throw_ctx.conds[1].exception.ex.msg == "These contexts are for throwing, and that's all what they do"
+            @test throw_ctx.conds[2].exception isa CapturedException
+            @test throw_ctx.conds[2].exception.ex.msg == "These contexts are for throwing, and that's all what they do"
         end
     end
 
@@ -192,35 +176,18 @@ end
                 buffersize=6,
             )
             @assert !isempty(throw_ctx.tasks)
-            @test throw_ctx.tasks[1] === current_task()
+            @test throw_ctx.tasks[1] == current_task()
             @test throw_ctx.conds[1].exception isa ErrorException
         end
 
-        @testset "singlebuffer" begin
+        @testset "parallel" begin
             throw_ctx = TestThrowingContext(typemax(Int)) # Only capture tasks, let IO do the throwing
             @test_throws TaskFailedException parse_file(
                 ThrowingIO("a,b\n" * ("1,2\n3,4\n" ^ 800)), # 1600 rows total
                 [Int,Int],
                 throw_ctx,
                 nworkers=min(3, nthreads()),
-                _force=:singlebuffer,
-                buffersize=12,
-            )
-            sleep(0.2)
-            @test length(throw_ctx.tasks) == min(3, nthreads())
-            @test all(istaskdone, throw_ctx.tasks)
-            @test throw_ctx.conds[1].exception isa CapturedException
-            @test throw_ctx.conds[1].exception.ex.task.result.msg == "That should be enough data for everyone"
-        end
-
-        @testset "doublebuffer" begin
-            throw_ctx = TestThrowingContext(typemax(Int)) # Only capture tasks, let IO do the throwing
-            @test_throws TaskFailedException parse_file(
-                ThrowingIO("a,b\n" * ("1,2\n3,4\n" ^ 800)), # 1600 rows total
-                [Int,Int],
-                throw_ctx,
-                nworkers=min(3, nthreads()),
-                _force=:doublebuffer,
+                _force=:parallel,
                 buffersize=12,
             )
             sleep(0.2)

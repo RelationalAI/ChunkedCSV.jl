@@ -1,5 +1,4 @@
 """TaskResultBuffer accumulates results produced by a single task"""
-#
 
 module RowStatus
     const T = UInt8
@@ -38,9 +37,7 @@ end
 _translate_to_buffer_type(::Type{String}) = Parsers.PosLen31
 _translate_to_buffer_type(::Type{T}) where {T} = T
 
-TaskResultBuffer(id, schema) = TaskResultBuffer{_bounding_flag_type(length(schema))}(id, schema)
-
-
+TaskResultBuffer(id, schema) = TaskResultBuffer{_bounding_flag_type(length(schema))}(id, schema, 0)
 # Prealocate BufferedVectors with `n` values
 TaskResultBuffer(id, schema, n) = TaskResultBuffer{_bounding_flag_type(length(schema))}(id, schema, n)
 TaskResultBuffer{M}(id, schema::Vector{DataType}, n::Int) where {M} = TaskResultBuffer{M}(
@@ -68,8 +65,9 @@ initflagset(::Type{T}) where {T<:Unsigned} = ~zero(T)
 initflagset(::Type{NTuple{N,T}}) where {N,T<:Unsigned} = ntuple(_->~zero(T), N)
 
 function isflagset(x::NTuple{N,T}, n) where {T,N}
+    n <= 0 && return false
     d, r = fldmod1(n, 8sizeof(T))
-    @inbounds (N >= d) & (((x[N - d + 1] >> (r - 1)) & one(T)) == one(T))
+    (N >= d) && (((x[N - d + 1] >> (r - 1)) & one(T)) == one(T))
 end
 isflagset(x::UInt128, n) = (UInt32((x >> (n - 1)) % UInt32) & UInt32(1)) == UInt32(1)
 isflagset(x::T, n) where {T<:Union{UInt64, UInt32, UInt16, UInt8}} = ((x >> (n - 1)) & T(1)) == T(1)
@@ -90,26 +88,20 @@ flagpadding(ncolumns) = 8sizeof(ChunkedCSV._bounding_flag_type(ncolumns)) - ncol
 firstflagset(x::Unsigned) = 8sizeof(typeof(x)) - leading_zeros(x)
 lastflagset(x::Unsigned) = trailing_zeros(x) + 1
 function firstflagset(xs::NTuple{N,UInt64}) where {N}
-    out = 0
+    out = 8sizeof(typeof(xs))
     @inbounds for i in 1:N
         x = xs[i]
-        out += 8sizeof(typeof(x))
-        if x > 0
-            out -= firstflagset(x) - 1
-            break
-        end
+        out -= leading_zeros(x)
+        x > 0 && break
     end
     return out
 end
 function lastflagset(xs::NTuple{N,UInt64}) where {N}
-    out = 8sizeof(typeof(xs))
+    out = 0
     @inbounds for i in N:-1:1
         x = xs[i]
-        if x > 0
-            out -= lastflagset(x) - 1
-            break
-        end
-        out -= 8sizeof(typeof(x))
+        out += trailing_zeros(x)
+        x > 0 && break
     end
-    return out
+    return out + 1
 end

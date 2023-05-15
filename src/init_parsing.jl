@@ -66,35 +66,58 @@ function skip_rows_init!(lexer, parsing_ctx, rows_to_skip, comment::Nothing)
     return rows_to_skip
 end
 
-function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Options)
-    header_provided = !isnothing(settings.header)
-    schema_is_dict = isa(settings.schema, Dict)
-    schema_provided = !isnothing(settings.schema) && !schema_is_dict
+function init_state_and_pre_header_skip(io, settings, escapechar, openquotechar, closequotechar)
     should_parse_header = settings.header_at > 0
-    schema = DataType[]
-    schema_provided && validate_schema(settings.schema)
-
     parsing_ctx = ParsingContext(
         1,
-        schema,
+        DataType[],
         Enums.CSV_TYPE[],
         Symbol[],
         Vector{UInt8}(undef, settings.buffersize),
         BufferedVector(Int32[0]),
         settings.limit,
         settings.nworkers,
-        options.e,
-        TaskCondition(),
+        escapechar,
+        TaskCounter(),
         settings.comment,
     )
-    lexer = Lexer(io, options.e, options.oq.token, options.cq.token, settings.newlinechar)
+
     # read and lex the entire buffer for the first time
-    read_and_lex!(lexer, parsing_ctx, 0)
-    input_is_empty = last(parsing_ctx.eols) == Int32(0)
+    bytes_read_in = prepare_buffer!(io, parsing_ctx.bytes, 0)
+
+    newline = settings.newlinechar
+    if isnothing(newline)
+        newline = _detect_newline(parsing_ctx.bytes, 1, bytes_read_in)
+    end
+
+    lexer = settings.no_quoted_newlines ?
+        Lexer(io, nothing, newline) :
+        Lexer(io, escapechar, openquotechar, closequotechar, newline)
+
+    if bytes_read_in > 0
+        # TRACING #  push!(LEXER_TASK_TIMES, time_ns())
+        find_newlines!(lexer, parsing_ctx.bytes, parsing_ctx.eols, 1, bytes_read_in)
+        handle_file_end!(lexer, parsing_ctx.eols, bytes_read_in)
+        check_any_valid_rows(lexer, parsing_ctx)
+        # TRACING #  push!(LEXER_TASK_TIMES, time_ns())
+    end
 
     # First skip over commented lines, then jump to header / data row
     pre_header_skiprows = (should_parse_header ? settings.header_at : settings.data_at) - 1
     lines_skipped_total = skip_rows_init!(lexer, parsing_ctx, pre_header_skiprows, parsing_ctx.comment)
+
+    return parsing_ctx, lexer, lines_skipped_total
+end
+
+function process_header_and_schema_and_finish_row_skip!(parsing_ctx::ParsingContext, lexer::Lexer, settings::ParserSettings, options::Parsers.Options, lines_skipped_total::Int)
+    input_is_empty = last(parsing_ctx.eols) == Int32(0)
+
+    header_provided = !isnothing(settings.header)
+    schema_is_dict = isa(settings.schema, Dict)
+    schema_provided = !isnothing(settings.schema) && !schema_is_dict
+    should_parse_header = settings.header_at > 0
+    schema = parsing_ctx.schema
+    schema_provided && validate_schema(settings.schema)
 
     @inbounds if schema_provided & header_provided
         append!(parsing_ctx.header, settings.header)
@@ -122,14 +145,25 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
                 if Parsers.sentinel(code)
                     push!(parsing_ctx.header, Symbol(string(settings.default_colname_prefix, i)))
                 elseif !Parsers.ok(code)
-                    close(io);
-                    throw(HeaderParsingError("Error parsing header for column $i at $(lines_skipped_total+1):$(pos) (row:col)."))
+                    close(lexer.io);
+                    throw(HeaderParsingError("Error parsing header for column $i at $(lines_skipped_total+1):$(pos) (row:pos)."))
                 else
                     push!(parsing_ctx.header, Symbol(strip(Parsers.getstring(v, val, options.e))))
                 end
                 pos += tlen
             end
-            !(Parsers.eof(code) || Parsers.newline(code)) && (close(io); throw(HeaderParsingError("Error parsing header, there are more columns than provided types in schema")))
+            if !(Parsers.eof(code) || Parsers.newline(code))
+                # There are too many columns; calculate how many extra so we can inform the user.
+                ncols = length(parsing_ctx.header)
+                while !Parsers.eof(code)
+                    res = Parsers.xparse(String, v, pos, length(v), options, Parsers.PosLen31)
+                    (tlen, code) = res.tlen, res.code
+                    pos += tlen
+                    ncols += 1
+                end
+                close(lexer.io)
+                throw(HeaderParsingError("Error parsing header, there are more columns ($ncols) than provided types in schema ($(length(settings.schema))) at $(lines_skipped_total+1):$(pos) (row:pos)."))
+            end
         end
     elseif !should_parse_header
         input_is_empty && return (parsing_ctx, lexer)
@@ -143,7 +177,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
         while !(Parsers.eof(code) || Parsers.newline(code))
             res = Parsers.xparse(String, v, pos, length(v), options, Parsers.PosLen31)
             (val, tlen, code) = res.val, res.tlen, res.code
-            !Parsers.ok(code) && (close(io); throw(HeaderParsingError("Error parsing header for column $i at $(lines_skipped_total+1):$(pos) (row:col).")))
+            !Parsers.ok(code) && (close(lexer.io); throw(HeaderParsingError("Error parsing header for column $i at $(lines_skipped_total+1):$(pos) (row:pos).")))
             pos += tlen
             push!(parsing_ctx.header, Symbol(string(settings.default_colname_prefix, i)))
             i += 1
@@ -166,8 +200,8 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
             if Parsers.sentinel(code)
                 push!(parsing_ctx.header, Symbol(string(settings.default_colname_prefix, i)))
             elseif !Parsers.ok(code)
-                close(io)
-                throw(HeaderParsingError("Error parsing header for column $i at $(lines_skipped_total+1):$(pos) (row:col)."))
+                close(lexer.io)
+                throw(HeaderParsingError("Error parsing header for column $i at $(lines_skipped_total+1):$(pos) (row:pos)."))
             else
                 @inbounds push!(parsing_ctx.header, Symbol(strip(Parsers.getstring(v, val, options.e))))
             end
@@ -183,7 +217,7 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
 
     should_parse_header && !input_is_empty && shiftleft!(parsing_ctx.eols, 1) # remove the header row from eols
     # Refill the buffer if it contained a single line and we consumed it to get the header
-    if should_parse_header && length(parsing_ctx.eols) == 1 && !eof(io)
+    if should_parse_header && length(parsing_ctx.eols) == 1 && !eof(lexer.io)
        read_and_lex!(lexer, parsing_ctx)
     end
 
@@ -193,5 +227,14 @@ function init_parsing!(io::IO, settings::ParserSettings, options::Parsers.Option
 
     # This is where we create the enum'd counterpart of parsing_ctx.schema, parsing_ctx.enum_schema
     append!(parsing_ctx.enum_schema, map(Enums.to_enum, parsing_ctx.schema))
-    return (parsing_ctx, lexer)
+    for i in length(parsing_ctx.schema):-1:1 # remove Nothing types from schema (but keep SKIP in enum_schema)
+        type = schema[i]
+        if type === Nothing
+            deleteat!(parsing_ctx.schema, i)
+            deleteat!(parsing_ctx.header, i)
+        else
+            schema[i] = _translate_to_buffer_type(type)
+        end
+    end
+    return nothing
 end

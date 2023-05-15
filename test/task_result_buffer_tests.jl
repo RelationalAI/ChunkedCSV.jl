@@ -1,6 +1,8 @@
 using ChunkedCSV
+using ChunkedCSV: Enums
 using Test
 import Parsers
+using Dates
 
 @testset "TaskResultBuffers" begin
 
@@ -24,12 +26,95 @@ import Parsers
     @test ChunkedCSV._bounding_flag_type(256) == NTuple{4,UInt64}
     @test ChunkedCSV._bounding_flag_type(257) == NTuple{5,UInt64}
     @test ChunkedCSV._bounding_flag_type(258) == NTuple{5,UInt64}
+
+    @test ChunkedCSV._bounding_flag_type(fill(Int, 0)) == UInt8
+    @test ChunkedCSV._bounding_flag_type(fill(Int, 1)) == UInt8
+    @test ChunkedCSV._bounding_flag_type(fill(Int, 8)) == UInt8
+    @test ChunkedCSV._bounding_flag_type(fill(Int, 9)) == UInt16
+    @test ChunkedCSV._bounding_flag_type(fill(Int, 16)) == UInt16
+    @test ChunkedCSV._bounding_flag_type(fill(Int, 17)) == UInt32
+    @test ChunkedCSV._bounding_flag_type(fill(Int, 32)) == UInt32
+    @test ChunkedCSV._bounding_flag_type(fill(Int, 33)) == UInt64
+    @test ChunkedCSV._bounding_flag_type(fill(Int, 64)) == UInt64
+    @test ChunkedCSV._bounding_flag_type(fill(Int, 65)) == UInt128
+    @test ChunkedCSV._bounding_flag_type(fill(Int, 127)) == UInt128
+    @test ChunkedCSV._bounding_flag_type(fill(Int, 128)) == UInt128
+    @test ChunkedCSV._bounding_flag_type(fill(Int, 129)) == NTuple{3,UInt64}
+    @test ChunkedCSV._bounding_flag_type(fill(Int, 130)) == NTuple{3,UInt64}
+    @test ChunkedCSV._bounding_flag_type(fill(Int, 192)) == NTuple{3,UInt64}
+    @test ChunkedCSV._bounding_flag_type(fill(Int, 193)) == NTuple{4,UInt64}
+    @test ChunkedCSV._bounding_flag_type(fill(Int, 256)) == NTuple{4,UInt64}
+    @test ChunkedCSV._bounding_flag_type(fill(Int, 257)) == NTuple{5,UInt64}
+    @test ChunkedCSV._bounding_flag_type(fill(Int, 258)) == NTuple{5,UInt64}
+
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Nothing, 100), fill(Int, 0))) == UInt8
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Nothing, 100), fill(Int, 1))) == UInt8
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Nothing, 100), fill(Int, 8))) == UInt8
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Nothing, 100), fill(Int, 9))) == UInt16
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Nothing, 100), fill(Int, 16))) == UInt16
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Nothing, 100), fill(Int, 17))) == UInt32
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Nothing, 100), fill(Int, 32))) == UInt32
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Nothing, 100), fill(Int, 33))) == UInt64
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Nothing, 100), fill(Int, 64))) == UInt64
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Nothing, 100), fill(Int, 65))) == UInt128
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Nothing, 100), fill(Int, 127))) == UInt128
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Nothing, 100), fill(Int, 128))) == UInt128
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Nothing, 100), fill(Int, 129))) == NTuple{3,UInt64}
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Nothing, 100), fill(Int, 130))) == NTuple{3,UInt64}
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Nothing, 100), fill(Int, 192))) == NTuple{3,UInt64}
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Nothing, 100), fill(Int, 193))) == NTuple{4,UInt64}
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Nothing, 100), fill(Int, 256))) == NTuple{4,UInt64}
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Nothing, 100), fill(Int, 257))) == NTuple{5,UInt64}
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Nothing, 100), fill(Int, 258))) == NTuple{5,UInt64}
+
+    @test ChunkedCSV._bounding_flag_type(fill(Enums.INT, 0)) == UInt8
+    @test ChunkedCSV._bounding_flag_type(fill(Enums.INT, 1)) == UInt8
+    @test ChunkedCSV._bounding_flag_type(fill(Enums.INT, 8)) == UInt8
+    @test ChunkedCSV._bounding_flag_type(fill(Enums.INT, 9)) == UInt16
+    @test ChunkedCSV._bounding_flag_type(fill(Enums.INT, 16)) == UInt16
+    @test ChunkedCSV._bounding_flag_type(fill(Enums.INT, 17)) == UInt32
+    @test ChunkedCSV._bounding_flag_type(fill(Enums.INT, 32)) == UInt32
+    @test ChunkedCSV._bounding_flag_type(fill(Enums.INT, 33)) == UInt64
+    @test ChunkedCSV._bounding_flag_type(fill(Enums.INT, 64)) == UInt64
+    @test ChunkedCSV._bounding_flag_type(fill(Enums.INT, 65)) == UInt128
+    @test ChunkedCSV._bounding_flag_type(fill(Enums.INT, 127)) == UInt128
+    @test ChunkedCSV._bounding_flag_type(fill(Enums.INT, 128)) == UInt128
+    @test ChunkedCSV._bounding_flag_type(fill(Enums.INT, 129)) == NTuple{3,UInt64}
+    @test ChunkedCSV._bounding_flag_type(fill(Enums.INT, 130)) == NTuple{3,UInt64}
+    @test ChunkedCSV._bounding_flag_type(fill(Enums.INT, 192)) == NTuple{3,UInt64}
+    @test ChunkedCSV._bounding_flag_type(fill(Enums.INT, 193)) == NTuple{4,UInt64}
+    @test ChunkedCSV._bounding_flag_type(fill(Enums.INT, 256)) == NTuple{4,UInt64}
+    @test ChunkedCSV._bounding_flag_type(fill(Enums.INT, 257)) == NTuple{5,UInt64}
+    @test ChunkedCSV._bounding_flag_type(fill(Enums.INT, 258)) == NTuple{5,UInt64}
+
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Enums.SKIP, 100), fill(Enums.INT, 0))) == UInt8
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Enums.SKIP, 100), fill(Enums.INT, 1))) == UInt8
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Enums.SKIP, 100), fill(Enums.INT, 8))) == UInt8
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Enums.SKIP, 100), fill(Enums.INT, 9))) == UInt16
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Enums.SKIP, 100), fill(Enums.INT, 16))) == UInt16
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Enums.SKIP, 100), fill(Enums.INT, 17))) == UInt32
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Enums.SKIP, 100), fill(Enums.INT, 32))) == UInt32
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Enums.SKIP, 100), fill(Enums.INT, 33))) == UInt64
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Enums.SKIP, 100), fill(Enums.INT, 64))) == UInt64
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Enums.SKIP, 100), fill(Enums.INT, 65))) == UInt128
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Enums.SKIP, 100), fill(Enums.INT, 127))) == UInt128
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Enums.SKIP, 100), fill(Enums.INT, 128))) == UInt128
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Enums.SKIP, 100), fill(Enums.INT, 129))) == NTuple{3,UInt64}
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Enums.SKIP, 100), fill(Enums.INT, 130))) == NTuple{3,UInt64}
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Enums.SKIP, 100), fill(Enums.INT, 192))) == NTuple{3,UInt64}
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Enums.SKIP, 100), fill(Enums.INT, 193))) == NTuple{4,UInt64}
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Enums.SKIP, 100), fill(Enums.INT, 256))) == NTuple{4,UInt64}
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Enums.SKIP, 100), fill(Enums.INT, 257))) == NTuple{5,UInt64}
+    @test ChunkedCSV._bounding_flag_type(vcat(fill(Enums.SKIP, 100), fill(Enums.INT, 258))) == NTuple{5,UInt64}
 end
 
 @testset "_translate_to_buffer_type" begin 
     @test ChunkedCSV._translate_to_buffer_type(Int) == Int
     @test ChunkedCSV._translate_to_buffer_type(Float64) == Float64
+    @test ChunkedCSV._translate_to_buffer_type(Float64, false) == Float64
     @test ChunkedCSV._translate_to_buffer_type(String) == Parsers.PosLen31
+    @test ChunkedCSV._translate_to_buffer_type(String, false) == String
+    @test ChunkedCSV._translate_to_buffer_type(ChunkedCSV.GuessDateTime) == DateTime
 end
 
 @testset "TaskResultBuffer constructors" begin 

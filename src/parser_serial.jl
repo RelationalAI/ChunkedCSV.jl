@@ -1,4 +1,4 @@
-function _parse_file_serial(lexer::Lexer, parsing_ctx::ParsingContext, consume_ctx::AbstractConsumeContext, options::Parsers.Options, ::Val{M}) where {M}
+function _parse_file_serial(lexer::Lexer, parsing_ctx::ParsingContext, consume_ctx::AbstractConsumeContext, options::Parsers.Options, ::Val{M}, ::Type{CT}) where {M, CT}
     row_num = 1
     result_buf = TaskResultBuffer{M}(0, parsing_ctx.schema, cld(length(parsing_ctx.eols), tasks_per_chunk(parsing_ctx)))
     try
@@ -9,21 +9,18 @@ function _parse_file_serial(lexer::Lexer, parsing_ctx::ParsingContext, consume_c
             for task in Iterators.partition(eachindex(parsing_ctx.eols), task_size)
                 setup_tasks!(consume_ctx, parsing_ctx, 1)
                 task_end = Int32(last(task))
-                _parse_rows_forloop!(result_buf, view(parsing_ctx.eols, task_start:task_end), parsing_ctx.bytes, parsing_ctx.enum_schema, options, parsing_ctx.comment)
+                _parse_rows_forloop!(result_buf, view(parsing_ctx.eols, task_start:task_end), parsing_ctx.bytes, parsing_ctx.schema, parsing_ctx.enum_schema, options, parsing_ctx.comment, CT)
                 consume!(consume_ctx, parsing_ctx, result_buf, row_num, task_start)
                 row_num += Int(task_end - task_start)
                 task_start = task_end
-                task_done!(consume_ctx, parsing_ctx, result_buf)
+                task_done!(consume_ctx, parsing_ctx)
                 sync_tasks(consume_ctx, parsing_ctx)
             end
             lexer.done && break
             read_and_lex!(lexer, parsing_ctx)
         end # while true
     catch e
-        Base.@lock parsing_ctx.cond.cond_wait begin
-            isnothing(parsing_ctx.cond.exception) && (parsing_ctx.cond.exception = e)
-            notify(parsing_ctx.cond.cond_wait, e, all=true, error=true)
-        end
+        close(parsing_ctx.counter, e)
         cleanup(consume_ctx, e)
         rethrow(e)
     end

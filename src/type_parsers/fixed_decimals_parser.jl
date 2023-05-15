@@ -401,6 +401,9 @@ struct _FixedDecimal{T<:Integer,f} <: Integer
     _FixedDecimal{T, f}(x::FixedDecimal{T, f}) where {T<:Integer, f} = new{T,f}(x)
 end
 
+Base.convert(::Type{FixedDecimal{T,f}}, x::_FixedDecimal{T,f}) where {T,f} = x.x
+Base.convert(::Type{_FixedDecimal{T,f}}, x::FixedDecimal{T,f}) where {T,f} = _FixedDecimal(x)
+
 function Parsers.typeparser(::Type{_FixedDecimal{T,f}}, source::AbstractVector{UInt8}, pos, len, b, code, pl, options) where {T<:Integer,f}
     @inbounds x, code, pos = _typeparser(T, f, source, pos, len, b, code, options, RoundNearest)
     # We need to step one past field_end on EOF so that Parsers.jl recognize it's not a bad delim

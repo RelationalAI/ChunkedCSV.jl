@@ -9,12 +9,12 @@ struct CustomType
 end
 
 # Throws when a specified row is greater than the first row of a task buffer
-struct TestThrowingContext <: AbstractConsumeContext 
+struct TestThrowingContext <: AbstractConsumeContext
     tasks::Vector{Task}
-    conds::Vector{ChunkedCSV.TaskCondition}
+    conds::Vector{ChunkedCSV.TaskCounter}
     throw_row::Int
 end
-TestThrowingContext(throw_row) = TestThrowingContext(Task[], ChunkedCSV.TaskCondition[], throw_row)
+TestThrowingContext(throw_row) = TestThrowingContext(Task[], ChunkedCSV.TaskCounter[], throw_row)
 
 # Throws in the last quarter of the buffer
 struct ThrowingIO <: IO
@@ -27,7 +27,7 @@ Base.eof(io::ThrowingIO) = Base.eof(io.io)
 
 function ChunkedCSV.consume!(ctx::TestThrowingContext, parsing_ctx::ParsingContext, task_buf::TaskResultBuffer{M}, row_num::Int, eol_idx::Int32) where {M}
     t = current_task()
-    c = parsing_ctx.cond
+    c = parsing_ctx.counter
     c in ctx.conds || push!(ctx.conds, c)
     t in ctx.tasks || push!(ctx.tasks, t)
     row_num >= ctx.throw_row && error("These contexts are for throwing, and that's all what they do")
@@ -146,7 +146,7 @@ end
 
         @testset "parallel" begin
             # 1500 rows should be enough to get each of the 3 task at least one consume!
-            throw_ctx = TestThrowingContext(1500) 
+            throw_ctx = TestThrowingContext(1500)
             @test_throws TaskFailedException parse_file(
                 IOBuffer("a,b\n" * ("1,2\n3,4\n" ^ 800)), # 1600 rows total
                 [Int,Int],
@@ -211,7 +211,7 @@ end
         header=[:a, :b, :c],
     )
 
-    @test_throws ChunkedCSV.HeaderParsingError("Error parsing header, there are more columns than provided types in schema") parse_file(IOBuffer("""
+    @test_throws ChunkedCSV.HeaderParsingError("Error parsing header, there are more columns (3) than provided types in schema (2) at 1:6 (row:pos).") parse_file(IOBuffer("""
         a,b,c
         1,2,3
         3,4,5
@@ -240,11 +240,11 @@ end
         validate_type_map=true,
     )
 
-    @test_throws ArgumentError("Provided schema contains unsupported types: FixedDecimal{Int64, 9}, CustomType. Note: Currently, only decimals with less than 9 decimal places are supported.") parse_file(IOBuffer("""
+    @test_throws ArgumentError("Provided schema contains unsupported types: FixedDecimal{Int64, 100}, CustomType.") parse_file(IOBuffer("""
         a,b,c,d
         1,2,3,"00000000-0000-0000-0000-000000000000"
         3,4,5,"00000000-0000-0000-0000-000000000000"
         """),
-        [Int,FixedDecimal{Int64,8},FixedDecimal{Int64,9},CustomType],
+        [Int,FixedDecimal{Int64,9},FixedDecimal{Int64,100},CustomType],
     )
 end

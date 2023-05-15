@@ -14,12 +14,13 @@ function setup_for_kernel(l, s; prev_escaped=UInt(0), prev_in_string=UInt(0))
     l.prev_in_string = prev_in_string
     l_copy1 = deepcopy(l)
     l_copy2 = deepcopy(l)
+    bytes = collect(codeunits(s))
     newlines = NewlineLexers._find_newlines_kernel!(l, vec64(s))
     eols = Int32[]
-    NewlineLexers.find_newlines!(l_copy1, collect(codeunits(s)), eols)
+    GC.@preserve bytes NewlineLexers.find_newlines!(l_copy1, bytes, eols)
     @test eols == findall(>(0), digits(newlines, base=2))
     empty!(eols)
-    NewlineLexers._find_newlines_generic!(l_copy2, collect(codeunits(s)), eols)
+    GC.@preserve bytes NewlineLexers._find_newlines_generic!(l_copy2, bytes, eols)
     @test eols == findall(>(0), digits(newlines, base=2))
     @test l_copy2.prev_escaped == l.prev_escaped
     @test l_copy2.prev_in_string == l.prev_in_string
@@ -30,9 +31,10 @@ function generic_lexer_setup(l, buf; prev_escaped=UInt(0), prev_in_string=UInt(0
     l.prev_escaped = prev_escaped
     l.prev_in_string = prev_in_string
     l_copy1 = deepcopy(l)
-    NewlineLexers._find_newlines_generic!(l, collect(codeunits(buf)), eols, first, last)
+    bytes = collect(codeunits(buf))
+    GC.@preserve bytes NewlineLexers._find_newlines_generic!(l, bytes, eols, first, last)
     _eols = Int32[]
-    NewlineLexers.find_newlines!(l_copy1, collect(codeunits(buf)), _eols, first, last)
+    GC.@preserve bytes NewlineLexers.find_newlines!(l_copy1, bytes, _eols, first, last)
     @test _eols == eols
     return eols
 end
@@ -41,7 +43,8 @@ function find_newlines_setup(l, buf; prev_escaped=UInt(0), prev_in_string=UInt(0
     eols = Int32[]
     l.prev_escaped = prev_escaped
     l.prev_in_string = prev_in_string
-    NewlineLexers.find_newlines!(l, collect(codeunits(buf)), eols, first, last)
+    bytes = collect(codeunits(buf))
+    GC.@preserve bytes NewlineLexers.find_newlines!(l, bytes, eols, first, last)
     return eols
 end
 
@@ -59,7 +62,7 @@ bits() = bits(Int[])
     @test l.done
     @test eols == Int32[0, 2]
 
-    # Lexer{Q,Q,Q} 
+    # Lexer{Q,Q,Q}
     l = NewlineLexers.Lexer(IOBuffer(), UInt8('"'), UInt8('"'), UInt8('"'))
     @assert eof(l.io)
     l.done = false
@@ -129,16 +132,16 @@ end
     @test NewlineLexers.prefix_xor(UInt(12)) == UInt(4)
     @test NewlineLexers.prefix_xor(typemax(UInt)) == 0x5555_5555_5555_5555
     @test NewlineLexers.prefix_xor(
-        0b0000000000001000000001000000000000000000001000000000000000000010) == 
+        0b0000000000001000000001000000000000000000001000000000000000000010) ==
         0b0000000000000111111111000000000000000000000111111111111111111110
     @test NewlineLexers.prefix_xor(
-        0b0111111111111000011111111000000000000001111110000000011110000110) == 
+        0b0111111111111000011111111000000000000001111110000000011110000110) ==
         0b0010101010101000001010101000000000000000101010000000001010000010
     @test NewlineLexers.prefix_xor(
-        0b0100000000001000010000001000000000000001000010000000010010000110) == 
+        0b0100000000001000010000001000000000000001000010000000010010000110) ==
         0b0011111111111000001111111000000000000000111110000000001110000010
     @test NewlineLexers.prefix_xor(
-        0b0001111100001111111000110000011111111100110111111100001100010000) == 
+        0b0001111100001111111000110000011111111100110111111100001100010000) ==
         0b1111010100000101010111101111110101010100010010101011111011110000
 end
 
@@ -553,7 +556,7 @@ end
         @test isempty(out)
         @test l.prev_escaped == false
         @test l.prev_in_string == typemax(UInt)
-        
+
         out = generic_lexer_setup(l, "[][][][][][][][][][][][][]", first=2, last=4)
         @test isempty(out)
         @test l.prev_escaped == false
@@ -607,7 +610,7 @@ end
         @test l.prev_escaped == false
         @test l.prev_in_string == typemax(UInt)
     end
-end 
+end
 
 @testset "_find_newlines_generic!(l::Lexer{E,Q,Q}, ...)" begin
     l = NewlineLexers.Lexer(IOBuffer(), UInt8('\\'), UInt8('"'), UInt8('"'))
@@ -679,7 +682,7 @@ end
         @test isempty(out)
         @test l.prev_escaped == false
         @test l.prev_in_string == typemax(UInt)
-        
+
         out = generic_lexer_setup(l, "\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"", first=2, last=4)
         @test isempty(out)
         @test l.prev_escaped == false
@@ -733,7 +736,7 @@ end
         @test l.prev_escaped == false
         @test l.prev_in_string == typemax(UInt)
     end
-end 
+end
 
 @testset "_find_newlines_generic!(l::Lexer{Q,Q,Q}, ...)" begin
     l = NewlineLexers.Lexer(IOBuffer(), UInt8('"'), UInt8('"'), UInt8('"'))
@@ -830,7 +833,7 @@ end
         @test isempty(out)
         @test l.prev_escaped == true
         @test l.prev_in_string == typemin(UInt)
-        
+
         out = generic_lexer_setup(l, "\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"", first=2, last=4)
         @test isempty(out)
         @test l.prev_escaped == true
@@ -971,7 +974,7 @@ end
 end
 
 _f(x) = x === nothing ? "nothing" : repr(Char(x))
-@testset "find_newlines!" begin 
+@testset "find_newlines!" begin
     @testset "Lexer{$(_f(e)), $(_f(oq)), $(_f(cq)), $(_f(nl))}" for (e, oq, cq, nl) in (
         ('"', '"', '"', '\n'),
         ('\\', '"', '"', '\n'),

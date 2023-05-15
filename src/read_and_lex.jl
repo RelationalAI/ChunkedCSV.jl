@@ -1,7 +1,7 @@
 readbytesall!(io::IOStream, buf, n::Int) = Base.readbytes!(io, buf, n; all = true)
 readbytesall!(io::IO, buf, n::Int) = Base.readbytes!(io, buf, n)
 function prepare_buffer!(io::IO, buf::Vector{UInt8}, last_newline_at::Int)
-    push!(IO_TASK_TIMES, time_ns())
+    # TRACING # push!(IO_TASK_TIMES, time_ns())
     ptr = pointer(buf)
     buffersize = length(buf)
     @inbounds if last_newline_at == 0 # this is the first time we saw the buffer, we'll just fill it up
@@ -19,7 +19,7 @@ function prepare_buffer!(io::IO, buf::Vector{UInt8}, last_newline_at::Int)
         # Last chunk was consumed entirely
         bytes_read_in = readbytesall!(io, buf, buffersize)
     end
-    push!(IO_TASK_TIMES, time_ns())
+    # TRACING # push!(IO_TASK_TIMES, time_ns())
     return bytes_read_in
 end
 
@@ -63,7 +63,7 @@ function read_and_lex!(lexer::Lexer, parsing_ctx::ParsingContext, last_newline_a
 
     bytes_read_in = prepare_buffer!(lexer.io, parsing_ctx.bytes, last_newline_at)
 
-    push!(LEXER_TASK_TIMES, time_ns())
+    # TRACING #  push!(LEXER_TASK_TIMES, time_ns())
     start_pos = last_newline_at == 0 ? 1 : length(parsing_ctx.bytes) - last_newline_at + 1
     end_pos = start_pos + bytes_read_in - 1
     find_newlines!(lexer, parsing_ctx.bytes, parsing_ctx.eols, start_pos, end_pos)
@@ -71,7 +71,7 @@ function read_and_lex!(lexer::Lexer, parsing_ctx::ParsingContext, last_newline_a
     handle_file_end!(lexer, parsing_ctx.eols, end_pos)
     check_any_valid_rows(lexer, parsing_ctx)
 
-    push!(LEXER_TASK_TIMES, time_ns())
+    # TRACING #  push!(LEXER_TASK_TIMES, time_ns())
     return nothing
 end
 

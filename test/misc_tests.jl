@@ -1,20 +1,22 @@
 using ChunkedCSV
 using Test
+using Dates
+using FixedPointDecimals
 @testset "estimate_task_size" begin
     function _get_ctx(; last_newline_at, newlines_num, buffersize, nworkers)
         eols = zeros(Int32, newlines_num)
         eols[end] = last_newline_at
         ChunkedCSV.ParsingContext(
-            1, 
-            DataType[], 
-            ChunkedCSV.Enums.CSV_TYPE[], 
-            Symbol[], 
-            zeros(UInt8, buffersize), 
-            ChunkedCSV.BufferedVector(eols), 
-            0, 
-            UInt8(nworkers), 
-            0x00, 
-            ChunkedCSV.TaskCondition(), 
+            1,
+            DataType[],
+            ChunkedCSV.Enums.CSV_TYPE[],
+            Symbol[],
+            zeros(UInt8, buffersize),
+            ChunkedCSV.BufferedVector(eols),
+            0,
+            UInt8(nworkers),
+            0x00,
+            ChunkedCSV.TaskCounter(),
             nothing
         )
     end
@@ -88,4 +90,45 @@ for alg in (:serial, :parallel)
         @test length(testctx.results[2].cols[2]) == 1
         @test length(testctx.results[2].cols[3]) == 1
     end
+end
+
+@testset "_is_supported_type" begin
+    @test ChunkedCSV._is_supported_type(Bool)
+    @test ChunkedCSV._is_supported_type(Int)
+    @test ChunkedCSV._is_supported_type(Int8)
+    @test ChunkedCSV._is_supported_type(Int16)
+    @test ChunkedCSV._is_supported_type(Int32)
+    @test ChunkedCSV._is_supported_type(Int64)
+    @test ChunkedCSV._is_supported_type(UInt)
+    @test ChunkedCSV._is_supported_type(UInt8)
+    @test ChunkedCSV._is_supported_type(UInt16)
+    @test ChunkedCSV._is_supported_type(UInt32)
+    @test ChunkedCSV._is_supported_type(UInt64)
+    @test ChunkedCSV._is_supported_type(Float16)
+    @test ChunkedCSV._is_supported_type(Float32)
+    @test ChunkedCSV._is_supported_type(Float64)
+    @test ChunkedCSV._is_supported_type(String)
+    @test ChunkedCSV._is_supported_type(ChunkedCSV.GuessDateTime)
+    @test ChunkedCSV._is_supported_type(Date)
+    @test ChunkedCSV._is_supported_type(DateTime)
+    @test ChunkedCSV._is_supported_type(Time)
+
+    @test ChunkedCSV._is_supported_type(FixedDecimal{Int,8})
+    @test ChunkedCSV._is_supported_type(FixedDecimal{UInt128,16})
+    @test ChunkedCSV._is_supported_type(FixedDecimal{UInt8,0})
+    @test ChunkedCSV._is_supported_type(FixedDecimal{UInt8,1})
+    @test ChunkedCSV._is_supported_type(FixedDecimal{UInt8,2})
+    @test !ChunkedCSV._is_supported_type(FixedDecimal{UInt8,3})
+    @test !ChunkedCSV._is_supported_type(FixedDecimal{UInt128,100})
+
+    @test !ChunkedCSV._is_supported_type(ComplexF16)
+    @test !ChunkedCSV._is_supported_type(ComplexF32)
+end
+
+@testset "_isemptyrow" begin
+    @test ChunkedCSV._isemptyrow(0, 1, UInt8[])
+    @test ChunkedCSV._isemptyrow(1, 2, UInt8[])
+    @test !ChunkedCSV._isemptyrow(1, 4, UInt8[])
+    @test ChunkedCSV._isemptyrow(1, 3, UInt8['\n', '\r', '\n'])
+    @test !ChunkedCSV._isemptyrow(1, 3, UInt8['\n', 'a', '\n'])
 end

@@ -1,12 +1,12 @@
 # TODO: Ugly
-struct _GuessDateTime <: Dates.TimeType; x::Dates.DateTime  end
-_GuessDateTime(vals...) = _GuessDateTime(DateTime(vals...))
-Base.convert(::Type{DateTime}, x::_GuessDateTime) = x.x
-Base.convert(::Type{_GuessDateTime}, x::DateTime) = _GuessDateTime(x)
+struct GuessDateTime <: Dates.TimeType; x::Dates.DateTime  end
+GuessDateTime(vals...) = GuessDateTime(DateTime(vals...))
+Base.convert(::Type{DateTime}, x::GuessDateTime) = x.x
+Base.convert(::Type{GuessDateTime}, x::DateTime) = GuessDateTime(x)
 
-Dates.default_format(::Type{_GuessDateTime}) = Dates.default_format(Dates.DateTime)
-Parsers.default_format(::Type{_GuessDateTime}) = Parsers.default_format(Dates.DateTime)
-Dates.validargs(::Type{_GuessDateTime}, vals...) = Dates.validargs(Dates.DateTime, vals...)
+Dates.default_format(::Type{GuessDateTime}) = Dates.default_format(Dates.DateTime)
+Parsers.default_format(::Type{GuessDateTime}) = Parsers.default_format(Dates.DateTime)
+Dates.validargs(::Type{GuessDateTime}, vals...) = Dates.validargs(Dates.DateTime, vals...)
 
 function _unsafe_datetime(y=0, m=1, d=1, h=0, mi=0, s=0, ms=0)
     rata = ms + 1000 * (s + 60mi + 3600h + 86400 * Dates.totaldays(y, m, d))
@@ -185,7 +185,7 @@ const _Z = SubString("Z", 1:1)
     return tz, pos, code
 end
 
-function Parsers.typeparser(::Type{_GuessDateTime}, source::AbstractVector{UInt8}, pos, len, b, code, pl, options)
+function Parsers.typeparser(::Type{GuessDateTime}, source::AbstractVector{UInt8}, pos, len, b, code, pl, options)
     if isnothing(options.dateformat)
         (x, code, pos) = @inbounds _default_tryparse_timestamp(source, pos, len, code, b, options)
         return (pos, code, Parsers.PosLen(pl.pos, pos - pl.pos), x)

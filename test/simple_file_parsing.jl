@@ -2,10 +2,11 @@ using Test
 using ChunkedCSV
 using ChunkedCSV: RowStatus
 import Parsers
+using UUIDs
 using Dates
 using FixedPointDecimals
 using CodecZlibNG
-using ChunkedCSV: TestContext
+using ChunkedCSV: TestContext, GuessDateTime, Enums
 
 
 const _EXISTING_TEST_FILES = Dict{String,String}()
@@ -118,7 +119,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test length(testctx.results[1].cols[2]) == 2
         end
 
-        @testset "datetime" begin
+        @testset "guess datetime" begin
             testctx = TestContext()
             parse_file(io_t("""
                 id,a,b,c
@@ -137,12 +138,12 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 13,2000-01-01 10:20:30+00,1969-07-20 00:00:00.00-0000,1969-07-20 00:00:00.00-0000
                 14,2000-01-01 10:20:30-00,1969-07-20 00:00:00.00-00:00,1969-07-20 00:00:00.00-00:00
                 """),
-                [Int,DateTime,DateTime,DateTime],
+                [Int,GuessDateTime,GuessDateTime,GuessDateTime],
                 testctx,
                 _force=alg,
             )
             @test testctx.header == [:id, :a, :b, :c]
-            @test testctx.schema == [Int, DateTime, DateTime, DateTime]
+            @test testctx.schema == [Int, DateTime,DateTime,DateTime]
             @test testctx.results[1].cols[1] == 1:14
             @test testctx.results[1].cols[2] == fill(DateTime(2000,1,1,10,20,30), 14)
             @test testctx.results[1].cols[3] == fill(DateTime(1969,7,20,00,00,00), 14)
@@ -150,6 +151,48 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test length(testctx.results[1].cols[1]) == 14
             @test length(testctx.results[1].cols[2]) == 14
             @test length(testctx.results[1].cols[3]) == 14
+        end
+
+        @testset "datetime" begin
+            testctx = TestContext()
+            parse_file(io_t("""
+                id,a,b,c
+                1,2000-01-01,2000-01-01T10:20:30,2000-01-01T10:20:30.400
+                2,2000-01-01,2000-01-01T10:20:30,2000-01-01T10:20:30.400
+                3,2000-01-01,2000-01-01T10:20:30,2000-01-01T10:20:30.400
+                """),
+                [Int,DateTime,DateTime,DateTime],
+                testctx,
+                _force=alg,
+            )
+            @test testctx.header == [:id, :a, :b, :c]
+            @test testctx.schema == [Int, DateTime,DateTime,DateTime]
+            @test testctx.results[1].cols[1] == 1:3
+            @test testctx.results[1].cols[2] == fill(DateTime(2000,1,1), 3)
+            @test testctx.results[1].cols[3] == fill(DateTime(2000,1,1,10,20,30), 3)
+            @test testctx.results[1].cols[4] == fill(DateTime(2000,1,1,10,20,30,400), 3)
+            @test length(testctx.results[1].cols[1]) == 3
+            @test length(testctx.results[1].cols[2]) == 3
+            @test length(testctx.results[1].cols[3]) == 3
+
+            testctx = TestContext()
+            parse_file(io_t("""
+                id,a
+                1,2000-01-01 10:20:30.400
+                2,2000-01-01 10:20:30.400
+                3,2000-01-01 10:20:30.400
+                """),
+                [Int,DateTime],
+                testctx,
+                _force=alg,
+                dateformat=Dates.dateformat"yyyy-mm-dd HH:MM:SS.sss",
+            )
+            @test testctx.header == [:id, :a]
+            @test testctx.schema == [Int, DateTime]
+            @test testctx.results[1].cols[1] == 1:3
+            @test testctx.results[1].cols[2] == fill(DateTime(2000,1,1,10,20,30,400), 3)
+            @test length(testctx.results[1].cols[1]) == 3
+            @test length(testctx.results[1].cols[2]) == 3
         end
 
         @testset "string" begin
@@ -164,7 +207,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 _force=alg,
             )
             @test testctx.header == [:a, :b]
-            @test testctx.schema == [String, String]
+            @test testctx.schema == [Parsers.PosLen31, Parsers.PosLen31]
             @test testctx.results[1].cols[1] == [Parsers.PosLen31(6, 1), Parsers.PosLen31(14, 1)]
             @test testctx.results[1].cols[2] == [Parsers.PosLen31(10, 1), Parsers.PosLen31(18, 1)]
             @test testctx.strings[1][1] == ["1", "3"]
@@ -182,7 +225,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 _force=alg,
             )
             @test testctx.header == [:a, :b, :c]
-            @test testctx.schema == [String, String, String]
+            @test testctx.schema == [Parsers.PosLen31, Parsers.PosLen31, Parsers.PosLen31]
             # https://github.com/JuliaData/Parsers.jl/issues/138
             @test testctx.results[1].cols[1] == [Parsers.PosLen31(8,0)]
             @test testctx.results[1].cols[2] == [Parsers.PosLen31(11,0)]
@@ -193,6 +236,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test length(testctx.results[1].cols[1]) == 1
             @test length(testctx.results[1].cols[2]) == 1
             @test length(testctx.results[1].cols[3]) == 1
+            @test testctx.results[1].row_statuses[1] == RowStatus.Ok
 
             testctx = TestContext()
             parse_file(io_t("""
@@ -203,7 +247,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 _force=alg,
             )
             @test testctx.header == [:a, :b, :c]
-            @test testctx.schema == [String, String, String]
+            @test testctx.schema == [Parsers.PosLen31, Parsers.PosLen31, Parsers.PosLen31]
             # https://github.com/JuliaData/Parsers.jl/issues/138
             @test testctx.results[1].cols[1] == [Parsers.PosLen31(7,0)]
             @test testctx.results[1].cols[2] == [Parsers.PosLen31(8,0)]
@@ -214,6 +258,8 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test length(testctx.results[1].cols[1]) == 1
             @test length(testctx.results[1].cols[2]) == 1
             @test length(testctx.results[1].cols[3]) == 1
+            @test testctx.results[1].row_statuses[1] == RowStatus.HasColumnIndicators
+            @test testctx.results[1].column_indicators[1] == 0x07
         end
 
         @testset "char" begin
@@ -333,7 +379,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 _force=alg,
             )
             @test testctx.header == [:a, :b]
-            @test testctx.schema == [String, String]
+            @test testctx.schema == [Parsers.PosLen31, Parsers.PosLen31]
             @test testctx.results[1].cols[1] == [Parsers.PosLen31(2, 1)]
             @test testctx.results[1].cols[2] == [Parsers.PosLen31(6, 1)]
             @test testctx.results[2].cols[1] == [Parsers.PosLen31(2, 1)]
@@ -371,7 +417,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 header=5,
             )
             @test testctx.header == [:a, :b]
-            @test testctx.schema == [String, String]
+            @test testctx.schema == [Parsers.PosLen31, Parsers.PosLen31]
             @test testctx.results[1].cols[1][1] == Parsers.PosLen31(2, 1)
             @test testctx.results[1].cols[2][1] == Parsers.PosLen31(6, 1)
             @test testctx.results[2].cols[1][1] == Parsers.PosLen31(2, 1)
@@ -842,7 +888,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 _force=alg,
             )
             @test testctx.header == [:COL_1, :COL_2]
-            @test testctx.schema == [String, String]
+            @test testctx.schema == [Parsers.PosLen31, Parsers.PosLen31]
             @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen31(1, 1), Parsers.PosLen31(5, 1)]
             @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen31(3, 1), Parsers.PosLen31(7, 1)]
             @test testctx.strings[1][1][1:2] == ["1", "3"]
@@ -864,7 +910,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 _force=alg,
             )
             @test testctx.header == [:COL_1, :COL_2]
-            @test testctx.schema == [String, String]
+            @test testctx.schema == [Parsers.PosLen31, Parsers.PosLen31]
             @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen31(9, 1), Parsers.PosLen31(13, 1)]
             @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen31(11, 1), Parsers.PosLen31(15, 1)]
             @test testctx.strings[1][1][1:2] == ["1", "3"]
@@ -957,7 +1003,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 validate_type_map=false,
             )
             @test testctx.header == [:a, :b, :c]
-            @test testctx.schema == [String, Int, String]
+            @test testctx.schema == [Parsers.PosLen31, Int, Parsers.PosLen31]
 
             testctx = TestContext()
             parse_file(io_t("""
@@ -972,7 +1018,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 validate_type_map=false,
             )
             @test testctx.header == [:a, :b, :c]
-            @test testctx.schema == [String, Int, String]
+            @test testctx.schema == [Parsers.PosLen31, Int, Parsers.PosLen31]
         end
 
         @testset "Escape in a header" begin
@@ -1024,6 +1070,30 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
 end # for (io_t, alg)
 for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial, :parallel))
     @testset "Empty input ($(io_t), $(alg))" begin
+        @testset "Empty lines" begin
+            # TODO: We need to fix TestContext not to materialize the string if there are issues with it
+            #    basically it needs to respect column_indicators and row_statuses.
+            # testctx = TestContext()
+            # parse_file(io_t("a,b,c\n\n"), nothing, testctx, _force=alg, ignoreemptyrows=false)
+            # @test testctx.header == [:a, :b, :c]
+            # @test testctx.results[1].row_statuses == [RowStatus.TooFewColumns | RowStatus.HasColumnIndicators]
+
+            testctx = TestContext()
+            parse_file(io_t("a,b,c\n\n"), nothing, testctx, _force=alg, ignoreemptyrows=true)
+            @test testctx.header == [:a, :b, :c]
+            @test all(isempty, testctx.results[1].cols)
+
+            testctx = TestContext()
+            parse_file(io_t("a,b,c\r\r"), nothing, testctx, _force=alg, ignoreemptyrows=true, newlinechar='\r')
+            @test testctx.header == [:a, :b, :c]
+            @test all(isempty, testctx.results[1].cols)
+
+            testctx = TestContext()
+            parse_file(io_t("a,b,c\r\n\r\n"), nothing, testctx, _force=alg, ignoreemptyrows=true)
+            @test testctx.header == [:a, :b, :c]
+            @test all(isempty, testctx.results[1].cols)
+        end
+
         @testset "no file header, no provided header, no schema" begin
             testctx = TestContext()
             parse_file(io_t(""), nothing, testctx, _force=alg, header=false)
@@ -1037,7 +1107,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             parse_file(io_t(""), nothing, testctx, _force=alg, header=[:A, :B])
             @test length(testctx.results[1].cols) == 2
             @test testctx.header == [:A, :B]
-            @test testctx.schema == [String, String]
+            @test testctx.schema == [Parsers.PosLen31, Parsers.PosLen31]
         end
 
         @testset "no file header, no provided header, has schema" begin
@@ -1045,7 +1115,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             parse_file(io_t(""), [Int, String], testctx, _force=alg, header=false)
             @test length(testctx.results[1].cols) == 2
             @test testctx.header == [:COL_1, :COL_2]
-            @test testctx.schema == [Int, String]
+            @test testctx.schema == [Int, Parsers.PosLen31]
         end
 
         @testset "has file header, has provided header, has schema" begin
@@ -1053,7 +1123,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             parse_file(io_t(""), [Int, String], testctx, _force=alg, header=[:A, :B])
             @test length(testctx.results[1].cols) == 2
             @test testctx.header == [:A, :B]
-            @test testctx.schema == [Int, String]
+            @test testctx.schema == [Int, Parsers.PosLen31]
         end
 
         @testset "has file header, no provided header, no schema" begin
@@ -1069,7 +1139,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             parse_file(io_t(""), [Int, String], testctx, _force=alg, header=true)
             @test length(testctx.results[1].cols) == 2
             @test testctx.header == [:COL_1, :COL_2]
-            @test testctx.schema == [Int, String]
+            @test testctx.schema == [Int, Parsers.PosLen31]
         end
     end
 end # for (io_t, alg)
@@ -1396,7 +1466,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 @test testctx.results[1].column_indicators[1] == UInt8(1) << 1
             end
 
-            @testset "datetimes" begin
+            @testset "guess datetimes" begin
                 testctx = TestContext()
                 parse_file(io_t("""
                     a,b
@@ -1408,7 +1478,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                     5,1969-07-20 00:00:00.00-0000\r
                     6,\r
                     """),
-                    [Int,DateTime],
+                    [Int,GuessDateTime],
                     testctx,
                     _force=alg,
                 )
@@ -1460,7 +1530,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             escapechar='"',
         )
         @test testctx.header == [:a, :b]
-        @test testctx.schema == [Int,String]
+        @test testctx.schema == [Int,Parsers.PosLen31]
         @test length(testctx.results) == 3
         @test testctx.results[1].cols[1][1] == 0
         @test testctx.results[2].cols[1][1] == 1
@@ -1486,7 +1556,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             escapechar='"',
         )
         @test testctx.header == [:a, :b]
-        @test testctx.schema == [Int,String]
+        @test testctx.schema == [Int,Parsers.PosLen31]
         @test length(testctx.results) == 3
         @test testctx.results[1].cols[1][1] == 0
         @test testctx.results[2].cols[1][1] == 1
@@ -1524,7 +1594,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test testctx.results[1].row_statuses[1:3] == fill(ChunkedCSV.RowStatus.Ok, 3)
         end
 
-        @testset "datetimes" begin
+        @testset "guess datetimes" begin
             testctx = TestContext()
             parse_file(io_t("""
                 a,b,c,d,e
@@ -1536,7 +1606,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 5,1969-07-20 00:00:00.00-0000,"1969-07-20 00:00:00.00-0000",1969-07-20 00:00:00.00-0000,"1969-07-20 00:00:00.00-0000"
                 6,1969-07-20 00:00:00.00Z,"1969-07-20 00:00:00.00Z","1969-07-20 00:00:00.00Z","1969-07-20T00:00:00Z"
                 """),
-                [Int,DateTime,DateTime,DateTime,DateTime],
+                [Int,GuessDateTime,GuessDateTime,GuessDateTime,GuessDateTime],
                 testctx,
                 _force=alg,
             )
@@ -1611,7 +1681,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 header=false,
                 _force=alg,
             )
-            @test testctx.schema == [Int,String]
+            @test testctx.schema == [Int,Parsers.PosLen31]
             @test length(testctx.results) == 5
             @test testctx.results[1].cols[1][1] == 0
             @test testctx.results[2].cols[1][1] == 1
@@ -1708,7 +1778,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                     _force=alg,
                 )
                 @test testctx.header == [:a, :b]
-                @test testctx.schema == [Int,String]
+                @test testctx.schema == [Int,Parsers.PosLen31]
                 @test length(testctx.results) == 2
                 @test testctx.results[1].cols[1][1] == 0
                 @test testctx.results[2].cols[1][1] == 1
@@ -1730,7 +1800,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                     _force=alg,
                 )
                 @test testctx.header == [:a, :b]
-                @test testctx.schema == [Int,String]
+                @test testctx.schema == [Int,Parsers.PosLen31]
                 @test length(testctx.results) == 2
                 @test testctx.results[1].cols[1][1] == 0
                 @test testctx.results[2].cols[1][1] == 1
@@ -1752,7 +1822,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                     _force=alg,
                 )
                 @test testctx.header == [:a, :b]
-                @test testctx.schema == [Int,String]
+                @test testctx.schema == [Int,Parsers.PosLen31]
                 @test length(testctx.results) == 2
                 @test testctx.results[1].cols[1][1] == 0
                 @test testctx.results[2].cols[1][1] == 1
@@ -1781,7 +1851,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                         _force=alg,
                     )
                     @test testctx.header == [:a, :b]
-                    @test testctx.schema == [Int,String]
+                    @test testctx.schema == [Int,Parsers.PosLen31]
                     @test length(testctx.results) == 5
                     @test testctx.results[1].cols[1][1] == 0
                     @test testctx.results[2].cols[1] == 1:2
@@ -2060,7 +2130,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 @test length(testctx.results[1].cols[3]) == 7
             end
 
-            @testset "sentinel \"$(sentinel)\" datetime" begin
+            @testset "sentinel \"$(sentinel)\" guess datetime" begin
                 testctx = TestContext()
                 parse_file(io_t("""
                     a,b,c
@@ -2068,6 +2138,47 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                     1990-03-04 00:00:00,1990-03-06 00:00:00,$(sentinel)
                     1990-03-04 00:00:00,$(sentinel),1990-03-05 00:00:00+00:00
                     1990-03-04 00:00:00,1990-03-06 00:00:00GMT,$(sentinel)
+                    1990-03-04,$(sentinel),1990-03-05
+                    1990-03-04,1990-03-06,$(sentinel)
+                    $(sentinel),$(sentinel),$(sentinel)
+                    """),
+                    [GuessDateTime,GuessDateTime,GuessDateTime],
+                    testctx,
+                    sentinel=isempty(sentinel) ? missing : [sentinel],
+                    _force=alg,
+                )
+                @test testctx.header == [:a, :b, :c]
+                @test testctx.schema == [DateTime,DateTime,DateTime]
+                @test testctx.results[1].cols[1][1:6] == [DateTime(1990, 3, 4), DateTime(1990, 3, 4), DateTime(1990, 3, 4), DateTime(1990, 3, 4), DateTime(1990, 3, 4), DateTime(1990, 3, 4)]
+                @test testctx.results[1].cols[2][[2, 4, 6]] == [DateTime(1990, 3, 6), DateTime(1990, 3, 6), DateTime(1990, 3, 6)]
+                @test testctx.results[1].cols[3][[1, 3, 5]] == [DateTime(1990, 3, 5), DateTime(1990, 3, 5), DateTime(1990, 3, 5)]
+                @test testctx.results[1].row_statuses[1] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[2] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[3] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[4] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[5] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[6] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[7] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].column_indicators[1] == UInt8(1) << 1
+                @test testctx.results[1].column_indicators[2] == UInt8(1) << 2
+                @test testctx.results[1].column_indicators[3] == UInt8(1) << 1
+                @test testctx.results[1].column_indicators[4] == UInt8(1) << 2
+                @test testctx.results[1].column_indicators[5] == UInt8(1) << 1
+                @test testctx.results[1].column_indicators[6] == UInt8(1) << 2
+                @test testctx.results[1].column_indicators[7] == (UInt8(1) << 0) | (UInt8(1) << 1) | (UInt8(1) << 2)
+                @test length(testctx.results[1].cols[1]) == 7
+                @test length(testctx.results[1].cols[2]) == 7
+                @test length(testctx.results[1].cols[3]) == 7
+            end
+
+            @testset "sentinel \"$(sentinel)\" datetime" begin
+                testctx = TestContext()
+                parse_file(io_t("""
+                    a,b,c
+                    1990-03-04T00:00:00,$(sentinel),1990-03-05T00:00:00
+                    1990-03-04T00:00:00,1990-03-06T00:00:00,$(sentinel)
+                    1990-03-04T00:00:00,$(sentinel),1990-03-05T00:00:00
+                    1990-03-04T00:00:00,1990-03-06T00:00:00,$(sentinel)
                     1990-03-04,$(sentinel),1990-03-05
                     1990-03-04,1990-03-06,$(sentinel)
                     $(sentinel),$(sentinel),$(sentinel)
@@ -2082,6 +2193,91 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 @test testctx.results[1].cols[1][1:6] == [DateTime(1990, 3, 4), DateTime(1990, 3, 4), DateTime(1990, 3, 4), DateTime(1990, 3, 4), DateTime(1990, 3, 4), DateTime(1990, 3, 4)]
                 @test testctx.results[1].cols[2][[2, 4, 6]] == [DateTime(1990, 3, 6), DateTime(1990, 3, 6), DateTime(1990, 3, 6)]
                 @test testctx.results[1].cols[3][[1, 3, 5]] == [DateTime(1990, 3, 5), DateTime(1990, 3, 5), DateTime(1990, 3, 5)]
+                @test testctx.results[1].row_statuses[1] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[2] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[3] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[4] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[5] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[6] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[7] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].column_indicators[1] == UInt8(1) << 1
+                @test testctx.results[1].column_indicators[2] == UInt8(1) << 2
+                @test testctx.results[1].column_indicators[3] == UInt8(1) << 1
+                @test testctx.results[1].column_indicators[4] == UInt8(1) << 2
+                @test testctx.results[1].column_indicators[5] == UInt8(1) << 1
+                @test testctx.results[1].column_indicators[6] == UInt8(1) << 2
+                @test testctx.results[1].column_indicators[7] == (UInt8(1) << 0) | (UInt8(1) << 1) | (UInt8(1) << 2)
+                @test length(testctx.results[1].cols[1]) == 7
+                @test length(testctx.results[1].cols[2]) == 7
+                @test length(testctx.results[1].cols[3]) == 7
+            end
+
+            @testset "sentinel \"$(sentinel)\" SHA1" begin
+                testctx = TestContext()
+                s = Parsers.SHA1(Tuple(rand(UInt32, 5)))
+                h = string(s)
+                parse_file(io_t("""
+                    a,b,c
+                    $h,$(sentinel),$h
+                    $h,$h,$(sentinel)
+                    $h,$(sentinel),"$h"
+                    $h,$h,$(sentinel)
+                    "$h",$(sentinel),$h
+                    "$h","$h",$(sentinel)
+                    $(sentinel),$(sentinel),$(sentinel)
+                    """),
+                    [Parsers.SHA1,Parsers.SHA1,Parsers.SHA1],
+                    testctx,
+                    sentinel=isempty(sentinel) ? missing : [sentinel],
+                    _force=alg,
+                )
+                @test testctx.header == [:a, :b, :c]
+                @test testctx.schema == [Parsers.SHA1,Parsers.SHA1,Parsers.SHA1]
+                @test testctx.results[1].cols[1][1:6] == [s, s, s, s, s, s]
+                @test testctx.results[1].cols[2][[2, 4, 6]] == [s, s, s]
+                @test testctx.results[1].cols[3][[1, 3, 5]] == [s, s, s]
+                @test testctx.results[1].row_statuses[1] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[2] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[3] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[4] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[5] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[6] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].row_statuses[7] == ChunkedCSV.RowStatus.HasColumnIndicators
+                @test testctx.results[1].column_indicators[1] == UInt8(1) << 1
+                @test testctx.results[1].column_indicators[2] == UInt8(1) << 2
+                @test testctx.results[1].column_indicators[3] == UInt8(1) << 1
+                @test testctx.results[1].column_indicators[4] == UInt8(1) << 2
+                @test testctx.results[1].column_indicators[5] == UInt8(1) << 1
+                @test testctx.results[1].column_indicators[6] == UInt8(1) << 2
+                @test testctx.results[1].column_indicators[7] == (UInt8(1) << 0) | (UInt8(1) << 1) | (UInt8(1) << 2)
+                @test length(testctx.results[1].cols[1]) == 7
+                @test length(testctx.results[1].cols[2]) == 7
+                @test length(testctx.results[1].cols[3]) == 7
+            end
+
+            @testset "sentinel \"$(sentinel)\" UUID" begin
+                testctx = TestContext()
+                u = UUID(rand(UInt128))
+                parse_file(io_t("""
+                    a,b,c
+                    $u,$(sentinel),$u
+                    $u,$u,$(sentinel)
+                    $u,$(sentinel),"$u"
+                    $u,$u,$(sentinel)
+                    "$u",$(sentinel),$u
+                    "$u","$u",$(sentinel)
+                    $(sentinel),$(sentinel),$(sentinel)
+                    """),
+                    [UUID,UUID,UUID],
+                    testctx,
+                    sentinel=isempty(sentinel) ? missing : [sentinel],
+                    _force=alg,
+                )
+                @test testctx.header == [:a, :b, :c]
+                @test testctx.schema == [UUID,UUID,UUID]
+                @test testctx.results[1].cols[1][1:6] == [u, u, u, u, u, u]
+                @test testctx.results[1].cols[2][[2, 4, 6]] == [u, u, u]
+                @test testctx.results[1].cols[3][[1, 3, 5]] == [u, u, u]
                 @test testctx.results[1].row_statuses[1] == ChunkedCSV.RowStatus.HasColumnIndicators
                 @test testctx.results[1].row_statuses[2] == ChunkedCSV.RowStatus.HasColumnIndicators
                 @test testctx.results[1].row_statuses[3] == ChunkedCSV.RowStatus.HasColumnIndicators
@@ -2147,7 +2343,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 [Int,Int,Int],
                 testctx,
                 _force=alg,
-                comment='#',
+                comment="# ",
             )
             @test testctx.header == [:a, :b, :c]
             @test testctx.schema == [Int,Int,Int]
@@ -2159,8 +2355,8 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test testctx.results[1].row_statuses[3] == RS.HasColumnIndicators
             @test testctx.results[1].row_statuses[4] == RS.HasColumnIndicators | RS.TooFewColumns
             @test testctx.results[1].row_statuses[5] == RS.HasColumnIndicators | RS.TooFewColumns
-            @test testctx.results[1].row_statuses[6] == RS.HasColumnIndicators | RS.TooManyColumns
-            @test testctx.results[1].row_statuses[7] == RS.HasColumnIndicators | RS.TooManyColumns
+            @test testctx.results[1].row_statuses[6] == RS.TooManyColumns
+            @test testctx.results[1].row_statuses[7] == RS.TooManyColumns
             @test testctx.results[1].row_statuses[8] == RS.HasColumnIndicators | RS.ValueParsingError
             @test testctx.results[1].row_statuses[9] == RS.HasColumnIndicators | RS.ValueParsingError
             @test testctx.results[1].row_statuses[10] == RS.HasColumnIndicators | RS.SkippedRow
@@ -2168,11 +2364,175 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test testctx.results[1].column_indicators[2] == 0x06 # 2,,
             @test testctx.results[1].column_indicators[3] == 0x04 # 3,3
             @test testctx.results[1].column_indicators[4] == 0x06 # 3
-            @test testctx.results[1].column_indicators[5] == 0x04 # 4,4,4,4
-            @test testctx.results[1].column_indicators[6] == 0x04 # 4,4,4,4,4
-            @test testctx.results[1].column_indicators[7] == 0x07 # garbage,garbage,garbage
-            @test testctx.results[1].column_indicators[8] == 0x05 # garbage,1,garbage
-            @test testctx.results[1].column_indicators[9] == 0xFF # # comment
+            @test testctx.results[1].column_indicators[5] == 0x07 # garbage,garbage,garbage
+            @test testctx.results[1].column_indicators[6] == 0x05 # garbage,1,garbage
+            @test testctx.results[1].column_indicators[7] == 0xFF # # comment
+        end
+    end
+
+
+    for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial, :parallel))
+        @testset "Column Skipping & row statuses ($(io_t), $(alg))" begin
+            RS = ChunkedCSV.RowStatus
+            testctx = TestContext()
+            parse_file(io_t("""
+                a,b,c
+                1,1,1
+                2,,2
+                2,,
+                3,3
+                3
+                4,4,4,4
+                4,4,4,4,4
+                garbage,garbage,garbage
+                garbage,5,garbage
+                # comment
+                """),
+                [Nothing,Int,Int],
+                testctx,
+                _force=alg,
+                comment="# ",
+            )
+            @test testctx.header == [:b, :c]
+            @test testctx.schema == [Int,Int]
+            @test testctx.results[1].cols[1][[1, 4, 6, 7, 9]] == [1, 3, 4, 4, 5]
+            @test testctx.results[1].cols[2][[1, 2, 6, 7]] == [1, 2, 4, 4]
+            @test testctx.results[1].row_statuses[1] == RS.Ok
+            @test testctx.results[1].row_statuses[2] == RS.HasColumnIndicators
+            @test testctx.results[1].row_statuses[3] == RS.HasColumnIndicators
+            @test testctx.results[1].row_statuses[4] == RS.HasColumnIndicators | RS.TooFewColumns
+            @test testctx.results[1].row_statuses[5] == RS.HasColumnIndicators | RS.TooFewColumns
+            @test testctx.results[1].row_statuses[6] == RS.TooManyColumns
+            @test testctx.results[1].row_statuses[7] == RS.TooManyColumns
+            @test testctx.results[1].row_statuses[8] == RS.HasColumnIndicators | RS.ValueParsingError
+            @test testctx.results[1].row_statuses[9] == RS.HasColumnIndicators | RS.ValueParsingError
+            @test testctx.results[1].row_statuses[10] == RS.HasColumnIndicators | RS.SkippedRow
+            @test testctx.results[1].column_indicators[1] == 0x01 # 2,,2
+            @test testctx.results[1].column_indicators[2] == 0x03 # 2,,
+            @test testctx.results[1].column_indicators[3] == 0x02 # 3,3
+            @test testctx.results[1].column_indicators[4] == 0x03 # 3
+            @test testctx.results[1].column_indicators[5] == 0x03 # garbage,garbage,garbage
+            @test testctx.results[1].column_indicators[6] == 0x02 # garbage,1,garbage
+            @test testctx.results[1].column_indicators[7] == 0xFF # # comment
+
+            RS = ChunkedCSV.RowStatus
+            testctx = TestContext()
+            parse_file(io_t("""
+                a,b,c
+                1,1,1
+                2,,2
+                2,,
+                3,3
+                3
+                4,4,4,4
+                4,4,4,4,4
+                garbage,garbage,garbage
+                garbage,5,garbage
+                # comment
+                """),
+                [Int,Nothing,Int],
+                testctx,
+                _force=alg,
+                comment="# ",
+            )
+            @test testctx.header == [:a, :c]
+            @test testctx.schema == [Int,Int]
+            @test testctx.results[1].cols[1][1:7] == [1, 2, 2, 3, 3, 4, 4]
+            @test testctx.results[1].cols[2][[1, 2, 6, 7]] == [1, 2, 4, 4]
+            @test testctx.results[1].row_statuses[1] == RS.Ok
+            @test testctx.results[1].row_statuses[2] == RS.Ok
+            @test testctx.results[1].row_statuses[3] == RS.HasColumnIndicators
+            @test testctx.results[1].row_statuses[4] == RS.HasColumnIndicators | RS.TooFewColumns
+            @test testctx.results[1].row_statuses[5] == RS.HasColumnIndicators | RS.TooFewColumns
+            @test testctx.results[1].row_statuses[6] == RS.TooManyColumns
+            @test testctx.results[1].row_statuses[7] == RS.TooManyColumns
+            @test testctx.results[1].row_statuses[8] == RS.HasColumnIndicators | RS.ValueParsingError
+            @test testctx.results[1].row_statuses[9] == RS.HasColumnIndicators | RS.ValueParsingError
+            @test testctx.results[1].row_statuses[10] == RS.HasColumnIndicators | RS.SkippedRow
+            @test testctx.results[1].column_indicators[1] == 0x02 # 2,,
+            @test testctx.results[1].column_indicators[2] == 0x02 # 3,3
+            @test testctx.results[1].column_indicators[3] == 0x02 # 3
+            @test testctx.results[1].column_indicators[4] == 0x03 # garbage,garbage,garbage
+            @test testctx.results[1].column_indicators[5] == 0x03 # garbage,1,garbage
+            @test testctx.results[1].column_indicators[6] == 0xFF # # comment
+
+            RS = ChunkedCSV.RowStatus
+            testctx = TestContext()
+            parse_file(io_t("""
+                a,b,c
+                1,1,1
+                2,,2
+                2,,
+                3,3
+                3
+                4,4,4,4
+                4,4,4,4,4
+                garbage,garbage,garbage
+                garbage,5,garbage
+                # comment
+                """),
+                [Int,Int,Nothing],
+                testctx,
+                _force=alg,
+                comment="# ",
+            )
+            @test testctx.header == [:a, :b]
+            @test testctx.schema == [Int,Int]
+            @test testctx.results[1].cols[1][1:7] == [1, 2, 2, 3, 3, 4, 4]
+            @test testctx.results[1].cols[2][[1, 4, 6, 7, 9]] == [1, 3, 4, 4, 5]
+            @test testctx.results[1].row_statuses[1] == RS.Ok
+            @test testctx.results[1].row_statuses[2] == RS.HasColumnIndicators
+            @test testctx.results[1].row_statuses[3] == RS.HasColumnIndicators
+            @test testctx.results[1].row_statuses[4] == RS.Ok
+            @test testctx.results[1].row_statuses[5] == RS.HasColumnIndicators | RS.TooFewColumns
+            @test testctx.results[1].row_statuses[6] == RS.TooManyColumns
+            @test testctx.results[1].row_statuses[7] == RS.TooManyColumns
+            @test testctx.results[1].row_statuses[8] == RS.HasColumnIndicators | RS.ValueParsingError
+            @test testctx.results[1].row_statuses[9] == RS.HasColumnIndicators | RS.ValueParsingError
+            @test testctx.results[1].row_statuses[10] == RS.HasColumnIndicators | RS.SkippedRow
+            @test testctx.results[1].column_indicators[1] == 0x02 # 2,,
+            @test testctx.results[1].column_indicators[2] == 0x02 # 2,,2
+            @test testctx.results[1].column_indicators[3] == 0x02 # 3
+            @test testctx.results[1].column_indicators[4] == 0x03 # garbage,garbage,garbage
+            @test testctx.results[1].column_indicators[5] == 0x01 # garbage,1,garbage
+            @test testctx.results[1].column_indicators[6] == 0xFF # # comment
+
+            RS = ChunkedCSV.RowStatus
+            testctx = TestContext()
+            parse_file(io_t("""
+                a,b,c
+                1,1,1
+                2,,2
+                2,,
+                3,3
+                3
+                4,4,4,4
+                4,4,4,4,4
+                garbage,garbage,garbage
+                garbage,5,garbage
+                # comment
+                """),
+                [Int,Nothing,Nothing],
+                testctx,
+                _force=alg,
+                comment="# ",
+            )
+            @test testctx.header == [:a]
+            @test testctx.schema == [Int]
+            @test testctx.results[1].cols[1][1:7] == [1, 2, 2, 3, 3, 4, 4]
+            @test testctx.results[1].row_statuses[1] == RS.Ok
+            @test testctx.results[1].row_statuses[2] == RS.Ok
+            @test testctx.results[1].row_statuses[3] == RS.Ok
+            @test testctx.results[1].row_statuses[4] == RS.Ok
+            @test testctx.results[1].row_statuses[5] == RS.Ok
+            @test testctx.results[1].row_statuses[6] == RS.TooManyColumns
+            @test testctx.results[1].row_statuses[7] == RS.TooManyColumns
+            @test testctx.results[1].row_statuses[8] == RS.HasColumnIndicators | RS.ValueParsingError
+            @test testctx.results[1].row_statuses[9] == RS.HasColumnIndicators | RS.ValueParsingError
+            @test testctx.results[1].row_statuses[10] == RS.HasColumnIndicators | RS.SkippedRow
+            @test testctx.results[1].column_indicators[1] == 0x01 # garbage,garbage,garbage
+            @test testctx.results[1].column_indicators[2] == 0x01 # garbage,1,garbage
+            @test testctx.results[1].column_indicators[3] == 0xFF # # comment
         end
     end
 end # for (io_t, alg)

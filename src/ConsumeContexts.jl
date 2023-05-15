@@ -1,49 +1,99 @@
 module ConsumeContexts
 
-using ..ChunkedCSV: TaskResultBuffer, ParsingContext, BufferedVector, RowStatus, ChunkedCSV
+using ..ChunkedCSV: TaskResultBuffer, ParsingContext, BufferedVector, RowStatus, ChunkedCSV, isflagset, MIN_TASK_SIZE_IN_BYTES
+using ..ChunkedCSV: set!, dec!
 import Parsers
 
 export AbstractConsumeContext, DebugContext, SkipContext, TestContext
 export setup_tasks!, consume!, task_done!, sync_tasks, cleanup
+export insertsorted!
 
 abstract type AbstractConsumeContext end
 
-function setup_tasks! end
+"""
+    consume!(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext, task_buf::TaskResultBuffer{M}, row_num::Int, eol_idx::Int32) where {M}
+
+Override with your `AbstractConsumeContext` to provide a custom logic for processing the parsed results in `TaskResultBuffer`.
+The method is called from multiple tasks in parallel, just after each corresponding `task_buf` has been populated.
+`task_buf` is only filled once per chunk.
+
+See also [`consume!`](@ref), [`setup_tasks!`](@ref), [`setup_tasks!`](@ref), [`sync_tasks`](@ref), [`cleanup`](@ref), [`TaskResultBuffer`](@ref)
+"""
 function consume! end
+function setup_tasks! end
 function task_done! end
 function sync_tasks end
 function cleanup end
 
+"""
+    setup_tasks!(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext, ntasks::Int)
 
-function setup_tasks!(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext, ntasks::Int)
-    parsing_ctx.id == 1 ? push!(ChunkedCSV.T1, time_ns()) : push!(ChunkedCSV.T2, time_ns())
-    cond = parsing_ctx.cond
-    Base.@lock cond begin
-        cond.ntasks = ntasks
-    end
+Set the number of units of work that the parser/consume tasks need to finish
+(and report back as done via e.g. `task_done!`) before the current chunk of input data
+is considered to be entirely processed.
+
+This function is called just after the we're done detecting newline positions in the current
+chunk of data and we are about to submit partitions of the detected newlines to the parse/consume tasks.
+
+`ntasks` is between 1 and two times the `nworkers` agrument to `parse_file`, depeneding on
+the size of the input. Most of the time, the value is `2*nworkers` is used, but for smaller
+buffer sizes, smaller files or when handling the last bytes of the file, `ntasks` will be
+smaller as we try to ensure the minimal average tasks size if terms of bytes of input is at least
+$(Base.format_bytes(MIN_TASK_SIZE_IN_BYTES)). For `:serial` parsing mode, `ntasks` is always 1.
+
+You should override this method when you further subdivide the amount of concurrent work on the chunk,
+e.g. when you want to process each column separately in `@spawn` tasks, in which case you'd expect
+there to be `ntasks * (1 + length(parsing_ctx.schema))` units of work per chunk
+(in which case you'd have to manually call `task_done!` in the column-processing tasks).
+
+See also [`consume!`](@ref), [`setup_tasks!`](@ref), [`task_done!`](@ref), [`sync_tasks`](@ref), [`cleanup`](@ref)
+"""
+function setup_tasks!(::AbstractConsumeContext, parsing_ctx::ParsingContext, ntasks::Int)
+    # TRACING # parsing_ctx.id == 1 ? push!(ChunkedCSV.T1, time_ns()) : push!(ChunkedCSV.T2, time_ns())
+    set!(parsing_ctx.counter, ntasks)
     return nothing
 end
-function task_done!(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext, result::TaskResultBuffer{M}) where {M}
-    cond = parsing_ctx.cond
-    Base.@lock cond begin
-        cond.ntasks -= 1
-        notify(cond.cond_wait)
-    end
+
+"""
+    task_done!(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext)
+
+Decrement the expected number of remaining work units by one. Called after each `consume!` call.
+
+The this function should be called `ntasks` times where `ntasks` comes from the corresponding
+`setup_tasks!` call.
+
+See also [`consume!`](@ref), [`setup_tasks!`](@ref), [`sync_tasks`](@ref), [`cleanup`](@ref)
+"""
+function task_done!(::AbstractConsumeContext, parsing_ctx::ParsingContext)
+    dec!(parsing_ctx.counter, 1)
     return nothing
 end
-function sync_tasks(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext)
-    cond = parsing_ctx.cond
-    Base.@lock cond begin
-        while true
-            cond.exception !== nothing && throw(cond.exception)
-            cond.ntasks == 0 && break
-            wait(cond.cond_wait)
-        end
-    end
-    parsing_ctx.id == 1 ? push!(ChunkedCSV.T1, time_ns()) : push!(ChunkedCSV.T2, time_ns())
+
+# TODO: This probably shouldn't be public.
+# TODO: If we want to support schema inference, this would be a good place to sync a `Vector{TaskResultBuffer}` belonging to current `parsing_ctx`
+"""
+    sync_tasks(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext)
+
+Wait for all parse/consume tasks to report all expected units of work to be done.
+Called after all work for the current chunk has been submitted to the parser/consume tasks
+and we're about to refill it.
+
+See also [`consume!`](@ref), [`setup_tasks!`](@ref), [`task_done!`](@ref), [`cleanup`](@ref)
+"""
+function sync_tasks(::AbstractConsumeContext, parsing_ctx::ParsingContext)
+    wait(parsing_ctx.counter)
+    # TRACING # parsing_ctx.id == 1 ? push!(ChunkedCSV.T1, time_ns()) : push!(ChunkedCSV.T2, time_ns()) # TRACING
     return nothing
 end
-cleanup(consume_ctx::AbstractConsumeContext, e::Exception) = nothing
+"""
+    cleanup(consume_ctx::AbstractConsumeContext, e::Exception)
+
+You can override this method do custom exception handling with your consume context.
+This method is called immediately before a `rethrow()` which forwards the `e` further.
+
+See also [`consume!`](@ref), [`setup_tasks!`](@ref), [`task_done!`](@ref), [`sync_tasks`](@ref)
+"""
+cleanup(::AbstractConsumeContext, ::Exception) = nothing
 
 struct DebugContext <: AbstractConsumeContext
     error_only::Bool
@@ -125,7 +175,7 @@ function consume!(consume_ctx::DebugContext, parsing_ctx::ParsingContext, task_b
                 consume_ctx.show_values && print(io, "\t$(name): [")
                 for j in 1:length(task_buf.row_statuses)
                     if (task_buf.row_statuses[j] & S) > 0
-                        has_missing = has_missing(task_buf.row_statuses[j]) && k in task_buf.column_indicators[c]
+                        has_missing = task_buf.row_statuses[j] > RowStatus.Ok && isflagset(task_buf.column_indicators[c], k)
                         consume_ctx.show_values && write(io, has_missing ? "?" : debug(col, j, parsing_ctx, consume_ctx))
                         consume_ctx.show_values && n != 1 && print(io, ", ")
                         has_missing && (c += 1)

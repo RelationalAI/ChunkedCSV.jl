@@ -12,6 +12,14 @@ macro constfield(ex)
     end
 end
 
+# To work around https://github.com/JuliaLang/julia/issues/49653
+# Specifically, when there is a multiversioning problem with PackageCompiler
+# on Julia 1.8. This is perhaps overly conservative, as the issue only
+# happens with PackageCompiler and only when targetting multiple cpu targets.
+const _AVOID_PLATFORM_SPECIFIC_LLVM_CODE = VERSION < v"1.9"
+
+# Compare two vectors of 64 bytes and produce an UInt64 where the set bits
+# indicate the positions where the two vectors match.
 @generated function __icmp_eq_u64(x::SIMD.Intrinsics.LVec{64, T}, y::SIMD.Intrinsics.LVec{64, T}) where {T <: SIMD.Intrinsics.IntegerTypes}
     s = """
     %res = icmp eq <64 x $(SIMD.Intrinsics.d[T])> %0, %1
@@ -38,7 +46,7 @@ let # Feature detection -- copied from ScanByte.jl
     features = split(unsafe_string(features_cstring), ',')
     Libc.free(features_cstring)
 
-    @eval if !any(x->occursin("clmul", x), $(features))
+    @eval if _AVOID_PLATFORM_SPECIFIC_LLVM_CODE || !any(x->occursin("clmul", x), $(features))
         @inline function prefix_xor(q)
             mask = q ⊻ (q << 1)
             mask = mask ⊻ (mask << 2)
@@ -59,6 +67,15 @@ let # Feature detection -- copied from ScanByte.jl
         end
     end
 end
+
+if _AVOID_PLATFORM_SPECIFIC_LLVM_CODE
+    # The first argument is used to dispatch on a detected CPU feature set,
+    # in this case we want to use the generic fallback, so we provide "nothing".
+    @inline _internal_memchr(ptr::Ptr{UInt8}, len::UInt, valbs::Val) = ScanByte._memchr(nothing, ScanByte.SizedMemory(Ptr{UInt8}(ptr), len), valbs)
+else
+    @inline _internal_memchr(ptr::Ptr{UInt8}, len::UInt, valbs::Val) = ScanByte.memchr(ptr, len, valbs)
+end
+@inline _internal_memchr(ptr::Ptr{UInt8}, len::UInt, byte::UInt8) = ScanByte.memchr(ptr, len, byte)
 
 # Rules for Lexer{Q,Q,Q} when there is ambiguity between quotechar and escapechar:
 # we use `prev_escaped` and `prev_in_string` to disambiguate the 4 cases:
@@ -130,16 +147,16 @@ end
 
 # Take a 64-byte input and produce a 64-bit integer where the bits are set
 # if the corresponding byte is a newline, quotechar, or escapechar
-@inline compress_newlines(l, input) = _icmp_eq_u64(input, l.newline)
-@inline compress_quotes(l, input) = _icmp_eq_u64(input, l.quotechar)
-@inline compress_escapes(l, input) = _icmp_eq_u64(input, l.escape)
+@inline compress_newlines(l::Lexer, input::Vec{64, UInt8}) = _icmp_eq_u64(input, l.newline)
+@inline compress_quotes(l::Lexer, input::Vec{64, UInt8}) = _icmp_eq_u64(input, l.quotechar)
+@inline compress_escapes(l::Lexer, input::Vec{64, UInt8}) = _icmp_eq_u64(input, l.escape)
 
 # Should only be called if we are at the very end of a file to know if we ended
 # in an unfinished string or not
 possibly_not_in_string(l::Lexer{Q,Q,Q}) where {Q} = (l.prev_in_string & UInt(1)) == l.prev_escaped
 possibly_not_in_string(l::Lexer{E,Q}) where {E,Q} = l.prev_in_string == 0
 
-@inline function _find_newlines_kernel!(l::Lexer{Q,Q,Q}, input) where {Q}
+@inline function _find_newlines_kernel!(l::Lexer{Q,Q,Q}, input::Vec{64, UInt8}) where {Q}
     escape_chars = compress_escapes(l, input)
     follows_escape = escape_chars << 1
     # If there is a sequnce of Qs, the this will mark the beginning of the sequence
@@ -200,7 +217,7 @@ possibly_not_in_string(l::Lexer{E,Q}) where {E,Q} = l.prev_in_string == 0
     return newlines
 end
 
-@inline function _find_newlines_kernel!(l::Lexer{E,Q,Q}, input) where {E,Q}
+@inline function _find_newlines_kernel!(l::Lexer{E,Q,Q}, input::Vec{64, UInt8}) where {E,Q}
     escape_chars = compress_escapes(l, input) & ~l.prev_escaped
     follows_escape = escape_chars << 1 | l.prev_escaped
 
@@ -237,7 +254,7 @@ end
 end
 
 function _find_newlines_generic!(l::Lexer{E,OQ,CQ}, buf, out, curr_pos::Int=firstindex(buf), end_pos::Int=lastindex(buf)) where {E,OQ,CQ}
-    @assert 1 <= curr_pos <= end_pos <= length(buf)
+    @assert 1 <= curr_pos <= end_pos <= length(buf) <= typemax(Int32)
     structural_characters = _scanbyte_bytes(l)
 
     ptr = pointer(buf)
@@ -268,7 +285,7 @@ function _find_newlines_generic!(l::Lexer{E,OQ,CQ}, buf, out, curr_pos::Int=firs
     @inbounds while bytes_to_search > 0
         # ScanByte seems to sometimes return an UInt instead of an Int in
         # some fallback implementations.
-        pos_to_check = Base.bitcast(Int, something(ScanByte.memchr(ptr, Core.bitcast(UInt, bytes_to_search), structural_characters), 0))
+        pos_to_check = Base.bitcast(Int, something(_internal_memchr(ptr, Core.bitcast(UInt, bytes_to_search), structural_characters), 0))
         pos_to_check == 0 && break
 
         offset += unsafe_trunc(Int32, pos_to_check)
@@ -323,22 +340,15 @@ function _find_newlines_generic!(l::Lexer{E,OQ,CQ}, buf, out, curr_pos::Int=firs
     return nothing
 end
 
-# Generic fallback for when open and close quote differs (should be also used in case the buffer is too small for SIMD).
-function find_newlines!(l::Lexer{E,OQ,CQ}, buf::Vector{UInt8}, out::AbstractVector{Int32}, curr_pos::Int=firstindex(buf), end_pos::Int=lastindex(buf)) where {E,OQ,CQ}
-    1 <= curr_pos <= end_pos <= length(buf) || throw(ArgumentError("Invalid range: $curr_pos:$end_pos, must be 1 <= curr_pos <= end_pos <= $(length(buf))"))
-    _find_newlines_generic!(l, buf, out, curr_pos, end_pos)
-    return nothing
-end
-# Fast path for when no newlines may appear inside quotes.
-function find_newlines!(::Lexer{Nothing,Nothing,Nothing,NL}, buf::Vector{UInt8}, out::AbstractVector{Int32}, curr_pos::Int=firstindex(buf), end_pos::Int=lastindex(buf)) where {NL}
-    1 <= curr_pos <= end_pos <= length(buf) || throw(ArgumentError("Invalid range: $curr_pos:$end_pos, must be 1 <= curr_pos <= end_pos <= $(length(buf))"))
+function _find_newlines_quote_unaware_scanbyte!(l::Lexer{E,OQ,CQ,NL}, buf::Vector{UInt8}, out::AbstractVector{Int32}, curr_pos::Int=firstindex(buf), end_pos::Int=lastindex(buf)) where {E,OQ,CQ,NL}
+    @assert 1 <= curr_pos <= end_pos <= length(buf) <= typemax(Int32)
     ptr = pointer(buf, curr_pos)
     bytes_to_search = end_pos - curr_pos + 1
     base = Int32(curr_pos - 1)
     while true
         # ScanByte seems to sometimes return an UInt instead of an Int in
         # some fallback implementations.
-        new_pos = ScanByte.memchr(ptr, Core.bitcast(UInt, bytes_to_search), NL)
+        new_pos = _internal_memchr(ptr, Core.bitcast(UInt, bytes_to_search), NL)
         if new_pos === nothing
             return nothing
         else
@@ -350,9 +360,43 @@ function find_newlines!(::Lexer{Nothing,Nothing,Nothing,NL}, buf::Vector{UInt8},
         bytes_to_search -= new_pos::Int
     end
 end
+
+function _find_newlines_quote_unaware_simd!(l::Lexer, buf::Vector{UInt8}, out::AbstractVector{Int32}, curr_pos::Int=firstindex(buf), end_pos::Int=lastindex(buf))
+    @assert 1 <= curr_pos <= end_pos <= length(buf) <= typemax(Int32)
+    base = unsafe_trunc(Int32, curr_pos)
+    @inbounds while curr_pos <= (end_pos - 63)
+        input = vload(Vec{64, UInt8}, buf, curr_pos)
+        newlines = compress_newlines(l, input)
+        while newlines > 0
+            push!(out, base + unsafe_trunc(Int32, trailing_zeros(newlines)))
+            newlines = newlines & (newlines - UInt(1))
+        end
+        base += Int32(64)
+        curr_pos += 64
+    end
+
+    @inbounds if curr_pos <= end_pos
+        # slower fallback to handle non-64-bytes-aligned trailing end
+        _find_newlines_quote_unaware_scanbyte!(l, buf, out, curr_pos, end_pos)
+    end
+end
+
+# Generic fallback for when open and close quote differs (should be also used in case the buffer is too small for SIMD).
+function find_newlines!(l::Lexer{E,OQ,CQ}, buf::Vector{UInt8}, out::AbstractVector{Int32}, curr_pos::Int=firstindex(buf), end_pos::Int=lastindex(buf)) where {E,OQ,CQ}
+    1 <= curr_pos <= end_pos <= length(buf) <= typemax(Int32) || throw(ArgumentError("Invalid range: $curr_pos:$end_pos, must be 1 <= curr_pos <= end_pos <= $(length(buf)) <= $(typemax(Int32))"))
+    _find_newlines_generic!(l, buf, out, curr_pos, end_pos)
+    return nothing
+end
+# Fast path for when no newlines may appear inside quotes.
+function find_newlines!(l::Lexer{Nothing,Nothing,Nothing}, buf::Vector{UInt8}, out::AbstractVector{Int32}, curr_pos::Int=firstindex(buf), end_pos::Int=lastindex(buf))
+    1 <= curr_pos <= end_pos <= length(buf) <= typemax(Int32) || throw(ArgumentError("Invalid range: $curr_pos:$end_pos, must be 1 <= curr_pos <= end_pos <= $(length(buf)) <= $(typemax(Int32))"))
+    _find_newlines_quote_unaware_simd!(l, buf, out, curr_pos, end_pos)
+    return nothing
+end
+
 # Path for when open and close quote are the same (escape might be different or the same as the quote)
 function find_newlines!(l::Lexer{E,Q,Q}, buf::Vector{UInt8}, out::AbstractVector{Int32}, curr_pos::Int=firstindex(buf), end_pos::Int=lastindex(buf)) where {E,Q}
-    1 <= curr_pos <= end_pos <= length(buf) || throw(ArgumentError("Invalid range: $curr_pos:$end_pos, must be 1 <= curr_pos <= end_pos <= $(length(buf))"))
+    1 <= curr_pos <= end_pos <= length(buf) <= typemax(Int32) || throw(ArgumentError("Invalid range: $curr_pos:$end_pos, must be 1 <= curr_pos <= end_pos <= $(length(buf)) <= $(typemax(Int32))"))
     base = unsafe_trunc(Int32, curr_pos)
     @inbounds while curr_pos <= (end_pos - 63)
         input = vload(Vec{64, UInt8}, buf, curr_pos)

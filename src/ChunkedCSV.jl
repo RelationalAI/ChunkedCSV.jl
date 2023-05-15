@@ -16,49 +16,46 @@ using SnoopPrecompile
 
 const MIN_TASK_SIZE_IN_BYTES = 16 * 1024
 
+
+include("type_parsers/fixed_decimals_parser.jl")
+include("type_parsers/datetime_parser.jl")
+
 include("Enums.jl")
 include("BufferedVectors.jl")
 using .BufferedVectors
 include("TaskResults.jl")
 
-include("type_parsers/fixed_decimals_parser.jl")
-include("type_parsers/datetime_parser.jl")
-
 include("newline_lexer.jl")
 using .NewlineLexers
+
+include("TaskCounters.jl")
+using .TaskCounters
+
 include("exceptions.jl")
 # Temporary hack to register new DateTime
 function __init__()
-    Dates.CONVERSION_TRANSLATIONS[_GuessDateTime] = Dates.CONVERSION_TRANSLATIONS[Dates.DateTime]
+    Dates.CONVERSION_TRANSLATIONS[GuessDateTime] = Dates.CONVERSION_TRANSLATIONS[Dates.DateTime]
     return nothing
 end
 
-const PARSER_TASKS_TIMES = [UInt[]]
-const IO_TASK_TIMES = UInt[]
-const LEXER_TASK_TIMES = UInt[]
-const T1 = UInt[]
-const T2 = UInt[]
-get_parser_task_trace(i) = PARSER_TASKS_TIMES[i]
-function clear_traces!()
-    for _ in length(PARSER_TASKS_TIMES)+1:Threads.nthreads()
-        push!(PARSER_TASKS_TIMES, UInt[])
-    end
-    empty!(ChunkedCSV.IO_TASK_TIMES)
-    empty!(ChunkedCSV.LEXER_TASK_TIMES)
-    empty!(ChunkedCSV.T1)
-    empty!(ChunkedCSV.T2)
-    foreach(empty!, ChunkedCSV.PARSER_TASKS_TIMES)
-    return nothing
-end
+# TRACING # const PARSER_TASKS_TIMES = [UInt[]]
+# TRACING # const IO_TASK_TIMES = UInt[]
+# TRACING # const LEXER_TASK_TIMES = UInt[]
+# TRACING # const T1 = UInt[]
+# TRACING # const T2 = UInt[]
+# TRACING # get_parser_task_trace(i) = PARSER_TASKS_TIMES[i]
+# TRACING # function clear_traces!()
+# TRACING #     for _ in length(PARSER_TASKS_TIMES)+1:Threads.nthreads()
+# TRACING #         push!(PARSER_TASKS_TIMES, UInt[])
+# TRACING #     end
+# TRACING #     empty!(ChunkedCSV.IO_TASK_TIMES)
+# TRACING #     empty!(ChunkedCSV.LEXER_TASK_TIMES)
+# TRACING #     empty!(ChunkedCSV.T1)
+# TRACING #     empty!(ChunkedCSV.T2)
+# TRACING #     foreach(empty!, ChunkedCSV.PARSER_TASKS_TIMES)
+# TRACING #     return nothing
+# TRACING # end
 
-mutable struct TaskCondition
-    ntasks::Int
-    cond_wait::Threads.Condition
-    exception::Union{Nothing,Exception}
-end
-TaskCondition() = TaskCondition(0, Threads.Condition(ReentrantLock()), nothing)
-Base.lock(t::TaskCondition) = lock(t.cond_wait)
-Base.unlock(t::TaskCondition) = unlock(t.cond_wait)
 
 struct ParsingContext
     id::Int
@@ -70,7 +67,7 @@ struct ParsingContext
     limit::Int
     nworkers::UInt8
     escapechar::UInt8
-    cond::TaskCondition
+    counter::TaskCounter
     comment::Union{Nothing,Vector{UInt8}}
 end
 function estimate_task_size(parsing_ctx::ParsingContext)
@@ -99,29 +96,49 @@ struct ParserSettings
     nworkers::UInt8
     comment::Union{Nothing,Vector{UInt8}}
     no_quoted_newlines::Bool
-    newlinechar::UInt8
+    newlinechar::Union{Nothing,UInt8}
     function ParserSettings(schema, header::Vector{Symbol}, data_at, limit, validate_type_map, default_colname_prefix, buffersize, nworkers, comment, no_quoted_newlines, newlinechar)
         new(schema, header,  0,           Int(data_at), Int(limit), validate_type_map, default_colname_prefix, buffersize, nworkers, comment, no_quoted_newlines, newlinechar)
     end
-    
+
     function ParserSettings(schema, header::Integer,        data_at, limit, validate_type_map, default_colname_prefix, buffersize, nworkers, comment, no_quoted_newlines, newlinechar)
         new(schema, nothing, Int(header), Int(data_at), Int(limit), validate_type_map, default_colname_prefix, buffersize, nworkers, comment, no_quoted_newlines, newlinechar)
     end
 end
 
-_is_supported_type(::Type{T}) where {T} = false
-_is_supported_type(::Type{T}) where {T<:Union{Int,Float64,String,Char,Bool,DateTime,Date}} = true
-_is_supported_type(::Type{FixedDecimal{T,f}}) where {T<:Union{Int8,Int16,Int32,Int64,Int128,UInt8,UInt16,UInt32,UInt64,UInt128},f} = f <= 8
+_is_supported_type(::Type{T}) where {T} = Parsers.supportedtype(T)
+_is_supported_type(::Type{Nothing}) = true
+_is_supported_type(::Type{GuessDateTime}) = true
+function _is_supported_type(::Type{FixedDecimal{T,f}}) where {T,f}
+    # https://github.com/JuliaMath/FixedPointDecimals.jl/blob/1328b9a372d2285765a7255f154f09ffdd692508/src/FixedPointDecimals.jl#L83-L91
+    n = FixedPointDecimals.max_exp10(T)
+    return f >= 0 && (n < 0 || f <= n)
+end
 function validate_schema(types::Vector{DataType})
-    unsupported_types = filter(!_is_supported_type, types)
+    unsupported_types = unique!(filter(!_is_supported_type, types))
     if !isempty(unsupported_types)
-        err_msg = "Provided schema contains unsupported types: $(join(unique!(unsupported_types), ", "))."
-        any(T->(T <: FixedDecimal), unsupported_types) && (err_msg *= " Note: Currently, only decimals with less than 9 decimal places are supported.")
+        err_msg = "Provided schema contains unsupported types: $(join(unsupported_types, ", "))."
         throw(ArgumentError(err_msg))
     end
     return nothing
 end
 
+# Separate out the types that are not pre-compiled by the parser by default
+# and return them as a single Tuple of unique types which can be passed to
+# _parse_rows_forloop! to trigger recompilation.
+function _custom_types(schema::Vector{DataType})
+    # We sort the unique types to always produce the same Tuple for the same
+    # schema. But maybe the default ordering from the IdDict is good enough?
+    custom_types = sort!(collect(keys(
+            IdDict{Type,Nothing}(
+                T => nothing for T in schema if isnothing(get(Enums._MAPPING, T, nothing))
+            ))),
+        by=objectid
+    )
+    return Tuple{custom_types...}
+end
+
+include("detect.jl")
 include("read_and_lex.jl")
 include("init_parsing.jl")
 include("ConsumeContexts.jl")
@@ -132,7 +149,7 @@ include("parser_serial.jl")
 include("parser_parallel.jl")
 
 function _create_options(;
-    delim::Union{UInt8,Char}=',',
+    delim::Union{UInt8,Char,Nothing}=',',
     openquotechar::Union{UInt8,Char}='"',
     closequotechar::Union{UInt8,Char}='"',
     escapechar::Union{UInt8,Char}='"',
@@ -141,12 +158,12 @@ function _create_options(;
     stripwhitespace::Bool=false,
     truestrings::Union{Nothing,Vector{String}}=["true", "True", "1", "t", "T"],
     falsestrings::Union{Nothing,Vector{String}}=["false", "False", "0", "f", "F"],
-    newlinechar::Union{UInt8,Char}='\n', # only for validation
+    dateformat::Union{String, Dates.DateFormat, Nothing, AbstractDict}=nothing,
+    ignorerepeated::Bool=false,
+    quoted::Bool=true,
+    decimal::Union{Char,UInt8}='.',
+    ignoreemptyrows::Bool=true,
 )
-    (0xff in (UInt8(openquotechar), UInt8(closequotechar), UInt8(escapechar), UInt8(delim), UInt8(newlinechar))) &&
-        throw(ArgumentError("`delim`, `escapechar`, `openquotechar`, `closequotechar` and `newlinechar` must not be `0xff`."))
-    (UInt8(newlinechar) in (UInt8(openquotechar), UInt8(closequotechar), UInt8(escapechar), UInt8(delim))) &&
-        throw(ArgumentError("`newlinechar` must be different from `delim`, `escapechar`, `openquotechar` and `closequotechar`"))
     return Parsers.Options(
         sentinel=sentinel,
         wh1=delim ==  ' ' ? '\v' : ' ',
@@ -155,12 +172,15 @@ function _create_options(;
         closequotechar=UInt8(closequotechar),
         escapechar=UInt8(escapechar),
         delim=UInt8(delim),
-        quoted=true,
-        ignoreemptylines=true,
+        quoted=quoted,
         stripwhitespace=stripwhitespace,
         trues=truestrings,
         falses=falsestrings,
         groupmark=groupmark,
+        dateformat=dateformat,
+        ignorerepeated=ignorerepeated,
+        decimal=UInt8(decimal),
+        ignoreemptylines=ignoreemptyrows,
     )
 end
 
@@ -179,21 +199,28 @@ function setup_parser(
     header::Union{Vector{Symbol},Integer}=true,
     skipto::Integer=0,
     limit::Integer=0,
-    delim::Union{UInt8,Char}=',',
+    # Parsers.Options
+    delim::Union{UInt8,Char,Nothing}=',',
     openquotechar::Union{UInt8,Char}='"',
     closequotechar::Union{UInt8,Char}='"',
     escapechar::Union{UInt8,Char}='"',
-    newlinechar::Union{UInt8,Char}='\n',
+    newlinechar::Union{UInt8,Char,Nothing}='\n',
     sentinel::Union{Missing,Nothing,Vector{String}}=missing,
     groupmark::Union{Char,UInt8,Nothing}=nothing,
     stripwhitespace::Bool=false,
-    validate_type_map::Bool=true,
+    ignorerepeated::Bool=false,
     truestrings::Union{Nothing,Vector{String}}=["true", "True", "1", "t", "T"],
     falsestrings::Union{Nothing,Vector{String}}=["false", "False", "0", "f", "F"],
+    dateformat::Union{String, Dates.DateFormat, Nothing, AbstractDict}=nothing,
+    quoted::Bool=true,
+    decimal::Union{Char,UInt8}='.',
+    ignoreemptyrows::Bool=true,
+    #
+    validate_type_map::Bool=true,
     comment::Union{Nothing,AbstractString,Char,UInt8}=nothing,
+    nworkers::Integer=max(1, Threads.nthreads() - 1),
     # In bytes. This absolutely has to be larger than any single row.
     # Much safer if any two consecutive rows are smaller than this threshold.
-    nworkers::Integer=max(1, Threads.nthreads() - 1),
     buffersize::Integer=(nworkers * 1024 * 1024),
     default_colname_prefix::String="COL_",
     use_mmap::Bool=false,
@@ -212,23 +239,41 @@ function setup_parser(
 
     sizeof(openquotechar) > 1 || throw(ArgumentError("`openquotechar` must be a single-byte character."))
     sizeof(closequotechar) > 1 || throw(ArgumentError("`closequotechar` must be a single-byte character."))
-    sizeof(delim) > 1 || throw(ArgumentError("`delim` must be a single-byte character."))
+    isnothing(delim) || sizeof(delim) > 1 || throw(ArgumentError("`delim` must be a single-byte character."))
     sizeof(escapechar) > 1 || throw(ArgumentError("`escapechar` must be a single-byte character."))
-    sizeof(newlinechar) > 1 || throw(ArgumentError("`newlinechar` must be a single-byte character."))
+
+    ignorerepeated && isnothing(delim) && throw(ArgumentError("auto-delimiter detection not supported when `ignorerepeated=true`; please provide delimiter like `delim=','`"))
+    if !isnothing(newlinechar)
+        sizeof(newlinechar) > 1 || throw(ArgumentError("`newlinechar` must be a single-byte character."))
+        (UInt8(newlinechar) in (UInt8(openquotechar), UInt8(closequotechar), UInt8(escapechar), UInt8(something(delim, 0x00)))) &&
+            throw(ArgumentError("`newlinechar` must be different from `delim`, `escapechar`, `openquotechar` and `closequotechar`"))
+    end
+
+    (0xff in (UInt8(openquotechar), UInt8(closequotechar), UInt8(escapechar), UInt8(something(delim, 0x00)), UInt8(something(newlinechar, 0x00)))) &&
+        throw(ArgumentError("`delim`, `escapechar`, `openquotechar`, `closequotechar` and `newlinechar` must not be `0xff`."))
 
     _validate(header, schema, validate_type_map)
 
     should_close, io = _input_to_io(input, use_mmap)
     settings = ParserSettings(
         schema, header, Int(skipto), Int(limit), validate_type_map, default_colname_prefix,
-        Int32(buffersize), UInt8(nworkers), _comment_to_bytes(comment), no_quoted_newlines, 
-        UInt8(newlinechar),
+        Int32(buffersize), UInt8(nworkers), _comment_to_bytes(comment), no_quoted_newlines,
+        isnothing(newlinechar) ? newlinechar : UInt8(newlinechar),
     )
+    # TRACING #  clear_traces!()
+    (parsing_ctx, lexer, lines_skipped_total) = init_state_and_pre_header_skip(io, settings, escapechar, openquotechar, closequotechar)
+    # At this point we have skipped `header` rows and subsequent commented rows.
+    # The next row should contain the header and should contain clean enough data to infer
+    # the delimiter.
+    if delim === nothing
+        delim = _detect_delim(parsing_ctx.bytes, first(parsing_ctx.eols)+1, last(parsing_ctx.eols), openquotechar, closequotechar, escapechar, settings.header_at > 0)
+    end
     options = _create_options(;
         delim, openquotechar, closequotechar, escapechar, sentinel, groupmark, stripwhitespace,
-        truestrings, falsestrings, newlinechar
+        truestrings, falsestrings, dateformat, ignorerepeated, quoted,
+        decimal, ignoreemptyrows,
     )
-    (parsing_ctx, lexer) = init_parsing!(io, settings, options)
+    process_header_and_schema_and_finish_row_skip!(parsing_ctx, lexer, settings, options, lines_skipped_total)
     return should_close, parsing_ctx, lexer, options
 end
 
@@ -241,13 +286,14 @@ function parse_file(
 )
     _force in (:default, :serial, :parallel) || throw(ArgumentError("`_force` argument must be one of (:default, :serial, :parallel)."))
     schema = parsing_ctx.schema
-    M = _bounding_flag_type(length(schema))
+    M = _bounding_flag_type(schema)
+    CT = _custom_types(schema)
     if _force === :parallel
-        _parse_file_parallel(lexer, parsing_ctx, consume_ctx, options, Val(M))
+        _parse_file_parallel(lexer, parsing_ctx, consume_ctx, options, Val(M), CT)
     elseif _force === :serial || Threads.nthreads() == 1 || parsing_ctx.nworkers == 1 || last(parsing_ctx.eols) < MIN_TASK_SIZE_IN_BYTES
-              _parse_file_serial(lexer, parsing_ctx, consume_ctx, options, Val(M))
+              _parse_file_serial(lexer, parsing_ctx, consume_ctx, options, Val(M), CT)
     else
-        _parse_file_parallel(lexer, parsing_ctx, consume_ctx, options, Val(M))
+        _parse_file_parallel(lexer, parsing_ctx, consume_ctx, options, Val(M), CT)
     end
     return nothing
 end
@@ -259,21 +305,28 @@ function parse_file(
     header::Union{Nothing,Vector{Symbol},Integer}=true,
     skipto::Integer=0,
     limit::Integer=0,
-    delim::Union{UInt8,Char}=',',
+    # Parsers.Options
+    delim::Union{UInt8,Char,Nothing}=',',
     openquotechar::Union{UInt8,Char}='"',
     closequotechar::Union{UInt8,Char}='"',
     escapechar::Union{UInt8,Char}='"',
-    newlinechar::Union{UInt8,Char}='\n',
+    newlinechar::Union{UInt8,Char,Nothing}='\n',
     sentinel::Union{Missing,Nothing,Vector{String}}=missing,
     groupmark::Union{Char,UInt8,Nothing}=nothing,
     stripwhitespace::Bool=false,
-    validate_type_map::Bool=true,
+    ignorerepeated::Bool=false,
     truestrings::Union{Nothing,Vector{String}}=["true", "True", "1", "t", "T"],
     falsestrings::Union{Nothing,Vector{String}}=["false", "False", "0", "f", "F"],
+    dateformat::Union{String, Dates.DateFormat, Nothing, AbstractDict}=nothing,
+    quoted::Bool=true,
+    decimal::Union{Char,UInt8}='.',
+    ignoreemptyrows::Bool=true,
+    #
     comment::Union{Nothing,String,Char,UInt8}=nothing,
+    validate_type_map::Bool=true,
+    nworkers::Integer=max(1, Threads.nthreads() - 1),
     # In bytes. This absolutely has to be larger than any single row.
     # Much safer if any two consecutive rows are smaller than this threshold.
-    nworkers::Integer=max(1, Threads.nthreads() - 1),
     buffersize::Integer=(nworkers * 1024 * 1024),
     _force::Symbol=:default,
     default_colname_prefix::String="COL_",
@@ -281,20 +334,18 @@ function parse_file(
     no_quoted_newlines::Bool=false,
 )
     _force in (:default, :serial, :parallel) || throw(ArgumentError("`_force` argument must be one of (:default, :serial, :parallel)."))
-    clear_traces!()
     (should_close, parsing_ctx, lexer, options) = setup_parser(
         input, schema;
         header, skipto, delim, openquotechar, closequotechar, limit, escapechar, newlinechar,
-        sentinel, groupmark, stripwhitespace, truestrings, falsestrings, comment,
+        sentinel, groupmark, stripwhitespace, truestrings, falsestrings, dateformat, comment,
         validate_type_map, default_colname_prefix, buffersize, nworkers,
-        use_mmap, no_quoted_newlines,
+        use_mmap, no_quoted_newlines, ignorerepeated, quoted, decimal, ignoreemptyrows
     )
     parse_file(lexer, parsing_ctx, consume_ctx, options, _force)
     should_close && close(lexer.io)
     return nothing
 end
 
-# NOTE: Disabled for now to try and work around PackageCompiler issues
 include("precompile.jl")
 
 end # module

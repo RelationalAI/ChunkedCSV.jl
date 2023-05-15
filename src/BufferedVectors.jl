@@ -29,6 +29,7 @@ Base.IteratorSize(::BufferedVector) = Base.HasLength()
 Base.IteratorEltype(::BufferedVector) = Base.HasEltype()
 Base.collect(x::BufferedVector{T}) where {T} = length(x) > 0 ? @inbounds(x.elements[1:length(x)]) : T[]
 Base.eltype(::BufferedVector{T}) where T = T
+@inline Base.push!(buffer::T, x::S) where {T,S} = push!(buffer, convert(T, x))
 @inline function Base.push!(buffer::BufferedVector{T}, x::T) where {T}
     if length(buffer.elements) == buffer.occupied
         Base._growend!(buffer.elements, _grow_by(T))
@@ -39,6 +40,7 @@ end
 _grow_by(::Type) = 16
 _grow_by(::Type{T}) where {T<:Union{Bool,UInt8}} = 64
 
+@inline unsafe_push!(buffer::BufferedVector{T}, x::S) where {T,S} = unsafe_push!(buffer, convert(T, x))
 @inline function unsafe_push!(buffer::BufferedVector{T}, x::T) where {T}
     buffer.occupied += 1
     @inbounds buffer.elements[buffer.occupied] = x

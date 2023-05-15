@@ -9,26 +9,94 @@ function skip_row!(result_buf::TaskResultBuffer{M}, row_bytes, comment::Vector{U
     return false
 end
 
-function _parse_rows_forloop!(result_buf::TaskResultBuffer{M}, task::AbstractVector{Int32}, buf, enum_schema, options, comment::Union{Nothing,Vector{UInt8}}) where {M}
+_type_proxy(::Type{T}) where {T} = T
+_type_proxy(::Type{FixedDecimal{T,F}}) where {T,F} = _FixedDecimal{T,F}
+
+function _isemptyrow(prev_nl, next_nl, bytes)
+    return prev_nl + 1 == next_nl || (prev_nl + 2 == next_nl && @inbounds(bytes[prev_nl+1]) == UInt8('\r'))
+end
+
+@inline function parsecustom!(::Type{customtypes}, row_bytes, pos, len, col_idx, cols, options, _type, row_status, column_indicators) where {customtypes}
+    if @generated
+        block = Expr(:block)
+        push!(block.args, quote
+            # TODO: Currently, we shouldn't ever hit this path as we either throw an error for unsupported types
+            # or Parsers throw an error internally for weird custom Integer subtypes that don't have a parse method.
+            row_status |= RowStatus.UnknownTypeError
+            row_status |= RowStatus.HasColumnIndicators
+            column_indicators = setflag(column_indicators, col_idx)
+            skip_element!(cols[col_idx])
+            res = Parsers.xparse(String, row_bytes, pos, len, options, Parsers.PosLen31)::Parsers.Result{Parsers.PosLen31}
+            (val, tlen, code) = res.val, res.tlen, res.code
+            return val, tlen, code, row_status, column_indicators
+        end)
+        for i = 1:fieldcount(customtypes)
+            T = fieldtype(customtypes, i)
+            pushfirst!(block.args, quote
+                if type === $T
+                    res = Parsers.xparse($(_type_proxy(T)), row_bytes, pos, len, options)::Parsers.Result{$(_type_proxy(T))}
+                    (val, tlen, code) = res.val, res.tlen, res.code
+                    unsafe_push!(cols[col_idx]::BufferedVector{$T}, val)
+                    return val, tlen, code, row_status, column_indicators
+                end
+            end)
+        end
+        pushfirst!(block.args, :(type = _type))
+        pushfirst!(block.args, Expr(:meta, :inline))
+        # @show block
+        return block
+    else
+        # println("generated function failed")
+        res = Parsers.xparse(_type, row_bytes, pos, len, options)::Parsers.Result{_type}
+        (val, tlen, code) = res.val, res.tlen, res.code
+        unsafe_push!(cols[col_idx]::BufferedVector{_type}, val)
+        return val, tlen, code, row_status, column_indicators
+    end
+end
+
+
+function _parse_rows_forloop!(result_buf::TaskResultBuffer{M}, task::AbstractVector{Int32}, buf, schema, enum_schema, options, comment::Union{Nothing,Vector{UInt8}}, ::Type{CT}) where {M, CT}
     empty!(result_buf)
-    N = length(enum_schema)
+    N = length(schema)
     Base.ensureroom(result_buf, ceil(Int, length(task) * 1.01))
+    ignorerepeated = options.ignorerepeated
+    ignoreemptyrows = options.ignoreemptylines
+
     for chunk_row_idx in 2:length(task)
         @inbounds prev_newline = task[chunk_row_idx - 1]
         @inbounds curr_newline = task[chunk_row_idx]
+        (ignoreemptyrows && _isemptyrow(prev_newline, curr_newline, buf)) && continue
         # +1 -1 to exclude newline chars
         @inbounds row_bytes = view(buf, prev_newline+Int32(1):curr_newline-Int32(1))
         skip_row!(result_buf, row_bytes, comment) && continue
 
-        pos = 1
         len = length(row_bytes)
+        pos = 1
+        # `ignorerepeated` is used to implement fixed width column parsing. We need to skip over the initial
+        # delimiters to avoid getting an empty first value.
+        if ignorerepeated
+            pos = Parsers.checkdelim!(row_bytes, pos, len, options)
+        end
+
         # Empty lines are treated as having too few columns
         code = (curr_newline - prev_newline) == 1 ? Parsers.EOF : Int16(0)
         row_status = RowStatus.Ok
         column_indicators = initflag(M)
         cols = result_buf.cols
-        @inbounds for col_idx in 1:N
-            type_enum = enum_schema[col_idx]::Enums.CSV_TYPE
+        # Unlike `schema`, `enum_schema` also contains SKIP columns, so their lengths don't have to match
+        # This way we know the schema of the TaskResultBuffers (schema) and the schema of the file (enum_schema)
+        col_idx = 0
+        @inbounds for type_enum in enum_schema
+            if type_enum == Enums.SKIP
+                Parsers.eof(code) && continue # we don't care if the skipped columns are not present on the line
+                res = Parsers.xparse(String, row_bytes, pos, len, options, Parsers.PosLen31)::Parsers.Result{Parsers.PosLen31}
+                pos += res.tlen
+                code = res.code
+                continue
+            end
+
+            col_idx += 1
+
             if Parsers.eof(code) && !(col_idx == N && Parsers.delimited(code))
                 row_status |= RowStatus.TooFewColumns
                 row_status |= RowStatus.HasColumnIndicators
@@ -56,8 +124,12 @@ function _parse_rows_forloop!(result_buf::TaskResultBuffer{M}, task::AbstractVec
                 res = Parsers.xparse(Dates.Date, row_bytes, pos, len, options)::Parsers.Result{Dates.Date}
                 (val, tlen, code) = res.val, res.tlen, res.code
                 unsafe_push!(cols[col_idx]::BufferedVector{Dates.Date}, val)
+            elseif type_enum == Enums.GUESS_DATETIME
+                res = Parsers.xparse(GuessDateTime, row_bytes, pos, len, options, Dates.DateTime)::Parsers.Result{Dates.DateTime}
+                (val, tlen, code) = res.val, res.tlen, res.code
+                unsafe_push!(cols[col_idx]::BufferedVector{Dates.DateTime}, val)
             elseif type_enum == Enums.DATETIME
-                res = Parsers.xparse(_GuessDateTime, row_bytes, pos, len, options, Dates.DateTime)::Parsers.Result{Dates.DateTime}
+                res = Parsers.xparse(DateTime, row_bytes, pos, len, options)::Parsers.Result{Dates.DateTime}
                 (val, tlen, code) = res.val, res.tlen, res.code
                 unsafe_push!(cols[col_idx]::BufferedVector{Dates.DateTime}, val)
             elseif type_enum == Enums.CHAR
@@ -68,295 +140,8 @@ function _parse_rows_forloop!(result_buf::TaskResultBuffer{M}, task::AbstractVec
                 res = Parsers.xparse(String, row_bytes, pos, len, options, Parsers.PosLen31)::Parsers.Result{Parsers.PosLen31}
                 (val, tlen, code) = res.val, res.tlen, res.code
                 unsafe_push!(cols[col_idx]::BufferedVector{Parsers.PosLen31}, Parsers.PosLen31(prev_newline+val.pos, val.len, val.missingvalue, val.escapedvalue))
-            # TODO: We currently support only 8 digits after decimal point. We need to update Parsers.jl to accept runtime params, then we'd provide `f`
-            #       param at runtime, and we'll only have to unroll on T (Int8,Int16,Int32,Int64,Int128)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT8_0
-                res = Parsers.xparse(_FixedDecimal{Int8,0}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int8,0}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int8,0}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT8_1
-                res = Parsers.xparse(_FixedDecimal{Int8,1}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int8,1}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int8,1}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT8_2
-                res = Parsers.xparse(_FixedDecimal{Int8,2}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int8,2}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int8,2}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT16_0
-                res = Parsers.xparse(_FixedDecimal{Int16,0}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int16,0}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int16,0}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT16_1
-                res = Parsers.xparse(_FixedDecimal{Int16,1}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int16,1}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int16,1}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT16_2
-                res = Parsers.xparse(_FixedDecimal{Int16,2}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int16,2}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int16,2}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT16_3
-                res = Parsers.xparse(_FixedDecimal{Int16,3}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int16,3}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int16,3}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT16_4
-                res = Parsers.xparse(_FixedDecimal{Int16,4}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int16,4}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int16,4}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT32_0
-                res = Parsers.xparse(_FixedDecimal{Int32,0}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int32,0}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int32,0}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT32_1
-                res = Parsers.xparse(_FixedDecimal{Int32,1}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int32,1}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int32,1}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT32_2
-                res = Parsers.xparse(_FixedDecimal{Int32,2}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int32,2}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int32,2}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT32_3
-                res = Parsers.xparse(_FixedDecimal{Int32,3}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int32,3}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int32,3}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT32_4
-                res = Parsers.xparse(_FixedDecimal{Int32,4}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int32,4}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int32,4}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT32_5
-                res = Parsers.xparse(_FixedDecimal{Int32,5}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int32,5}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int32,5}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT32_6
-                res = Parsers.xparse(_FixedDecimal{Int32,6}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int32,6}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int32,6}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT32_7
-                res = Parsers.xparse(_FixedDecimal{Int32,7}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int32,7}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int32,7}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT32_8
-                res = Parsers.xparse(_FixedDecimal{Int32,8}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int32,8}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int32,8}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT64_0
-                res = Parsers.xparse(_FixedDecimal{Int64,0}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int64,0}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int64,0}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT64_1
-                res = Parsers.xparse(_FixedDecimal{Int64,1}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int64,1}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int64,1}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT64_2
-                res = Parsers.xparse(_FixedDecimal{Int64,2}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int64,2}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int64,2}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT64_3
-                res = Parsers.xparse(_FixedDecimal{Int64,3}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int64,3}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int64,3}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT64_4
-                res = Parsers.xparse(_FixedDecimal{Int64,4}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int64,4}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int64,4}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT64_5
-                res = Parsers.xparse(_FixedDecimal{Int64,5}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int64,5}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int64,5}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT64_6
-                res = Parsers.xparse(_FixedDecimal{Int64,6}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int64,6}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int64,6}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT64_7
-                res = Parsers.xparse(_FixedDecimal{Int64,7}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int64,7}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int64,7}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT64_8
-                res = Parsers.xparse(_FixedDecimal{Int64,8}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int64,8}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int64,8}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT128_0
-                res = Parsers.xparse(_FixedDecimal{Int128,0}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int128,0}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int128,0}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT128_1
-                res = Parsers.xparse(_FixedDecimal{Int128,1}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int128,1}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int128,1}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT128_2
-                res = Parsers.xparse(_FixedDecimal{Int128,2}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int128,2}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int128,2}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT128_3
-                res = Parsers.xparse(_FixedDecimal{Int128,3}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int128,3}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int128,3}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT128_4
-                res = Parsers.xparse(_FixedDecimal{Int128,4}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int128,4}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int128,4}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT128_5
-                res = Parsers.xparse(_FixedDecimal{Int128,5}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int128,5}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int128,5}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT128_6
-                res = Parsers.xparse(_FixedDecimal{Int128,6}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int128,6}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int128,6}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT128_7
-                res = Parsers.xparse(_FixedDecimal{Int128,7}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int128,7}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int128,7}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_INT128_8
-                res = Parsers.xparse(_FixedDecimal{Int128,8}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{Int128,8}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{Int128,8}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT8_0
-                res = Parsers.xparse(_FixedDecimal{UInt8,0}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt8,0}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt8,0}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT8_1
-                res = Parsers.xparse(_FixedDecimal{UInt8,1}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt8,1}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt8,1}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT8_2
-                res = Parsers.xparse(_FixedDecimal{UInt8,2}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt8,2}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt8,2}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT16_0
-                res = Parsers.xparse(_FixedDecimal{UInt16,0}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt16,0}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt16,0}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT16_1
-                res = Parsers.xparse(_FixedDecimal{UInt16,1}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt16,1}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt16,1}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT16_2
-                res = Parsers.xparse(_FixedDecimal{UInt16,2}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt16,2}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt16,2}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT16_3
-                res = Parsers.xparse(_FixedDecimal{UInt16,3}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt16,3}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt16,3}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT16_4
-                res = Parsers.xparse(_FixedDecimal{UInt16,4}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt16,4}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt16,4}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT32_0
-                res = Parsers.xparse(_FixedDecimal{UInt32,0}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt32,0}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt32,0}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT32_1
-                res = Parsers.xparse(_FixedDecimal{UInt32,1}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt32,1}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt32,1}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT32_2
-                res = Parsers.xparse(_FixedDecimal{UInt32,2}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt32,2}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt32,2}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT32_3
-                res = Parsers.xparse(_FixedDecimal{UInt32,3}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt32,3}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt32,3}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT32_4
-                res = Parsers.xparse(_FixedDecimal{UInt32,4}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt32,4}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt32,4}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT32_5
-                res = Parsers.xparse(_FixedDecimal{UInt32,5}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt32,5}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt32,5}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT32_6
-                res = Parsers.xparse(_FixedDecimal{UInt32,6}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt32,6}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt32,6}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT32_7
-                res = Parsers.xparse(_FixedDecimal{UInt32,7}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt32,7}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt32,7}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT32_8
-                res = Parsers.xparse(_FixedDecimal{UInt32,8}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt32,8}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt32,8}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT64_0
-                res = Parsers.xparse(_FixedDecimal{UInt64,0}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt64,0}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt64,0}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT64_1
-                res = Parsers.xparse(_FixedDecimal{UInt64,1}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt64,1}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt64,1}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT64_2
-                res = Parsers.xparse(_FixedDecimal{UInt64,2}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt64,2}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt64,2}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT64_3
-                res = Parsers.xparse(_FixedDecimal{UInt64,3}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt64,3}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt64,3}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT64_4
-                res = Parsers.xparse(_FixedDecimal{UInt64,4}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt64,4}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt64,4}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT64_5
-                res = Parsers.xparse(_FixedDecimal{UInt64,5}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt64,5}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt64,5}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT64_6
-                res = Parsers.xparse(_FixedDecimal{UInt64,6}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt64,6}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt64,6}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT64_7
-                res = Parsers.xparse(_FixedDecimal{UInt64,7}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt64,7}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt64,7}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT64_8
-                res = Parsers.xparse(_FixedDecimal{UInt64,8}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt64,8}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt64,8}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT128_0
-                res = Parsers.xparse(_FixedDecimal{UInt128,0}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt128,0}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt128,0}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT128_1
-                res = Parsers.xparse(_FixedDecimal{UInt128,1}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt128,1}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt128,1}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT128_2
-                res = Parsers.xparse(_FixedDecimal{UInt128,2}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt128,2}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt128,2}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT128_3
-                res = Parsers.xparse(_FixedDecimal{UInt128,3}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt128,3}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt128,3}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT128_4
-                res = Parsers.xparse(_FixedDecimal{UInt128,4}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt128,4}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt128,4}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT128_5
-                res = Parsers.xparse(_FixedDecimal{UInt128,5}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt128,5}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt128,5}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT128_6
-                res = Parsers.xparse(_FixedDecimal{UInt128,6}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt128,6}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt128,6}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT128_7
-                res = Parsers.xparse(_FixedDecimal{UInt128,7}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt128,7}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt128,7}}, val.x)
-            elseif type_enum == Enums.FIXEDDECIMAL_UINT128_8
-                res = Parsers.xparse(_FixedDecimal{UInt128,8}, row_bytes, pos, len, options)::Parsers.Result{_FixedDecimal{UInt128,8}}
-                (val, tlen, code) = res.val, res.tlen, res.code
-                unsafe_push!(cols[col_idx]::BufferedVector{FixedDecimal{UInt128,8}}, val.x)
             else
-                row_status |= RowStatus.UnknownTypeError
-                row_status |= RowStatus.HasColumnIndicators
-                column_indicators = setflag(column_indicators, col_idx)
-                skip_element!(cols[col_idx])
-                res = Parsers.xparse(String, row_bytes, pos, len, options, Parsers.PosLen31)::Parsers.Result{Parsers.PosLen31}
-                (val, tlen, code) = res.val, res.tlen, res.code
+                (val, tlen, code, row_status, column_indicators) = parsecustom!(CT, row_bytes, pos, len, col_idx, cols, options, schema[col_idx], row_status, column_indicators)
             end
             if Parsers.sentinel(code)
                 row_status |= RowStatus.HasColumnIndicators
@@ -370,8 +155,6 @@ function _parse_rows_forloop!(result_buf::TaskResultBuffer{M}, task::AbstractVec
         end # for col_idx
         if !Parsers.eof(code)
             row_status |= RowStatus.TooManyColumns
-            row_status |= RowStatus.HasColumnIndicators
-            column_indicators = setflag(column_indicators, N)
         end
         unsafe_push!(result_buf.row_statuses, row_status)
         # TODO: replace anyflagset with a local variable?

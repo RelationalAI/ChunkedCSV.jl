@@ -259,7 +259,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test length(testctx.results[1].cols[2]) == 1
             @test length(testctx.results[1].cols[3]) == 1
             @test testctx.results[1].row_statuses[1] == RowStatus.HasColumnIndicators
-            @test testctx.results[1].column_indicators[1] == 0x07
+            @test vec(collect(testctx.results[1].column_indicators)) == [true, true, true]
         end
 
         @testset "char" begin
@@ -1416,7 +1416,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen31(7, 3)]
             @test testctx.strings[1][1][1:1] == ["foo"]
             @test testctx.results[1].row_statuses[1] & ChunkedCSV.RowStatus.ValueParsingError > 0
-            @test ChunkedCSV.isflagset(testctx.results[1].column_indicators[1], 2)
+            @test testctx.results[1].column_indicators[1, 2]
             @test length(testctx.results[1].cols[1]) == 1
             @test length(testctx.results[1].cols[2]) == 1
         end
@@ -1441,7 +1441,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 @test testctx.results[1].cols[1][1:4] == 0:3
                 @test testctx.results[1].cols[2][1:3] == 1:3
                 @test testctx.results[1].row_statuses[4] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].column_indicators[1] == UInt8(1) << 1
+                @test testctx.results[1].column_indicators[1, 2]
             end
 
             @testset "decimals" begin
@@ -1463,7 +1463,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 @test testctx.results[1].cols[1][1:4] == 0:3
                 @test testctx.results[1].cols[2][1:3] == fill(FixedDecimal{Int,4}(1), 3)
                 @test testctx.results[1].row_statuses[4] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].column_indicators[1] == UInt8(1) << 1
+                @test testctx.results[1].column_indicators[1, 2]
             end
 
             @testset "guess datetimes" begin
@@ -1488,7 +1488,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 @test testctx.results[1].cols[1][1:7] == 0:6
                 @test testctx.results[1].cols[2][1:6] == fill(DateTime(1969, 7, 20), 6)
                 @test testctx.results[1].row_statuses[7] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].column_indicators[1] == UInt8(1) << 1
+                @test testctx.results[1].column_indicators[1, 2]
             end
         end
 
@@ -2052,9 +2052,11 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 @test testctx.results[1].row_statuses[1] == ChunkedCSV.RowStatus.HasColumnIndicators
                 @test testctx.results[1].row_statuses[2] == ChunkedCSV.RowStatus.HasColumnIndicators
                 @test testctx.results[1].row_statuses[3] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].column_indicators[1] == UInt8(1) << 1
-                @test testctx.results[1].column_indicators[2] == UInt8(1) << 2
-                @test testctx.results[1].column_indicators[3] == (UInt8(1) << 0) | (UInt8(1) << 1) | (UInt8(1) << 2)
+                @test testctx.results[1].column_indicators[1, 2]
+                @test testctx.results[1].column_indicators[2, 3]
+                @test testctx.results[1].column_indicators[3, 1]
+                @test testctx.results[1].column_indicators[3, 2]
+                @test testctx.results[1].column_indicators[3, 3]
                 @test length(testctx.results[1].cols[1]) == 3
                 @test length(testctx.results[1].cols[2]) == 3
                 @test length(testctx.results[1].cols[3]) == 3
@@ -2081,9 +2083,11 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 @test testctx.results[1].row_statuses[1] == ChunkedCSV.RowStatus.HasColumnIndicators
                 @test testctx.results[1].row_statuses[2] == ChunkedCSV.RowStatus.HasColumnIndicators
                 @test testctx.results[1].row_statuses[3] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].column_indicators[1] == UInt8(1) << 1
-                @test testctx.results[1].column_indicators[2] == UInt8(1) << 2
-                @test testctx.results[1].column_indicators[3] == (UInt8(1) << 0) | (UInt8(1) << 1) | (UInt8(1) << 2)
+                @test testctx.results[1].column_indicators[1, 2]
+                @test testctx.results[1].column_indicators[2, 3]
+                @test testctx.results[1].column_indicators[3, 1]
+                @test testctx.results[1].column_indicators[3, 2]
+                @test testctx.results[1].column_indicators[3, 3]
                 @test length(testctx.results[1].cols[1]) == 3
                 @test length(testctx.results[1].cols[2]) == 3
                 @test length(testctx.results[1].cols[3]) == 3
@@ -2118,13 +2122,15 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 @test testctx.results[1].row_statuses[5] == ChunkedCSV.RowStatus.HasColumnIndicators
                 @test testctx.results[1].row_statuses[6] == ChunkedCSV.RowStatus.HasColumnIndicators
                 @test testctx.results[1].row_statuses[7] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].column_indicators[1] == UInt8(1) << 1
-                @test testctx.results[1].column_indicators[2] == UInt8(1) << 2
-                @test testctx.results[1].column_indicators[3] == UInt8(1) << 1
-                @test testctx.results[1].column_indicators[4] == UInt8(1) << 2
-                @test testctx.results[1].column_indicators[5] == UInt8(1) << 1
-                @test testctx.results[1].column_indicators[6] == UInt8(1) << 2
-                @test testctx.results[1].column_indicators[7] == (UInt8(1) << 0) | (UInt8(1) << 1) | (UInt8(1) << 2)
+                @test testctx.results[1].column_indicators[1, 2]
+                @test testctx.results[1].column_indicators[2, 3]
+                @test testctx.results[1].column_indicators[3, 2]
+                @test testctx.results[1].column_indicators[4, 3]
+                @test testctx.results[1].column_indicators[5, 2]
+                @test testctx.results[1].column_indicators[6, 3]
+                @test testctx.results[1].column_indicators[7, 1]
+                @test testctx.results[1].column_indicators[7, 2]
+                @test testctx.results[1].column_indicators[7, 3]
                 @test length(testctx.results[1].cols[1]) == 7
                 @test length(testctx.results[1].cols[2]) == 7
                 @test length(testctx.results[1].cols[3]) == 7
@@ -2159,13 +2165,15 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 @test testctx.results[1].row_statuses[5] == ChunkedCSV.RowStatus.HasColumnIndicators
                 @test testctx.results[1].row_statuses[6] == ChunkedCSV.RowStatus.HasColumnIndicators
                 @test testctx.results[1].row_statuses[7] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].column_indicators[1] == UInt8(1) << 1
-                @test testctx.results[1].column_indicators[2] == UInt8(1) << 2
-                @test testctx.results[1].column_indicators[3] == UInt8(1) << 1
-                @test testctx.results[1].column_indicators[4] == UInt8(1) << 2
-                @test testctx.results[1].column_indicators[5] == UInt8(1) << 1
-                @test testctx.results[1].column_indicators[6] == UInt8(1) << 2
-                @test testctx.results[1].column_indicators[7] == (UInt8(1) << 0) | (UInt8(1) << 1) | (UInt8(1) << 2)
+                @test testctx.results[1].column_indicators[1, 2]
+                @test testctx.results[1].column_indicators[2, 3]
+                @test testctx.results[1].column_indicators[3, 2]
+                @test testctx.results[1].column_indicators[4, 3]
+                @test testctx.results[1].column_indicators[5, 2]
+                @test testctx.results[1].column_indicators[6, 3]
+                @test testctx.results[1].column_indicators[7, 1]
+                @test testctx.results[1].column_indicators[7, 2]
+                @test testctx.results[1].column_indicators[7, 3]
                 @test length(testctx.results[1].cols[1]) == 7
                 @test length(testctx.results[1].cols[2]) == 7
                 @test length(testctx.results[1].cols[3]) == 7
@@ -2200,13 +2208,15 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 @test testctx.results[1].row_statuses[5] == ChunkedCSV.RowStatus.HasColumnIndicators
                 @test testctx.results[1].row_statuses[6] == ChunkedCSV.RowStatus.HasColumnIndicators
                 @test testctx.results[1].row_statuses[7] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].column_indicators[1] == UInt8(1) << 1
-                @test testctx.results[1].column_indicators[2] == UInt8(1) << 2
-                @test testctx.results[1].column_indicators[3] == UInt8(1) << 1
-                @test testctx.results[1].column_indicators[4] == UInt8(1) << 2
-                @test testctx.results[1].column_indicators[5] == UInt8(1) << 1
-                @test testctx.results[1].column_indicators[6] == UInt8(1) << 2
-                @test testctx.results[1].column_indicators[7] == (UInt8(1) << 0) | (UInt8(1) << 1) | (UInt8(1) << 2)
+                @test testctx.results[1].column_indicators[1, 2]
+                @test testctx.results[1].column_indicators[2, 3]
+                @test testctx.results[1].column_indicators[3, 2]
+                @test testctx.results[1].column_indicators[4, 3]
+                @test testctx.results[1].column_indicators[5, 2]
+                @test testctx.results[1].column_indicators[6, 3]
+                @test testctx.results[1].column_indicators[7, 1]
+                @test testctx.results[1].column_indicators[7, 2]
+                @test testctx.results[1].column_indicators[7, 3]
                 @test length(testctx.results[1].cols[1]) == 7
                 @test length(testctx.results[1].cols[2]) == 7
                 @test length(testctx.results[1].cols[3]) == 7
@@ -2243,13 +2253,15 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 @test testctx.results[1].row_statuses[5] == ChunkedCSV.RowStatus.HasColumnIndicators
                 @test testctx.results[1].row_statuses[6] == ChunkedCSV.RowStatus.HasColumnIndicators
                 @test testctx.results[1].row_statuses[7] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].column_indicators[1] == UInt8(1) << 1
-                @test testctx.results[1].column_indicators[2] == UInt8(1) << 2
-                @test testctx.results[1].column_indicators[3] == UInt8(1) << 1
-                @test testctx.results[1].column_indicators[4] == UInt8(1) << 2
-                @test testctx.results[1].column_indicators[5] == UInt8(1) << 1
-                @test testctx.results[1].column_indicators[6] == UInt8(1) << 2
-                @test testctx.results[1].column_indicators[7] == (UInt8(1) << 0) | (UInt8(1) << 1) | (UInt8(1) << 2)
+                @test testctx.results[1].column_indicators[1, 2]
+                @test testctx.results[1].column_indicators[2, 3]
+                @test testctx.results[1].column_indicators[3, 2]
+                @test testctx.results[1].column_indicators[4, 3]
+                @test testctx.results[1].column_indicators[5, 2]
+                @test testctx.results[1].column_indicators[6, 3]
+                @test testctx.results[1].column_indicators[7, 1]
+                @test testctx.results[1].column_indicators[7, 2]
+                @test testctx.results[1].column_indicators[7, 3]
                 @test length(testctx.results[1].cols[1]) == 7
                 @test length(testctx.results[1].cols[2]) == 7
                 @test length(testctx.results[1].cols[3]) == 7
@@ -2285,13 +2297,15 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 @test testctx.results[1].row_statuses[5] == ChunkedCSV.RowStatus.HasColumnIndicators
                 @test testctx.results[1].row_statuses[6] == ChunkedCSV.RowStatus.HasColumnIndicators
                 @test testctx.results[1].row_statuses[7] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].column_indicators[1] == UInt8(1) << 1
-                @test testctx.results[1].column_indicators[2] == UInt8(1) << 2
-                @test testctx.results[1].column_indicators[3] == UInt8(1) << 1
-                @test testctx.results[1].column_indicators[4] == UInt8(1) << 2
-                @test testctx.results[1].column_indicators[5] == UInt8(1) << 1
-                @test testctx.results[1].column_indicators[6] == UInt8(1) << 2
-                @test testctx.results[1].column_indicators[7] == (UInt8(1) << 0) | (UInt8(1) << 1) | (UInt8(1) << 2)
+                @test testctx.results[1].column_indicators[1, 2]
+                @test testctx.results[1].column_indicators[2, 3]
+                @test testctx.results[1].column_indicators[3, 2]
+                @test testctx.results[1].column_indicators[4, 3]
+                @test testctx.results[1].column_indicators[5, 2]
+                @test testctx.results[1].column_indicators[6, 3]
+                @test testctx.results[1].column_indicators[7, 1]
+                @test testctx.results[1].column_indicators[7, 2]
+                @test testctx.results[1].column_indicators[7, 3]
                 @test length(testctx.results[1].cols[1]) == 7
                 @test length(testctx.results[1].cols[2]) == 7
                 @test length(testctx.results[1].cols[3]) == 7
@@ -2360,13 +2374,14 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test testctx.results[1].row_statuses[8] == RS.HasColumnIndicators | RS.ValueParsingError
             @test testctx.results[1].row_statuses[9] == RS.HasColumnIndicators | RS.ValueParsingError
             @test testctx.results[1].row_statuses[10] == RS.HasColumnIndicators | RS.SkippedRow
-            @test testctx.results[1].column_indicators[1] == 0x02 # 2,,2
-            @test testctx.results[1].column_indicators[2] == 0x06 # 2,,
-            @test testctx.results[1].column_indicators[3] == 0x04 # 3,3
-            @test testctx.results[1].column_indicators[4] == 0x06 # 3
-            @test testctx.results[1].column_indicators[5] == 0x07 # garbage,garbage,garbage
-            @test testctx.results[1].column_indicators[6] == 0x05 # garbage,1,garbage
-            @test testctx.results[1].column_indicators[7] == 0xFF # # comment
+            colinds = collect(testctx.results[1].column_indicators)
+            @test colinds[1, 2]                        # 2,,2
+            @test colinds[2,:] == [false, true, true]  # 2,,
+            @test colinds[3,:] == [false, false, true] # 3,3
+            @test colinds[4,:] == [false, true, true]  # 3
+            @test all(colinds[5,:])                    # garbage,garbage,garbage
+            @test colinds[6,:] == [true, false, true]  # garbage,1,garbage
+            @test all(colinds[7,:])                    # # comment
         end
     end
 
@@ -2407,13 +2422,14 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test testctx.results[1].row_statuses[8] == RS.HasColumnIndicators | RS.ValueParsingError
             @test testctx.results[1].row_statuses[9] == RS.HasColumnIndicators | RS.ValueParsingError
             @test testctx.results[1].row_statuses[10] == RS.HasColumnIndicators | RS.SkippedRow
-            @test testctx.results[1].column_indicators[1] == 0x01 # 2,,2
-            @test testctx.results[1].column_indicators[2] == 0x03 # 2,,
-            @test testctx.results[1].column_indicators[3] == 0x02 # 3,3
-            @test testctx.results[1].column_indicators[4] == 0x03 # 3
-            @test testctx.results[1].column_indicators[5] == 0x03 # garbage,garbage,garbage
-            @test testctx.results[1].column_indicators[6] == 0x02 # garbage,1,garbage
-            @test testctx.results[1].column_indicators[7] == 0xFF # # comment
+            colinds = collect(testctx.results[1].column_indicators)
+            @test colinds[1,:] == [true, false] # 2,,2
+            @test colinds[2,:] == [true,true]   # 2,,
+            @test colinds[3,:] == [false,true]  # 3,3
+            @test colinds[4,:] == [true,true]   # 3
+            @test colinds[5,:] == [true,true]   # garbage,garbage,garbage
+            @test colinds[6,:] == [false,true]  # garbage,1,garbage
+            @test colinds[7,:] == [true,true]   # # comment
 
             RS = ChunkedCSV.RowStatus
             testctx = TestContext()
@@ -2449,12 +2465,13 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test testctx.results[1].row_statuses[8] == RS.HasColumnIndicators | RS.ValueParsingError
             @test testctx.results[1].row_statuses[9] == RS.HasColumnIndicators | RS.ValueParsingError
             @test testctx.results[1].row_statuses[10] == RS.HasColumnIndicators | RS.SkippedRow
-            @test testctx.results[1].column_indicators[1] == 0x02 # 2,,
-            @test testctx.results[1].column_indicators[2] == 0x02 # 3,3
-            @test testctx.results[1].column_indicators[3] == 0x02 # 3
-            @test testctx.results[1].column_indicators[4] == 0x03 # garbage,garbage,garbage
-            @test testctx.results[1].column_indicators[5] == 0x03 # garbage,1,garbage
-            @test testctx.results[1].column_indicators[6] == 0xFF # # comment
+            colinds = collect(testctx.results[1].column_indicators)
+            @test colinds[1,:] == [false, true] # 2,,
+            @test colinds[2,:] == [false, true] # 3,3
+            @test colinds[3,:] == [false, true] # 3
+            @test colinds[4,:] == [true, true]  # garbage,garbage,garbage
+            @test colinds[5,:] == [true, true]  # garbage,1,garbage
+            @test colinds[6,:] == [true, true]  # # comment
 
             RS = ChunkedCSV.RowStatus
             testctx = TestContext()
@@ -2490,12 +2507,13 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test testctx.results[1].row_statuses[8] == RS.HasColumnIndicators | RS.ValueParsingError
             @test testctx.results[1].row_statuses[9] == RS.HasColumnIndicators | RS.ValueParsingError
             @test testctx.results[1].row_statuses[10] == RS.HasColumnIndicators | RS.SkippedRow
-            @test testctx.results[1].column_indicators[1] == 0x02 # 2,,
-            @test testctx.results[1].column_indicators[2] == 0x02 # 2,,2
-            @test testctx.results[1].column_indicators[3] == 0x02 # 3
-            @test testctx.results[1].column_indicators[4] == 0x03 # garbage,garbage,garbage
-            @test testctx.results[1].column_indicators[5] == 0x01 # garbage,1,garbage
-            @test testctx.results[1].column_indicators[6] == 0xFF # # comment
+            colinds = collect(testctx.results[1].column_indicators)
+            @test colinds[1,:] == [false, true] # 2,,
+            @test colinds[2,:] == [false, true] # 2,,2
+            @test colinds[3,:] == [false, true] # 3
+            @test colinds[4,:] == [true, true]  # garbage,garbage,garbage
+            @test colinds[5,:] == [true, false] # garbage,1,garbage
+            @test colinds[6,:] == [true, true]  # # comment
 
             RS = ChunkedCSV.RowStatus
             testctx = TestContext()
@@ -2530,9 +2548,10 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test testctx.results[1].row_statuses[8] == RS.HasColumnIndicators | RS.ValueParsingError
             @test testctx.results[1].row_statuses[9] == RS.HasColumnIndicators | RS.ValueParsingError
             @test testctx.results[1].row_statuses[10] == RS.HasColumnIndicators | RS.SkippedRow
-            @test testctx.results[1].column_indicators[1] == 0x01 # garbage,garbage,garbage
-            @test testctx.results[1].column_indicators[2] == 0x01 # garbage,1,garbage
-            @test testctx.results[1].column_indicators[3] == 0xFF # # comment
+            colinds = collect(testctx.results[1].column_indicators)
+            @test colinds[1,:] == [true] # garbage,garbage,garbage
+            @test colinds[2,:] == [true] # garbage,1,garbage
+            @test colinds[3,:] == [true] # # comment
         end
     end
 end # for (io_t, alg)

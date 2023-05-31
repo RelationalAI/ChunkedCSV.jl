@@ -40,7 +40,7 @@ function read_and_lex_task!(parsing_queue::Channel{T}, lexer::Lexer, parsing_ctx
     sync_tasks(consume_ctx, parsing_ctx_next)
 end
 
-function process_and_consume_task(worker_id, parsing_queue::Channel{T}, result_buffers::Vector{TaskResultBuffer{M}}, consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext, parsing_ctx_next::ParsingContext, options::Parsers.Options, ::Type{CT}) where {T,M,CT}
+function process_and_consume_task(worker_id, parsing_queue::Channel{T}, result_buffers::Vector{TaskResultBuffer}, consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext, parsing_ctx_next::ParsingContext, options::Parsers.Options, ::Type{CT}) where {T,CT}
     # TRACING # trace = get_parser_task_trace(worker_id)
     try
         @inbounds while true
@@ -68,9 +68,9 @@ function process_and_consume_task(worker_id, parsing_queue::Channel{T}, result_b
     end
 end
 
-function _parse_file_parallel(lexer::Lexer, parsing_ctx::ParsingContext, consume_ctx::AbstractConsumeContext, options::Parsers.Options, ::Val{M}, ::Type{CT}) where {M, CT}
+function _parse_file_parallel(lexer::Lexer, parsing_ctx::ParsingContext, consume_ctx::AbstractConsumeContext, options::Parsers.Options, ::Type{CT}) where {CT}
     parsing_queue = Channel{Tuple{Int32,Int32,Int,Int,Bool}}(Inf)
-    result_buffers = TaskResultBuffer{M}[TaskResultBuffer{M}(id, parsing_ctx.schema, cld(length(parsing_ctx.eols), tasks_per_chunk(parsing_ctx))) for id in 1:total_result_buffers_count(parsing_ctx)]
+    result_buffers = TaskResultBuffer[TaskResultBuffer(id, parsing_ctx.schema, cld(length(parsing_ctx.eols), tasks_per_chunk(parsing_ctx))) for id in 1:total_result_buffers_count(parsing_ctx)]
     if lexer.done
         parsing_ctx_next = parsing_ctx
     else

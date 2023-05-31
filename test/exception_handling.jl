@@ -25,7 +25,7 @@ ThrowingIO(s::String) = ThrowingIO(IOBuffer(s), length(s) - cld(length(s), 4))
 ChunkedCSV.readbytesall!(io::ThrowingIO, buf, n::Int) = io.io.ptr > io.throw_byte ? error("That should be enough data for everyone") : ChunkedCSV.readbytesall!(io.io, buf, n)
 Base.eof(io::ThrowingIO) = Base.eof(io.io)
 
-function ChunkedCSV.consume!(ctx::TestThrowingContext, parsing_ctx::ParsingContext, task_buf::TaskResultBuffer{M}, row_num::Int, eol_idx::Int32) where {M}
+function ChunkedCSV.consume!(ctx::TestThrowingContext, parsing_ctx::ParsingContext, task_buf::TaskResultBuffer, row_num::Int, eol_idx::Int32)
     t = current_task()
     c = parsing_ctx.counter
     c in ctx.conds || push!(ctx.conds, c)

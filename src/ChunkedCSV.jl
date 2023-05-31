@@ -286,14 +286,13 @@ function parse_file(
 )
     _force in (:default, :serial, :parallel) || throw(ArgumentError("`_force` argument must be one of (:default, :serial, :parallel)."))
     schema = parsing_ctx.schema
-    M = _bounding_flag_type(schema)
     CT = _custom_types(schema)
     if _force === :parallel
-        _parse_file_parallel(lexer, parsing_ctx, consume_ctx, options, Val(M), CT)
+        _parse_file_parallel(lexer, parsing_ctx, consume_ctx, options, CT)
     elseif _force === :serial || Threads.nthreads() == 1 || parsing_ctx.nworkers == 1 || last(parsing_ctx.eols) < MIN_TASK_SIZE_IN_BYTES
-              _parse_file_serial(lexer, parsing_ctx, consume_ctx, options, Val(M), CT)
+              _parse_file_serial(lexer, parsing_ctx, consume_ctx, options, CT)
     else
-        _parse_file_parallel(lexer, parsing_ctx, consume_ctx, options, Val(M), CT)
+        _parse_file_parallel(lexer, parsing_ctx, consume_ctx, options, CT)
     end
     return nothing
 end

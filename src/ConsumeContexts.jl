@@ -1,6 +1,6 @@
 module ConsumeContexts
 
-using ..ChunkedCSV: TaskResultBuffer, ParsingContext, BufferedVector, RowStatus, ChunkedCSV, isflagset, MIN_TASK_SIZE_IN_BYTES
+using ..ChunkedCSV: TaskResultBuffer, ParsingContext, BufferedVector, RowStatus, ChunkedCSV, MIN_TASK_SIZE_IN_BYTES
 using ..ChunkedCSV: set!, dec!
 import Parsers
 
@@ -11,7 +11,7 @@ export insertsorted!
 abstract type AbstractConsumeContext end
 
 """
-    consume!(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext, task_buf::TaskResultBuffer{M}, row_num::Int, eol_idx::Int32) where {M}
+    consume!(consume_ctx::AbstractConsumeContext, parsing_ctx::ParsingContext, task_buf::TaskResultBuffer, row_num::Int, eol_idx::Int32)
 
 Override with your `AbstractConsumeContext` to provide a custom logic for processing the parsed results in `TaskResultBuffer`.
 The method is called from multiple tasks in parallel, just after each corresponding `task_buf` has been populated.
@@ -118,7 +118,7 @@ function debug_eols(x::BufferedVector{Int32}, parsing_ctx, consume_ctx)
     end
 end
 
-function consume!(consume_ctx::DebugContext, parsing_ctx::ParsingContext, task_buf::TaskResultBuffer{M}, row_num::Int, eol_idx::Int32) where {M}
+function consume!(consume_ctx::DebugContext, parsing_ctx::ParsingContext, task_buf::TaskResultBuffer, row_num::Int, eol_idx::Int32)
     status_counts = zeros(Int, length(RowStatus.Marks))
     io = IOBuffer()
     @inbounds for i in 1:length(task_buf.row_statuses)
@@ -175,7 +175,7 @@ function consume!(consume_ctx::DebugContext, parsing_ctx::ParsingContext, task_b
                 consume_ctx.show_values && print(io, "\t$(name): [")
                 for j in 1:length(task_buf.row_statuses)
                     if (task_buf.row_statuses[j] & S) > 0
-                        has_missing = task_buf.row_statuses[j] > RowStatus.Ok && isflagset(task_buf.column_indicators[c], k)
+                        has_missing = task_buf.row_statuses[j] > RowStatus.Ok && task_buf.column_indicators[c, k]
                         consume_ctx.show_values && write(io, has_missing ? "?" : debug(col, j, parsing_ctx, consume_ctx))
                         consume_ctx.show_values && n != 1 && print(io, ", ")
                         has_missing && (c += 1)
@@ -214,7 +214,7 @@ end
 struct SkipContext <: AbstractConsumeContext
     SkipContext() = new()
 end
-function consume!(consume_ctx::SkipContext, parsing_ctx::ParsingContext, task_buf::TaskResultBuffer{M}, row_num::Int, eol_idx::Int32) where {M}
+function consume!(consume_ctx::SkipContext, parsing_ctx::ParsingContext, task_buf::TaskResultBuffer, row_num::Int, eol_idx::Int32)
     return nothing
 end
 
@@ -233,7 +233,7 @@ struct TestContext <: AbstractConsumeContext
     rownums::Vector{Int}
 end
 TestContext() = TestContext([], [], [], [], ReentrantLock(), [])
-function consume!(ctx::TestContext, parsing_ctx::ParsingContext, task_buf::TaskResultBuffer{M}, row_num::Int, eol_idx::Int32) where {M}
+function consume!(ctx::TestContext, parsing_ctx::ParsingContext, task_buf::TaskResultBuffer, row_num::Int, eol_idx::Int32)
     strings = Vector{String}[]
     for col in task_buf.cols
         if eltype(col) === Parsers.PosLen31

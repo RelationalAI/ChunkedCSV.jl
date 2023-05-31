@@ -1,6 +1,6 @@
-function _parse_file_serial(lexer::Lexer, parsing_ctx::ParsingContext, consume_ctx::AbstractConsumeContext, options::Parsers.Options, ::Val{M}, ::Type{CT}) where {M, CT}
+function _parse_file_serial(lexer::Lexer, parsing_ctx::ParsingContext, consume_ctx::AbstractConsumeContext, options::Parsers.Options,::Type{CT}) where {CT}
     row_num = 1
-    result_buf = TaskResultBuffer{M}(0, parsing_ctx.schema, cld(length(parsing_ctx.eols), tasks_per_chunk(parsing_ctx)))
+    result_buf = TaskResultBuffer(0, parsing_ctx.schema, cld(length(parsing_ctx.eols), tasks_per_chunk(parsing_ctx)))
     try
         @inbounds while true
             limit_eols!(parsing_ctx, row_num) && break

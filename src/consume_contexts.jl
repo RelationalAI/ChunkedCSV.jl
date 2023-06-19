@@ -8,25 +8,26 @@ struct DebugContext <: AbstractConsumeContext
     DebugContext(error_only::Bool=true, n::Int=3, err_len::Int=255, show_values::Bool=false) = new(error_only, n, err_len, show_values)
 end
 
-function debug(x::BufferedVector{Parsers.PosLen31}, i, parsing_ctx, consume_ctx)
+function debug(x::BufferedVector{Parsers.PosLen31}, i, parsing_ctx, consume_ctx, chunking_ctx)
     pl = x.elements[i]
     pl.missingvalue && return "missing"
-    repr(Parsers.getstring(parsing_ctx.bytes, pl, parsing_ctx.escapechar))
+    repr(Parsers.getstring(chunking_ctx.bytes, pl, parsing_ctx.escapechar))
 end
-debug(x::BufferedVector, i, parsing_ctx, consume_ctx) = string(x.elements[i])
-function debug_eols(x::BufferedVector{Int32}, parsing_ctx, consume_ctx)
+debug(x::BufferedVector, i, parsing_ctx, consume_ctx, chunking_ctx) = string(x.elements[i])
+function debug_eols(x::BufferedVector{Int32}, parsing_ctx, consume_ctx, chunking_ctx)
     eols = x.elements[1:min(consume_ctx.n+1, x.occupied)]
     return map(zip(eols[1:end-1], eols[2:end])) do (i)
         (s,e) = i
-        s+1:e-1 => String(parsing_ctx.bytes[s+1:e-1])
+        s+1:e-1 => String(chunking_ctx.bytes[s+1:e-1])
     end
 end
 
 function ChunkedBase.consume!(consume_ctx::DebugContext, payload::ParsedPayload)
     parsing_ctx = payload.parsing_ctx
-    task_buf  = payload.task_buf
+    chunking_ctx = payload.chunking_ctx
+    task_buf  = payload.results
     row_num = payload.row_num
-    eol_idx = payload.eol_idx
+    eol_idx = payload.eols_buffer_index
     status_counts = zeros(Int, length(RowStatus.Marks))
     io = IOBuffer()
     @inbounds for i in 1:length(task_buf.row_statuses)
@@ -54,11 +55,11 @@ function ChunkedBase.consume!(consume_ctx::DebugContext, payload::ParsedPayload)
                 print(io, "\t$(name): [")
                 for j in 1:length(task_buf.row_statuses)
                     if task_buf.row_statuses[j] == RowStatus.Ok
-                        write(io, debug(col, j, parsing_ctx, consume_ctx))
+                        write(io, debug(col, j, parsing_ctx, consume_ctx, chunking_ctx))
                         n != 1 && print(io, ", ")
                         n -= 1
                     elseif task_buf.row_statuses[j] == RowStatus.HasColumnIndicators
-                        write(io, k in task_buf.column_indicators[c] ? "?" : debug(col, j, parsing_ctx, consume_ctx))
+                        write(io, k in task_buf.column_indicators[c] ? "?" : debug(col, j, parsing_ctx, consume_ctx, chunking_ctx))
                         n != 1 && print(io, ", ")
                         c += 1
                         n -= 1
@@ -84,7 +85,7 @@ function ChunkedBase.consume!(consume_ctx::DebugContext, payload::ParsedPayload)
                 for j in 1:length(task_buf.row_statuses)
                     if (task_buf.row_statuses[j] & S) > 0
                         has_missing = task_buf.row_statuses[j] > RowStatus.Ok && task_buf.column_indicators[c, k]
-                        consume_ctx.show_values && write(io, has_missing ? "?" : debug(col, j, parsing_ctx, consume_ctx))
+                        consume_ctx.show_values && write(io, has_missing ? "?" : debug(col, j, parsing_ctx, consume_ctx, chunking_ctx))
                         consume_ctx.show_values && n != 1 && print(io, ", ")
                         has_missing && (c += 1)
                         n -= 1
@@ -101,13 +102,13 @@ function ChunkedBase.consume!(consume_ctx::DebugContext, payload::ParsedPayload)
         for i in 1:length(task_buf.row_statuses)
             if Int(task_buf.row_statuses[i]) >= 2
                 write(io, "\t($(row_num+i-1)): ")
-                s = parsing_ctx.eols[eol_idx + i - 1]+1
-                e = parsing_ctx.eols[eol_idx + i]-1
+                s = chunking_ctx.newline_positions[eol_idx + i - 1]+1
+                e = chunking_ctx.newline_positions[eol_idx + i]-1
                 l = consume_ctx.err_len
                 if e - s > l
-                    println(io, repr(String(parsing_ctx.bytes[s:s+l-3])), "...")
+                    println(io, repr(String(chunking_ctx.bytes[s:s+l-3])), "...")
                 else
-                    println(io, repr(String(parsing_ctx.bytes[s:e])))
+                    println(io, repr(String(chunking_ctx.bytes[s:e])))
                 end
                 errcnt += 1
                 errcnt > consume_ctx.n && break

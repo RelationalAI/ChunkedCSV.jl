@@ -5,8 +5,10 @@ Base.convert(::Type{DateTime}, x::GuessDateTime) = x.x
 Base.convert(::Type{GuessDateTime}, x::DateTime) = GuessDateTime(x)
 
 Dates.default_format(::Type{GuessDateTime}) = Dates.default_format(Dates.DateTime)
-Parsers.default_format(::Type{GuessDateTime}) = Parsers.default_format(Dates.DateTime)
 Dates.validargs(::Type{GuessDateTime}, vals...) = Dates.validargs(Dates.DateTime, vals...)
+Parsers.default_format(::Type{GuessDateTime}) = Parsers.default_format(Dates.DateTime)
+Parsers.supportedtype(::Type{GuessDateTime}) = true
+Parsers.returntype(::Type{GuessDateTime}) = DateTime
 
 function _unsafe_datetime(y=0, m=1, d=1, h=0, mi=0, s=0, ms=0)
     rata = ms + 1000 * (s + 60mi + 3600h + 86400 * Dates.totaldays(y, m, d))
@@ -17,6 +19,7 @@ end
 Base.@propagate_inbounds function _default_tryparse_timestamp(buf, pos, len, code, b, options)
     delim = options.delim.token
     cq = options.cq.token
+    rounding = options.rounding
     # ensure there is enough room for at least yyyy-m-d
     if len - pos < 8
         (b != delim) && (code |= Parsers.INVALID)
@@ -114,8 +117,30 @@ Base.@propagate_inbounds function _default_tryparse_timestamp(buf, pos, len, cod
             millisecond = Int(b) + 10 * millisecond
             i += 1
         end
-        # TODO: rounding modes like we do for FixedPointDecimals
-        i == 0 || millisecond > 999 && (return _unsafe_datetime(year, month, day, hour, minute, second), code | Parsers.INVALID, pos)
+
+        i == 0 && (return _unsafe_datetime(year, month, day, hour, minute, second), code | Parsers.INVALID, pos)
+        if millisecond > 999
+            if rounding === nothing
+                return (_unsafe_datetime(year, month, day, hour, minute, second), code | Parsers.INEXACT, pos)
+            elseif rounding::RoundingMode === RoundNearest
+                millisecond = div(millisecond, Int64(10) ^ (i - 3), RoundNearest)
+            elseif rounding::RoundingMode === RoundNearestTiesAway
+                millisecond = div(millisecond, Int64(10) ^ (i - 3), RoundNearestTiesAway)
+            elseif rounding::RoundingMode === RoundNearestTiesUp
+                millisecond = div(millisecond, Int64(10) ^ (i - 3), RoundNearestTiesUp)
+            elseif rounding::RoundingMode === RoundToZero
+                millisecond = div(millisecond, Int64(10) ^ (i - 3), RoundToZero)
+            elseif rounding::RoundingMode === RoundFromZero
+                millisecond = div(millisecond, Int64(10) ^ (i - 3), RoundFromZero)
+            elseif rounding::RoundingMode === RoundUp
+                millisecond = div(millisecond, Int64(10) ^ (i - 3), RoundUp)
+            elseif rounding::RoundingMode === RoundDown
+                millisecond = div(millisecond, Int64(10) ^ (i - 3), RoundDown)
+            else
+                throw(ArgumentError("invalid rounding mode: $rounding"))
+            end
+        end
+
         b += UInt8('0')
         if (pos == len || b == delim || b == cq)
             code |= isnothing(Dates.validargs(DateTime, year, month, day, hour, minute, second, millisecond)) ? Parsers.OK : Parsers.INVALID
@@ -185,7 +210,7 @@ const _Z = SubString("Z", 1:1)
     return tz, pos, code
 end
 
-function Parsers.typeparser(::Type{GuessDateTime}, source::AbstractVector{UInt8}, pos, len, b, code, pl, options)
+function Parsers.typeparser(::Parsers.AbstractConf{GuessDateTime}, source::AbstractVector{UInt8}, pos, len, b, code, pl, options)
     if isnothing(options.dateformat)
         (x, code, pos) = @inbounds _default_tryparse_timestamp(source, pos, len, code, b, options)
         return (pos, code, Parsers.PosLen(pl.pos, pos - pl.pos), x)

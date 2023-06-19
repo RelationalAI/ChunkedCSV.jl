@@ -1,108 +1,51 @@
 module ChunkedCSV
 
-export parse_file, consume!, DebugContext, AbstractConsumeContext
+export setup_parser, parse_file, DebugContext, AbstractConsumeContext
+export consume!, setup_tasks!, task_done!
 
 import Parsers
-using .Threads: @spawn
-using CodecZlibNG
 using Dates
 using FixedPointDecimals
 using TimeZones
-using Mmap
 using SnoopPrecompile
+using CodecZlibNG
+using ChunkedBase
+using SentinelArrays.BufferedVectors
 
-# IDEA: Instead of having SoA layout in TaskResultBuffer, we could try AoS using "reinterpretable bytes"
-# IDEA: For result_buffers, and possibly elsewhere, use "PreallocatedChannels" that don't call popfirst! and push!, but getindex and setindex! + index
-
-const MIN_TASK_SIZE_IN_BYTES = 16 * 1024
-
-
-include("type_parsers/fixed_decimals_parser.jl")
 include("type_parsers/datetime_parser.jl")
-
 include("Enums.jl")
-include("BufferedVectors.jl")
-using .BufferedVectors
-include("TaskResults.jl")
 
-include("newline_lexer.jl")
-using .NewlineLexers
-
-include("TaskCounters.jl")
-using .TaskCounters
-
-include("exceptions.jl")
 # Temporary hack to register new DateTime
 function __init__()
     Dates.CONVERSION_TRANSLATIONS[GuessDateTime] = Dates.CONVERSION_TRANSLATIONS[Dates.DateTime]
     return nothing
 end
 
-# TRACING # const PARSER_TASKS_TIMES = [UInt[]]
-# TRACING # const IO_TASK_TIMES = UInt[]
-# TRACING # const LEXER_TASK_TIMES = UInt[]
-# TRACING # const T1 = UInt[]
-# TRACING # const T2 = UInt[]
-# TRACING # get_parser_task_trace(i) = PARSER_TASKS_TIMES[i]
-# TRACING # function clear_traces!()
-# TRACING #     for _ in length(PARSER_TASKS_TIMES)+1:Threads.nthreads()
-# TRACING #         push!(PARSER_TASKS_TIMES, UInt[])
-# TRACING #     end
-# TRACING #     empty!(ChunkedCSV.IO_TASK_TIMES)
-# TRACING #     empty!(ChunkedCSV.LEXER_TASK_TIMES)
-# TRACING #     empty!(ChunkedCSV.T1)
-# TRACING #     empty!(ChunkedCSV.T2)
-# TRACING #     foreach(empty!, ChunkedCSV.PARSER_TASKS_TIMES)
-# TRACING #     return nothing
-# TRACING # end
-
-
-struct ParsingContext
-    id::Int
+# What we need to forward to ChunkedBase.populate_result_buffer!
+struct ParsingContext <: AbstractParsingContext
     schema::Vector{DataType}
     enum_schema::Vector{Enums.CSV_TYPE}
     header::Vector{Symbol}
-    bytes::Vector{UInt8}
-    eols::BufferedVector{Int32}
-    limit::Int
-    nworkers::UInt8
     escapechar::UInt8
-    counter::TaskCounter
-    comment::Union{Nothing,Vector{UInt8}}
+    options::Parsers.Options
 end
-function estimate_task_size(parsing_ctx::ParsingContext)
-    length(parsing_ctx.eols) == 1 && return 1 # empty file
-    bytes_to_parse = last(parsing_ctx.eols)
-    rows = length(parsing_ctx.eols) # actually rows + 1
-    buffersize = length(parsing_ctx.bytes)
-    # There are 2*nworkers result buffers total, but there are nworkers tasks per chunk
-    prorated_maxtasks = ceil(Int, tasks_per_chunk(parsing_ctx) * (bytes_to_parse / buffersize))
-    # Lower bound is 2 because length(eols) == 2 => 1 row
-    # bump min rows if average row is much smaller than MIN_TASK_SIZE_IN_BYTES
-    min_rows = max(2, cld(MIN_TASK_SIZE_IN_BYTES, cld(bytes_to_parse, rows)))
-    return min(max(min_rows, cld(rows, prorated_maxtasks)), rows)
-end
-total_result_buffers_count(parsing_ctx::ParsingContext) = 2parsing_ctx.nworkers
-tasks_per_chunk(parsing_ctx::ParsingContext) = parsing_ctx.nworkers
+
+# Hold most inputs during the initialization stage where we verify them and and set things up for ChunkedBase.
 struct ParserSettings
     schema::Union{Nothing,Vector{DataType},Dict{Symbol,DataType}}
     header::Union{Nothing,Vector{Symbol}}
     header_at::Int
     data_at::Int
-    limit::Int
     validate_type_map::Bool
     default_colname_prefix::String
-    buffersize::Int32
-    nworkers::UInt8
-    comment::Union{Nothing,Vector{UInt8}}
     no_quoted_newlines::Bool
     newlinechar::Union{Nothing,UInt8}
-    function ParserSettings(schema, header::Vector{Symbol}, data_at, limit, validate_type_map, default_colname_prefix, buffersize, nworkers, comment, no_quoted_newlines, newlinechar)
-        new(schema, header,  0,           Int(data_at), Int(limit), validate_type_map, default_colname_prefix, buffersize, nworkers, comment, no_quoted_newlines, newlinechar)
+    function ParserSettings(schema, header::Vector{Symbol}, data_at, validate_type_map, default_colname_prefix, no_quoted_newlines, newlinechar)
+        new(schema, header,  0,           Int(data_at), validate_type_map, default_colname_prefix, no_quoted_newlines, newlinechar)
     end
 
-    function ParserSettings(schema, header::Integer,        data_at, limit, validate_type_map, default_colname_prefix, buffersize, nworkers, comment, no_quoted_newlines, newlinechar)
-        new(schema, nothing, Int(header), Int(data_at), Int(limit), validate_type_map, default_colname_prefix, buffersize, nworkers, comment, no_quoted_newlines, newlinechar)
+    function ParserSettings(schema, header::Integer,        data_at, validate_type_map, default_colname_prefix, no_quoted_newlines, newlinechar)
+        new(schema, nothing, Int(header), Int(data_at), validate_type_map, default_colname_prefix, no_quoted_newlines, newlinechar)
     end
 end
 
@@ -138,15 +81,11 @@ function _custom_types(schema::Vector{DataType})
     return Tuple{custom_types...}
 end
 
+include("result_buffer.jl")
 include("detect.jl")
-include("read_and_lex.jl")
 include("init_parsing.jl")
-include("ConsumeContexts.jl")
-using .ConsumeContexts
-
 include("row_parsing.jl")
-include("parser_serial.jl")
-include("parser_parallel.jl")
+include("consume_contexts.jl")
 
 function _create_options(;
     delim::Union{UInt8,Char,Nothing}=',',
@@ -163,6 +102,7 @@ function _create_options(;
     quoted::Bool=true,
     decimal::Union{Char,UInt8}='.',
     ignoreemptyrows::Bool=true,
+    rounding::Union{Nothing,RoundingMode}=RoundNearest,
 )
     return Parsers.Options(
         sentinel=sentinel,
@@ -181,6 +121,7 @@ function _create_options(;
         ignorerepeated=ignorerepeated,
         decimal=UInt8(decimal),
         ignoreemptylines=ignoreemptyrows,
+        rounding=rounding,
     )
 end
 
@@ -188,10 +129,8 @@ _validate(header::Vector, schema::Vector, validate_type_map) = length(header) ==
 _validate(header::Vector, schema::Dict, validate_type_map) = !validate_type_map || issubset(keys(schema), header) || throw(ArgumentError("Provided header and schema names don't match. In schema, not in header: $(setdiff(keys(schema), header))). In header, not in schema: $(setdiff(header, keys(schema)))"))
 _validate(header, schema, validate_type_map) = true
 
-_comment_to_bytes(x::AbstractString) = Vector{UInt8}(x)
-_comment_to_bytes(x::Char) = _comment_to_bytes(ncodeunits(x) > 1 ? string(x) : UInt8(x))
-_comment_to_bytes(x::UInt8) = [x]
-_comment_to_bytes(x::Nothing) = nothing
+_nbytes(::UInt8) = 1
+_nbytes(x::Char) = ncodeunits(x)
 
 function setup_parser(
     input,
@@ -215,6 +154,7 @@ function setup_parser(
     quoted::Bool=true,
     decimal::Union{Char,UInt8}='.',
     ignoreemptyrows::Bool=true,
+    rounding::Union{Nothing,RoundingMode}=RoundNearest,
     #
     validate_type_map::Bool=true,
     comment::Union{Nothing,AbstractString,Char,UInt8}=nothing,
@@ -226,25 +166,22 @@ function setup_parser(
     use_mmap::Bool=false,
     no_quoted_newlines::Bool=false,
 )
-    4 <= buffersize <= typemax(Int32) || throw(ArgumentError("`buffersize` argument must be larger than 4 and smaller than 2_147_483_648 bytes."))
-    0 < nworkers < 256 || throw(ArgumentError("`nworkers` argument must be larger than 0 and smaller than 256."))
     0 <= skipto <= typemax(Int) || throw(ArgumentError("`skipto` argument must be positive and smaller than 9_223_372_036_854_775_808."))
     (header isa Integer && !(0 <= header <= typemax(Int))) && throw(ArgumentError("`header` row number must be positive and smaller than 9_223_372_036_854_775_808."))
-    0 <= limit <= typemax(Int) || throw(ArgumentError("`limit` argument must be positive and smaller than 9_223_372_036_854_775_808."))
 
     if skipto == 0 && header isa Integer
         skipto = header + 1
     end
     (header isa Integer && skipto < header) && throw(ArgumentError("`skipto` argument ($skipto) must come after `header` row ($header)"))
 
-    sizeof(openquotechar) > 1 || throw(ArgumentError("`openquotechar` must be a single-byte character."))
-    sizeof(closequotechar) > 1 || throw(ArgumentError("`closequotechar` must be a single-byte character."))
-    isnothing(delim) || sizeof(delim) > 1 || throw(ArgumentError("`delim` must be a single-byte character."))
-    sizeof(escapechar) > 1 || throw(ArgumentError("`escapechar` must be a single-byte character."))
+    _nbytes(openquotechar) == 1 || throw(ArgumentError("`openquotechar` must be a single-byte character."))
+    _nbytes(closequotechar) == 1 || throw(ArgumentError("`closequotechar` must be a single-byte character."))
+    (isnothing(delim) || _nbytes(delim) == 1) || throw(ArgumentError("`delim` must be a single-byte character."))
+    _nbytes(escapechar) == 1 || throw(ArgumentError("`escapechar` must be a single-byte character."))
 
     ignorerepeated && isnothing(delim) && throw(ArgumentError("auto-delimiter detection not supported when `ignorerepeated=true`; please provide delimiter like `delim=','`"))
     if !isnothing(newlinechar)
-        sizeof(newlinechar) > 1 || throw(ArgumentError("`newlinechar` must be a single-byte character."))
+        _nbytes(newlinechar) > 1 && throw(ArgumentError("`newlinechar` must be a single-byte character."))
         (UInt8(newlinechar) in (UInt8(openquotechar), UInt8(closequotechar), UInt8(escapechar), UInt8(something(delim, 0x00)))) &&
             throw(ArgumentError("`newlinechar` must be different from `delim`, `escapechar`, `openquotechar` and `closequotechar`"))
     end
@@ -254,47 +191,36 @@ function setup_parser(
 
     _validate(header, schema, validate_type_map)
 
-    should_close, io = _input_to_io(input, use_mmap)
     settings = ParserSettings(
-        schema, header, Int(skipto), Int(limit), validate_type_map, default_colname_prefix,
-        Int32(buffersize), UInt8(nworkers), _comment_to_bytes(comment), no_quoted_newlines,
-        isnothing(newlinechar) ? newlinechar : UInt8(newlinechar),
+        schema, header, Int(skipto), validate_type_map, default_colname_prefix,
+        no_quoted_newlines, isnothing(newlinechar) ? newlinechar : UInt8(newlinechar),
     )
     # TRACING #  clear_traces!()
-    (parsing_ctx, lexer, lines_skipped_total) = init_state_and_pre_header_skip(io, settings, escapechar, openquotechar, closequotechar)
-    # At this point we have skipped `header` rows and subsequent commented rows.
-    # The next row should contain the header and should contain clean enough data to infer
-    # the delimiter.
-    if delim === nothing
-        delim = _detect_delim(parsing_ctx.bytes, first(parsing_ctx.eols)+1, last(parsing_ctx.eols), openquotechar, closequotechar, escapechar, settings.header_at > 0)
-    end
-    options = _create_options(;
-        delim, openquotechar, closequotechar, escapechar, sentinel, groupmark, stripwhitespace,
-        truestrings, falsestrings, dateformat, ignorerepeated, quoted,
-        decimal, ignoreemptyrows,
-    )
-    process_header_and_schema_and_finish_row_skip!(parsing_ctx, lexer, settings, options, lines_skipped_total)
-    return should_close, parsing_ctx, lexer, options
-end
 
-function parse_file(
-    lexer::Lexer,
-    parsing_ctx::ParsingContext,
-    consume_ctx::AbstractConsumeContext,
-    options::Parsers.Options,
-    _force::Symbol=:default,
-)
-    _force in (:default, :serial, :parallel) || throw(ArgumentError("`_force` argument must be one of (:default, :serial, :parallel)."))
-    schema = parsing_ctx.schema
-    CT = _custom_types(schema)
-    if _force === :parallel
-        _parse_file_parallel(lexer, parsing_ctx, consume_ctx, options, CT)
-    elseif _force === :serial || Threads.nthreads() == 1 || parsing_ctx.nworkers == 1 || last(parsing_ctx.eols) < MIN_TASK_SIZE_IN_BYTES
-              _parse_file_serial(lexer, parsing_ctx, consume_ctx, options, CT)
-    else
-        _parse_file_parallel(lexer, parsing_ctx, consume_ctx, options, CT)
+    chunking_ctx = ChunkingContext(buffersize, nworkers, limit, comment)
+    should_close, io = ChunkedBase._input_to_io(input, use_mmap)
+    try
+        (lexer, lines_skipped_total) = initial_read_and_lex_and_skip!(io, chunking_ctx, settings, escapechar, openquotechar, closequotechar)
+        # At this point we have skipped `header` rows and subsequent commented rows.
+        # The next row should contain the header and should contain clean enough data to infer
+        # the delimiter.
+        if delim === nothing
+            eols = chunking_ctx.newline_positions
+            delim = _detect_delim(chunking_ctx.bytes, first(eols)+1, last(eols), openquotechar, closequotechar, escapechar, settings.header_at > 0)
+        end
+        options = _create_options(;
+            delim, openquotechar, closequotechar, escapechar, sentinel, groupmark, stripwhitespace,
+            truestrings, falsestrings, dateformat, ignorerepeated, quoted,
+            decimal, ignoreemptyrows, rounding,
+        )
+
+        parsing_ctx = ParsingContext(DataType[], Enums.CSV_TYPE[], Symbol[], escapechar, options)
+        process_header_and_schema_and_finish_row_skip!(parsing_ctx, chunking_ctx, lexer, settings, lines_skipped_total)
+        return should_close, parsing_ctx, chunking_ctx, lexer
+    catch
+        should_close && close(io)
+        rethrow()
     end
-    return nothing
 end
 
 function parse_file(
@@ -320,6 +246,7 @@ function parse_file(
     quoted::Bool=true,
     decimal::Union{Char,UInt8}='.',
     ignoreemptyrows::Bool=true,
+    rounding::Union{Nothing,RoundingMode}=RoundNearest,
     #
     comment::Union{Nothing,String,Char,UInt8}=nothing,
     validate_type_map::Bool=true,
@@ -333,15 +260,43 @@ function parse_file(
     no_quoted_newlines::Bool=false,
 )
     _force in (:default, :serial, :parallel) || throw(ArgumentError("`_force` argument must be one of (:default, :serial, :parallel)."))
-    (should_close, parsing_ctx, lexer, options) = setup_parser(
+    (should_close, parsing_ctx, chunking_ctx, lexer) = setup_parser(
         input, schema;
         header, skipto, delim, openquotechar, closequotechar, limit, escapechar, newlinechar,
         sentinel, groupmark, stripwhitespace, truestrings, falsestrings, dateformat, comment,
-        validate_type_map, default_colname_prefix, buffersize, nworkers,
+        rounding, validate_type_map, default_colname_prefix, buffersize, nworkers,
         use_mmap, no_quoted_newlines, ignorerepeated, quoted, decimal, ignoreemptyrows
     )
-    parse_file(lexer, parsing_ctx, consume_ctx, options, _force)
-    should_close && close(lexer.io)
+    try
+        parse_file(lexer, parsing_ctx, consume_ctx, chunking_ctx, _force)
+    finally
+        should_close && close(lexer.io)
+    end
+    return nothing
+end
+
+function parse_file(
+    lexer::Lexer,
+    parsing_ctx::ParsingContext,
+    consume_ctx::AbstractConsumeContext,
+    chunking_ctx::ChunkingContext,
+    _force::Symbol=:default,
+)
+    _force in (:default, :serial, :parallel) || throw(ArgumentError("`_force` argument must be one of (:default, :serial, :parallel)."))
+    schema = parsing_ctx.schema
+    CT = _custom_types(schema)
+
+    nrows = length(chunking_ctx.newline_positions) - 1
+    if ChunkedBase.should_use_parallel(chunking_ctx, _force)
+        ntasks = tasks_per_chunk(chunking_ctx)
+        nbuffers = total_result_buffers_count(chunking_ctx)
+        result_buffers = TaskResultBuffer[TaskResultBuffer(id, parsing_ctx.schema, cld(nrows, ntasks)) for id in 1:nbuffers]
+        parse_file_parallel(lexer, parsing_ctx, consume_ctx, chunking_ctx, result_buffers, CT)
+    else
+        result_buf = TaskResultBuffer(0, parsing_ctx.schema, nrows)
+        parse_file_serial(lexer, parsing_ctx, consume_ctx, chunking_ctx, result_buf, CT)
+    end
+
     return nothing
 end
 

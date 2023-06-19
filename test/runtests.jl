@@ -3,16 +3,12 @@ using Test
 Threads.nthreads() == 1 && @warn "Running tests with a single thread -- won't be able to spot concurrency issues"
 
 @testset "ChunkedCSV.jl" begin
-    include("decimals.jl")
     include("guess_datetime.jl")
-    include("buffered_vector_tests.jl")
-    include("consume_context_tests.jl")
-    include("lexer_tests.jl")
     include("simple_file_parsing.jl")
     include("exception_handling.jl")
     include("task_result_buffer_tests.jl")
     include("misc_tests.jl")
-    include("detect_tests.jl")   
+    include("detect_tests.jl")
 end
 
 #=

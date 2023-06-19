@@ -1,19 +1,12 @@
-skip_row!(result_buf::TaskResultBuffer, row_bytes, comment::Nothing) = false
-function skip_row!(result_buf::TaskResultBuffer, row_bytes, comment::Vector{UInt8})
-    if _startswith(row_bytes, comment)
+skip_row!(result_buf::AbstractResultBuffer, row_bytes, comment::Nothing) = false
+function skip_row!(result_buf::AbstractResultBuffer, row_bytes, comment::Vector{UInt8})
+    if ChunkedBase._startswith(row_bytes, comment)
         foreach(skip_element!, result_buf.cols)
         unsafe_push!(result_buf.row_statuses, RowStatus.HasColumnIndicators | RowStatus.SkippedRow)
         addrows!(result_buf.column_indicators, 1, true)
         return true
     end
     return false
-end
-
-_type_proxy(::Type{T}) where {T} = T
-_type_proxy(::Type{FixedDecimal{T,F}}) where {T,F} = _FixedDecimal{T,F}
-
-function _isemptyrow(prev_nl, next_nl, bytes)
-    return prev_nl + 1 == next_nl || (prev_nl + 2 == next_nl && @inbounds(bytes[prev_nl+1]) == UInt8('\r'))
 end
 
 @inline function parsecustom!(::Type{customtypes}, row_bytes, pos, len, col_idx, cols, options, _type, row_status, colinds) where {customtypes}
@@ -34,7 +27,7 @@ end
             T = fieldtype(customtypes, i)
             pushfirst!(block.args, quote
                 if type === $T
-                    res = Parsers.xparse($(_type_proxy(T)), row_bytes, pos, len, options)::Parsers.Result{$(_type_proxy(T))}
+                    res = Parsers.xparse($T, row_bytes, pos, len, options)::Parsers.Result{$T}
                     (val, tlen, code) = res.val, res.tlen, res.code
                     unsafe_push!(cols[col_idx]::BufferedVector{$T}, val)
                     return val, tlen, code, row_status, colinds
@@ -62,22 +55,31 @@ function mark_missing!(colinds, colinds_row_idx, col_idx)
     return
 end
 
-
-function _parse_rows_forloop!(result_buf::TaskResultBuffer, task::AbstractVector{Int32}, buf, schema, enum_schema, options, comment::Union{Nothing,Vector{UInt8}}, ::Type{CT}) where {CT}
+function ChunkedBase.populate_result_buffer!(
+    result_buf::AbstractResultBuffer,
+    newlines_segment::AbstractVector{Int32},
+    parsing_ctx::AbstractParsingContext,
+    buf::Vector{UInt8},
+    comment::Union{Nothing,Vector{UInt8}}=nothing,
+    ::Type{CT}=Tuple{}
+) where {CT}
     empty!(result_buf)
+    enum_schema = parsing_ctx.enum_schema
+    schema = parsing_ctx.schema
     colinds_row_idx = 1
+    options = parsing_ctx.options
 
-    Base.ensureroom(result_buf, ceil(Int, length(task) * 1.01))
+    Base.ensureroom(result_buf, ceil(Int, length(newlines_segment) * 1.01))
 
     ignorerepeated = options.ignorerepeated
     ignoreemptyrows = options.ignoreemptylines
     colinds = result_buf.column_indicators
 
     N = length(schema)
-    for row_idx in 2:length(task)
-        @inbounds prev_newline = task[row_idx - 1]
-        @inbounds curr_newline = task[row_idx]
-        isemptyrow = _isemptyrow(prev_newline, curr_newline, buf)
+    for row_idx in 2:length(newlines_segment)
+        @inbounds prev_newline = newlines_segment[row_idx - 1]
+        @inbounds curr_newline = newlines_segment[row_idx]
+        isemptyrow = ChunkedBase._isemptyrow(prev_newline, curr_newline, buf)
         (ignoreemptyrows && isemptyrow) && continue
         # +1 -1 to exclude newline chars
         @inbounds row_bytes = view(buf, prev_newline+Int32(1):curr_newline-Int32(1))

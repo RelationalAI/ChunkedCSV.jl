@@ -1,4 +1,6 @@
-"""TaskResultBuffer accumulates results produced by a single task"""
+#
+# RowStatus
+#
 
 module RowStatus
     const T = UInt8
@@ -62,7 +64,10 @@ function addcols!(bs::BitSetMatrix, n::Integer=1)
     return bs.ncolumns += n
 end
 
-# TODO: a AbstractResultBuffer so we can generalize type signatures for ChunkedJSONL.
+#
+# TaskResultBuffer
+#
+
 """
     TaskResultBuffer
 
@@ -101,7 +106,7 @@ we parsed expecting 3 `Int` columns and while skipping over comments:
 HasCI = HasColumnIndicators
 ```
 """
-struct TaskResultBuffer
+struct TaskResultBuffer <: AbstractResultBuffer
     id::Int
     cols::Vector{BufferedVector}
     row_statuses::BufferedVector{RowStatus.T}
@@ -124,6 +129,8 @@ TaskResultBuffer(id, schema::Vector{DataType}, n::Int) = TaskResultBuffer(
     BufferedVector{RowStatus.T}(Vector{RowStatus.T}(undef, n), 0),
     BitSetMatrix(0, count(x->x !== Nothing, schema)),
 )
+
+Base.length(buf::TaskResultBuffer) = length(buf.row_statuses)
 
 function Base.empty!(buf::TaskResultBuffer)
     foreach(empty!, buf.cols)

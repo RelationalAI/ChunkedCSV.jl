@@ -2,6 +2,7 @@ using Test
 using .Threads
 using ChunkedCSV
 using ChunkedCSV: TaskResultBuffer, ParsingContext
+using ChunkedBase
 using FixedPointDecimals
 
 struct CustomType
@@ -22,15 +23,15 @@ struct ThrowingIO <: IO
     throw_byte::Int
 end
 ThrowingIO(s::String) = ThrowingIO(IOBuffer(s), length(s) - cld(length(s), 4))
-ChunkedCSV.readbytesall!(io::ThrowingIO, buf, n::Int) = io.io.ptr > io.throw_byte ? error("That should be enough data for everyone") : ChunkedCSV.readbytesall!(io.io, buf, n)
+ChunkedBase.readbytesall!(io::ThrowingIO, buf, n::Int) = io.io.ptr > io.throw_byte ? error("That should be enough data for everyone") : ChunkedBase.readbytesall!(io.io, buf, n)
 Base.eof(io::ThrowingIO) = Base.eof(io.io)
 
-function ChunkedCSV.consume!(ctx::TestThrowingContext, parsing_ctx::ParsingContext, task_buf::TaskResultBuffer, row_num::Int, eol_idx::Int32)
+function ChunkedCSV.consume!(ctx::TestThrowingContext, payload::ChunkedCSV.ParsedPayload)
     t = current_task()
-    c = parsing_ctx.counter
+    c = payload.chunking_ctx.counter
     c in ctx.conds || push!(ctx.conds, c)
     t in ctx.tasks || push!(ctx.tasks, t)
-    row_num >= ctx.throw_row && error("These contexts are for throwing, and that's all what they do")
+    payload.row_num >= ctx.throw_row && error("These contexts are for throwing, and that's all what they do")
     sleep(0.01) # trying to get the task off a fast path to claim everything from the parsing queue
     return nothing
 end
@@ -38,7 +39,7 @@ end
 @testset "Exception Handling" begin
     @testset "Lexing errors" begin
         @testset "NoValidRowsInBufferError" begin
-            @test_throws ChunkedCSV.NoValidRowsInBufferError begin
+            @test_throws ChunkedBase.NoValidRowsInBufferError begin
                 parse_file(IOBuffer("""
                     a,b
                     1,23
@@ -50,7 +51,7 @@ end
                 )
             end
 
-            @test_throws ChunkedCSV.NoValidRowsInBufferError begin
+            @test_throws ChunkedBase.NoValidRowsInBufferError begin
                 parse_file(IOBuffer("""
                     0,"S\"\"\"
                     1,"S\"\"\"
@@ -62,7 +63,7 @@ end
                 )
             end
 
-            @test_throws ChunkedCSV.NoValidRowsInBufferError begin
+            @test_throws ChunkedBase.NoValidRowsInBufferError begin
                 parse_file(IOBuffer("""
                     0,"S\\\\"
                     1,"S\\\\"
@@ -75,7 +76,7 @@ end
                 )
             end
 
-            @test_throws ChunkedCSV.NoValidRowsInBufferError begin
+            @test_throws ChunkedBase.NoValidRowsInBufferError begin
                 parse_file(IOBuffer("""
                     a,b
                     1,"2
@@ -87,7 +88,7 @@ end
                 )
             end
 
-            @test_throws ChunkedCSV.NoValidRowsInBufferError begin
+            @test_throws ChunkedBase.NoValidRowsInBufferError begin
                 ChunkedCSV.parse_file(IOBuffer("""
                     1234567
                     \"\\\"a\\\\\\\\\\"\""""),
@@ -101,7 +102,7 @@ end
         end
 
         @testset "UnmatchedQuoteError" begin
-            @test_throws ChunkedCSV.UnmatchedQuoteError begin
+            @test_throws ChunkedBase.UnmatchedQuoteError begin
                 parse_file(IOBuffer("""
                     a,b
                     1,2
@@ -112,7 +113,7 @@ end
                     buffersize=5,
                 )
             end
-            @test_throws ChunkedCSV.UnmatchedQuoteError begin
+            @test_throws ChunkedBase.UnmatchedQuoteError begin
                 parse_file(IOBuffer("""
                     a,b
                     1,2

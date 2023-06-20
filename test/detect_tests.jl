@@ -2,37 +2,7 @@ using ChunkedCSV
 using Test
 using Parsers
 
-@testset "_detect_newline" begin
-    s = b"\n"
-    @test ChunkedCSV._detect_newline(s, 1, length(s)) == UInt8('\n')
-
-    s = b"\r\n"
-    @test ChunkedCSV._detect_newline(s, 1, length(s)) == UInt8('\n')
-
-    s = b"\r"
-    @test ChunkedCSV._detect_newline(s, 1, length(s)) == UInt8('\r')
-
-    @test_throws ArgumentError ChunkedCSV._detect_newline(b"a", 1, 1)
-    @test ChunkedCSV._detect_newline(b"", 1, 0) == UInt8('\n') # empty file
-
-    s = b"a,b,c\ne,f,g\r"
-    @test ChunkedCSV._detect_newline(s, 1, length(s)) == UInt8('\n')
-
-    s = b"a,b,c\ne,f,g\r"
-    @test ChunkedCSV._detect_newline(s, 7, length(s)) == UInt8('\r')
-
-    s = b"a,b,c\re,f,g\n"
-    @test ChunkedCSV._detect_newline(s, 1, length(s)) == UInt8('\n')
-
-    s = b"a,b,c\re,f,g\n"
-    @test ChunkedCSV._detect_newline(s, 1, 6) == UInt8('\r')
-
-    s = b"a,b\n,c\re,f,g\n"
-    @test ChunkedCSV._detect_newline(s, 6, 9) == UInt8('\r')
-
-    s = b"a,b,c\re,f,g"
-    @test ChunkedCSV._detect_newline(s, 5, 8) == UInt8('\r')
-
+@testset "newline" begin
     testctx = ChunkedCSV.TestContext()
     ChunkedCSV.parse_file(IOBuffer("a,b,c\ne,f,g\n"), [String, String, String], testctx, newlinechar=nothing)
     @test testctx.header == [:a, :b, :c]

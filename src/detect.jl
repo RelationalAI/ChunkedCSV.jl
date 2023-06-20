@@ -91,19 +91,3 @@ function _detect_delim(buf, pos, len, oq, cq, ec, has_header)
 
     return delim
 end
-
-function _detect_newline(buf, pos, len)
-    len == 0 && return UInt8('\n') # empty file
-    @assert 1 <= pos <= len <= length(buf)
-
-    v = view(buf, pos:len)
-    if isnothing(findfirst(==(UInt8('\n')), v))
-        if isnothing(findfirst(==(UInt8('\r')), v))
-            throw(ArgumentError("No newline detected. Specify the newline character explicitly via the `newline` keyword argument. Use `\n` even for CRLF."))
-        else
-            return UInt8('\r')
-        end
-    else
-        return UInt8('\n')
-    end
-end

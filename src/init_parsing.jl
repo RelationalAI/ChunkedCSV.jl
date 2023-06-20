@@ -20,7 +20,7 @@ function initial_read_and_lex_and_skip!(io, chunking_ctx, settings, escapechar, 
     # We need to detect the newline first to construct the Lexer
     newline = settings.newlinechar
     if isnothing(newline)
-        newline = _detect_newline(chunking_ctx.bytes, 1, bytes_read_in)
+        newline = ChunkedBase._detect_newline(chunking_ctx.bytes, 1, bytes_read_in)
     end
 
     lexer = settings.no_quoted_newlines ?

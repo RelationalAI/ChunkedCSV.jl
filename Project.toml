@@ -19,8 +19,9 @@ SnoopPrecompile = "66db9d55-30c0-4569-8b51-7e840670fc0c"
 TimeZones = "f269a46b-ccf7-5d73-abea-4c690281aa53"
 
 [compat]
-Parsers = "2.7"
+ChunkedBase = "0.2"
 FixedPointDecimals = "0.4.3"
+Parsers = "2.7"
 
 [extras]
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"

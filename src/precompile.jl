@@ -18,4 +18,3 @@ end
 
 @assert precompile(ChunkedCSV.parse_file, (String, Vector{DataType}))
 @assert precompile(ChunkedCSV.parse_file, (IOStream, Vector{DataType}))
-@assert precompile(ChunkedCSV.parse_file, (GzipCompressorStream{IOStream}, Vector{DataType}))

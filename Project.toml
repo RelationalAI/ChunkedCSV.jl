@@ -5,15 +5,9 @@ version = "0.1.0"
 
 [deps]
 ChunkedBase = "a380dd43-0ebf-4429-88d6-6f06ea920732"
-CodecZlibNG = "642d12eb-acb5-4437-bcfc-a25e07ad685c"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 FixedPointDecimals = "fb4d412d-6eee-574d-9565-ede6634db7b0"
-Libdl = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
-Mmap = "a63ad114-7e13-5084-954f-fe012c677804"
-NewlineLexers = "f391c746-b838-4748-bbb5-9885c75b726e"
 Parsers = "69de0a69-1ddd-5017-9359-2bf0b02dc9f0"
-SIMD = "fdea26ae-647d-5447-a871-4b548cad5224"
-ScanByte = "7b38b023-a4d7-4c5e-8d43-3f3097f304eb"
 SentinelArrays = "91c51154-3ec4-41a3-a24f-3f23e20d615c"
 SnoopPrecompile = "66db9d55-30c0-4569-8b51-7e840670fc0c"
 TimeZones = "f269a46b-ccf7-5d73-abea-4c690281aa53"
@@ -22,13 +16,17 @@ TimeZones = "f269a46b-ccf7-5d73-abea-4c690281aa53"
 ChunkedBase = "0.2"
 FixedPointDecimals = "0.4.3"
 Parsers = "2.7"
+SentinelArrays = "1"
+SnoopPrecompile = "1"
+TimeZones = "1"
 
 [extras]
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
+CodecZlibNG = "642d12eb-acb5-4437-bcfc-a25e07ad685c"
 JET = "c3a54625-cd67-489e-a8e7-0a5a0ff4e31b"
 Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 UUIDs = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
 
 [targets]
-test = ["Aqua", "JET", "Logging", "Test", "UUIDs"]
+test = ["Aqua", "CodecZlibNG", "JET", "Logging", "Test", "UUIDs"]

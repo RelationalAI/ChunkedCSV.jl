@@ -8,7 +8,6 @@ using Dates
 using FixedPointDecimals
 using TimeZones
 using SnoopPrecompile
-using CodecZlibNG
 using ChunkedBase
 using SentinelArrays.BufferedVectors
 

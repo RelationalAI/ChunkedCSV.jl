@@ -1,8 +1,11 @@
 using Test
+using ChunkedCSV
+using Aqua
 
 Threads.nthreads() == 1 && @warn "Running tests with a single thread -- won't be able to spot concurrency issues"
 
 @testset "ChunkedCSV.jl" begin
+    Aqua.test_all(ChunkedCSV, ambiguities=false)
     include("guess_datetime.jl")
     include("simple_file_parsing.jl")
     include("exception_handling.jl")

@@ -249,3 +249,13 @@ end
         [Int,FixedDecimal{Int64,9},FixedDecimal{Int64,100},CustomType],
     )
 end
+
+@testset "validate_parser_args" begin
+    @test isnothing(ChunkedCSV.validate_parser_args(;openquotechar='"', closequotechar='"', delim=',', escapechar='\\',  decimal='.', newlinechar='\n', ignorerepeated=false))
+    @test_throws ArgumentError ChunkedCSV.validate_parser_args(;openquotechar='α', closequotechar='"', delim=',', escapechar='\\', decimal='.', newlinechar='\n', ignorerepeated=false)
+    @test_throws ArgumentError ChunkedCSV.validate_parser_args(;openquotechar='"', closequotechar='α', delim=',', escapechar='\\', decimal='.', newlinechar='\n', ignorerepeated=false)
+    @test_throws ArgumentError ChunkedCSV.validate_parser_args(;openquotechar='"', closequotechar='"', delim='α', escapechar='\\', decimal='.', newlinechar='\n', ignorerepeated=false)
+    @test_throws ArgumentError ChunkedCSV.validate_parser_args(;openquotechar='"', closequotechar='"', delim=',', escapechar='α', decimal='.', newlinechar='\n', ignorerepeated=false)
+    @test_throws ArgumentError ChunkedCSV.validate_parser_args(;openquotechar='"', closequotechar='"', delim=',', escapechar='\\', decimal='α', newlinechar='α', ignorerepeated=false)
+    @test_throws ArgumentError ChunkedCSV.validate_parser_args(;openquotechar='"', closequotechar='"', delim=nothing, escapechar='\\', decimal='.', newlinechar='α', ignorerepeated=true)
+end

@@ -144,3 +144,46 @@ function Base.ensureroom(buf::TaskResultBuffer, n)
     Base.ensureroom(buf.row_statuses, n)
     return nothing
 end
+
+"""
+    ColumnIterator{T}
+
+Iterate over a column of a `TaskResultBuffer`. The iterator yields values of type `ParsedField{T}`,
+which is a struct containing the parsed value, a flag indicating whether the row was invalid, and a flag indicating whether the value was missing.
+"""
+struct ColumnIterator{T}
+    x::BufferedVector{T}
+    idx::Int
+    statuses::BufferedVector{RowStatus.T}
+    colinds::BitSetMatrix
+end
+function ColumnIterator{T}(buf::TaskResultBuffer, column_position::Int) where {T}
+    col = (buf.cols[column_position])::BufferedVector{T}
+    return ColumnIterator{T}(col, column_position, buf.row_statuses, buf.column_indicators)
+end
+
+Base.length(itr::ColumnIterator) = length(itr.statuses)
+
+struct ParsedField{T}
+    value::T
+    isinvalidrow::Bool
+    ismissingvalue::Bool
+end
+Base.iterate(t::ParsedField, iter=1) = iter > nfields(t) ? nothing : (getfield(t, iter), iter + 1)
+
+function Base.iterate(itr::ColumnIterator{T}, state=(row=1, indicator_idx=0)) where {T}
+    row, indicator_idx = state.row, state.indicator_idx
+    if row > length(itr.x)
+        return nothing
+    end
+    s = @inbounds itr.statuses[row]
+    value = @inbounds itr.x[row]::T
+    isinvalidrow = s > RowStatus.HasColumnIndicators
+
+    has_indicators = (s & RowStatus.HasColumnIndicators) != 0
+    indicator_idx += has_indicators
+    ismissingvalue = has_indicators && @inbounds(itr.colinds[indicator_idx, itr.idx])
+    row += 1
+
+    return ParsedField(value, isinvalidrow, ismissingvalue), (; row, indicator_idx)
+end

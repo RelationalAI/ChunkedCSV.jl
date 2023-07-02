@@ -94,6 +94,33 @@ end
     @test size(buf.column_indicators) == (0, 3)
 end
 
+
+@testset "ColumnIterator" begin
+    buf = ChunkedCSV.TaskResultBuffer(1, [Int, Float64], 10)
+    for i in 1:4; push!(buf.cols[1], i); end
+    for i in 1:4; push!(buf.cols[2], Float64(i)); end
+    push!(buf.row_statuses, ChunkedCSV.RowStatus.Ok)
+    push!(buf.row_statuses, ChunkedCSV.RowStatus.HasColumnIndicators)
+    push!(buf.row_statuses, ChunkedCSV.RowStatus.TooManyColumns)
+    push!(buf.row_statuses, ChunkedCSV.RowStatus.HasColumnIndicators | ChunkedCSV.RowStatus.ValueParsingError)
+    ChunkedCSV.addrows!(buf.column_indicators, 2)
+    buf.column_indicators[1, 1] = true
+    buf.column_indicators[2, 2] = true
+
+    iter_data = collect(ChunkedCSV.ColumnIterator{Int}(buf, 1))
+    @test iter_data[1] == ChunkedCSV.ParsedField(1, false, false)
+    @test iter_data[2] == ChunkedCSV.ParsedField(2, false, true)
+    @test iter_data[3] == ChunkedCSV.ParsedField(3, true, false)
+    @test iter_data[4] == ChunkedCSV.ParsedField(4, true, false)
+
+    iter_data = collect(ChunkedCSV.ColumnIterator{Float64}(buf, 2))
+    @test iter_data[1] == ChunkedCSV.ParsedField(1.0, false, false)
+    @test iter_data[2] == ChunkedCSV.ParsedField(2.0, false, false)
+    @test iter_data[3] == ChunkedCSV.ParsedField(3.0, true, false)
+    @test iter_data[4] == ChunkedCSV.ParsedField(4.0, true, true)
+end
+
+
 @testset "BitSetMatrix" begin
     bs = ChunkedCSV.BitSetMatrix(3, 4)
     @test bs.nrows == 3

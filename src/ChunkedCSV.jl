@@ -131,6 +131,26 @@ _validate(header, schema, validate_type_map) = true
 _nbytes(::UInt8) = 1
 _nbytes(x::Char) = ncodeunits(x)
 
+function validate_parser_args(;openquotechar, closequotechar, delim, escapechar, decimal, newlinechar, ignorerepeated)
+    _nbytes(openquotechar) == 1 || throw(ArgumentError("`openquotechar` must be a single-byte character"))
+    _nbytes(closequotechar) == 1 || throw(ArgumentError("`closequotechar` must be a single-byte character"))
+    if isnothing(delim)
+        ignorerepeated && throw(ArgumentError("auto-delimiter detection not supported when `ignorerepeated=true`; please provide delimiter like `delim=','`"))
+    else
+        _nbytes(delim) == 1 || throw(ArgumentError("`delim` must be a single-byte character"))
+    end
+    _nbytes(escapechar) == 1 || throw(ArgumentError("`escapechar` must be a single-byte character"))
+    _nbytes(decimal) == 1 || throw(ArgumentError("`decimal` must be a single-byte character"))
+
+    if !isnothing(newlinechar)
+        _nbytes(newlinechar) > 1 && throw(ArgumentError("`newlinechar` must be a single-byte character."))
+        ((newlinechar % UInt8) in ((openquotechar % UInt8), (closequotechar % UInt8), (escapechar % UInt8), (something(delim, 0x00) % UInt8))) &&
+            throw(ArgumentError("`newlinechar` must be different from `delim`, `openquotechar`, `closequotechar`, and `escapechar`"))
+    end
+
+    return nothing
+end
+
 function setup_parser(
     input,
     schema::Union{Nothing,Vector{DataType},Dict{Symbol,DataType}}=nothing;
@@ -173,20 +193,7 @@ function setup_parser(
     end
     (header isa Integer && skipto < header) && throw(ArgumentError("`skipto` argument ($skipto) must come after `header` row ($header)"))
 
-    _nbytes(openquotechar) == 1 || throw(ArgumentError("`openquotechar` must be a single-byte character."))
-    _nbytes(closequotechar) == 1 || throw(ArgumentError("`closequotechar` must be a single-byte character."))
-    (isnothing(delim) || _nbytes(delim) == 1) || throw(ArgumentError("`delim` must be a single-byte character."))
-    _nbytes(escapechar) == 1 || throw(ArgumentError("`escapechar` must be a single-byte character."))
-
-    ignorerepeated && isnothing(delim) && throw(ArgumentError("auto-delimiter detection not supported when `ignorerepeated=true`; please provide delimiter like `delim=','`"))
-    if !isnothing(newlinechar)
-        _nbytes(newlinechar) > 1 && throw(ArgumentError("`newlinechar` must be a single-byte character."))
-        (UInt8(newlinechar) in (UInt8(openquotechar), UInt8(closequotechar), UInt8(escapechar), UInt8(something(delim, 0x00)))) &&
-            throw(ArgumentError("`newlinechar` must be different from `delim`, `escapechar`, `openquotechar` and `closequotechar`"))
-    end
-
-    (0xff in (UInt8(openquotechar), UInt8(closequotechar), UInt8(escapechar), UInt8(something(delim, 0x00)), UInt8(something(newlinechar, 0x00)))) &&
-        throw(ArgumentError("`delim`, `escapechar`, `openquotechar`, `closequotechar` and `newlinechar` must not be `0xff`."))
+    validate_parser_args(;openquotechar, closequotechar, delim, escapechar, decimal, newlinechar, ignorerepeated)
 
     _validate(header, schema, validate_type_map)
 

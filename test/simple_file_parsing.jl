@@ -1071,27 +1071,58 @@ end # for (io_t, alg)
 for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial, :parallel))
     @testset "Empty input ($(io_t), $(alg))" begin
         @testset "Empty lines" begin
-            # TODO: We need to fix TestContext not to materialize the string if there are issues with it
-            #    basically it needs to respect column_indicators and row_statuses.
-            # testctx = TestContext()
-            # parse_file(io_t("a,b,c\n\n"), nothing, testctx, _force=alg, ignoreemptyrows=false)
-            # @test testctx.header == [:a, :b, :c]
-            # @test testctx.results[1].row_statuses == [RowStatus.TooFewColumns | RowStatus.HasColumnIndicators]
+            testctx = TestContext()
+            parse_file(io_t("a,b,c\n\n"), nothing, testctx, _force=alg, ignoreemptyrows=false)
+            @test testctx.header == [:a, :b, :c]
+            @test testctx.results[1].row_statuses == [RowStatus.TooFewColumns | RowStatus.HasColumnIndicators]
 
             testctx = TestContext()
             parse_file(io_t("a,b,c\n\n"), nothing, testctx, _force=alg, ignoreemptyrows=true)
             @test testctx.header == [:a, :b, :c]
-            @test all(isempty, testctx.results[1].cols)
+            @test testctx.results[1].row_statuses == [RowStatus.SkippedRow | RowStatus.HasColumnIndicators]
 
             testctx = TestContext()
             parse_file(io_t("a,b,c\r\r"), nothing, testctx, _force=alg, ignoreemptyrows=true, newlinechar='\r')
             @test testctx.header == [:a, :b, :c]
-            @test all(isempty, testctx.results[1].cols)
+            @test testctx.results[1].row_statuses == [RowStatus.SkippedRow | RowStatus.HasColumnIndicators]
 
             testctx = TestContext()
-            parse_file(io_t("a,b,c\r\n\r\n"), nothing, testctx, _force=alg, ignoreemptyrows=true)
+            parse_file(io_t("a,b,c\r\n\r\n"), nothing, testctx, _force=alg, ignoreemptyrows=true, newlinechar='\n')
             @test testctx.header == [:a, :b, :c]
-            @test all(isempty, testctx.results[1].cols)
+            @test testctx.results[1].row_statuses == [RowStatus.SkippedRow | RowStatus.HasColumnIndicators]
+
+
+            testctx = TestContext()
+            parse_file(io_t("a,b,c\r\n\r\n1,2,3\r\n4,5,6"), [Int,Int,Int], testctx, _force=alg, ignoreemptyrows=true)
+            @test testctx.header == [:a, :b, :c]
+            @test testctx.results[1].row_statuses == [RowStatus.SkippedRow | RowStatus.HasColumnIndicators, RowStatus.Ok, RowStatus.Ok]
+            @test testctx.results[1].cols[1][2:3] == [1, 4]
+            @test testctx.results[1].cols[2][2:3] == [2, 5]
+            @test testctx.results[1].cols[3][2:3] == [3, 6]
+
+            testctx = TestContext()
+            parse_file(io_t("a,b,c\n\n1,2,3\n4,5,6"), [Int,Int,Int], testctx, _force=alg, ignoreemptyrows=true)
+            @test testctx.header == [:a, :b, :c]
+            @test testctx.results[1].row_statuses == [RowStatus.SkippedRow | RowStatus.HasColumnIndicators, RowStatus.Ok, RowStatus.Ok]
+            @test testctx.results[1].cols[1][2:3] == [1, 4]
+            @test testctx.results[1].cols[2][2:3] == [2, 5]
+            @test testctx.results[1].cols[3][2:3] == [3, 6]
+
+            testctx = TestContext()
+            parse_file(io_t("a,b,c\r\r1,2,3\r4,5,6"), [Int,Int,Int], testctx, _force=alg, ignoreemptyrows=true, newlinechar='\r')
+            @test testctx.header == [:a, :b, :c]
+            @test testctx.results[1].row_statuses == [RowStatus.SkippedRow | RowStatus.HasColumnIndicators, RowStatus.Ok, RowStatus.Ok]
+            @test testctx.results[1].cols[1][2:3] == [1, 4]
+            @test testctx.results[1].cols[2][2:3] == [2, 5]
+            @test testctx.results[1].cols[3][2:3] == [3, 6]
+
+            testctx = TestContext()
+            parse_file(io_t("a,b,c\r\n\r\n1,2,3\r\n\r\n4,5,6"), [Int,Int,Int], testctx, _force=alg, ignoreemptyrows=true)
+            @test testctx.header == [:a, :b, :c]
+            @test testctx.results[1].row_statuses == [RowStatus.SkippedRow | RowStatus.HasColumnIndicators, RowStatus.Ok, RowStatus.SkippedRow | RowStatus.HasColumnIndicators, RowStatus.Ok]
+            @test testctx.results[1].cols[1][[2,4]] == [1, 4]
+            @test testctx.results[1].cols[2][[2,4]] == [2, 5]
+            @test testctx.results[1].cols[3][[2,4]] == [3, 6]
         end
 
         @testset "no file header, no provided header, no schema" begin
@@ -2353,6 +2384,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 garbage,garbage,garbage
                 garbage,5,garbage
                 # comment
+                ,,
                 """),
                 [Int,Int,Int],
                 testctx,
@@ -2374,6 +2406,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test testctx.results[1].row_statuses[8] == RS.HasColumnIndicators | RS.ValueParsingError
             @test testctx.results[1].row_statuses[9] == RS.HasColumnIndicators | RS.ValueParsingError
             @test testctx.results[1].row_statuses[10] == RS.HasColumnIndicators | RS.SkippedRow
+            @test testctx.results[1].row_statuses[11] == RS.HasColumnIndicators
             colinds = collect(testctx.results[1].column_indicators)
             @test colinds[1, 2]                        # 2,,2
             @test colinds[2,:] == [false, true, true]  # 2,,
@@ -2382,6 +2415,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test all(colinds[5,:])                    # garbage,garbage,garbage
             @test colinds[6,:] == [true, false, true]  # garbage,1,garbage
             @test all(colinds[7,:])                    # # comment
+            @test all(colinds[8,:])                    # ,,
         end
     end
 
@@ -2402,6 +2436,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 garbage,garbage,garbage
                 garbage,5,garbage
                 # comment
+                ,,
                 """),
                 [Nothing,Int,Int],
                 testctx,
@@ -2422,6 +2457,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test testctx.results[1].row_statuses[8] == RS.HasColumnIndicators | RS.ValueParsingError
             @test testctx.results[1].row_statuses[9] == RS.HasColumnIndicators | RS.ValueParsingError
             @test testctx.results[1].row_statuses[10] == RS.HasColumnIndicators | RS.SkippedRow
+            @test testctx.results[1].row_statuses[11] == RS.HasColumnIndicators
             colinds = collect(testctx.results[1].column_indicators)
             @test colinds[1,:] == [true, false] # 2,,2
             @test colinds[2,:] == [true,true]   # 2,,
@@ -2430,6 +2466,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test colinds[5,:] == [true,true]   # garbage,garbage,garbage
             @test colinds[6,:] == [false,true]  # garbage,1,garbage
             @test colinds[7,:] == [true,true]   # # comment
+            @test colinds[8,:] == [true,true]   # ,,
 
             RS = ChunkedCSV.RowStatus
             testctx = TestContext()
@@ -2445,6 +2482,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 garbage,garbage,garbage
                 garbage,5,garbage
                 # comment
+                ,,
                 """),
                 [Int,Nothing,Int],
                 testctx,
@@ -2465,6 +2503,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test testctx.results[1].row_statuses[8] == RS.HasColumnIndicators | RS.ValueParsingError
             @test testctx.results[1].row_statuses[9] == RS.HasColumnIndicators | RS.ValueParsingError
             @test testctx.results[1].row_statuses[10] == RS.HasColumnIndicators | RS.SkippedRow
+            @test testctx.results[1].row_statuses[11] == RS.HasColumnIndicators
             colinds = collect(testctx.results[1].column_indicators)
             @test colinds[1,:] == [false, true] # 2,,
             @test colinds[2,:] == [false, true] # 3,3
@@ -2472,6 +2511,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test colinds[4,:] == [true, true]  # garbage,garbage,garbage
             @test colinds[5,:] == [true, true]  # garbage,1,garbage
             @test colinds[6,:] == [true, true]  # # comment
+            @test colinds[7,:] == [true, true]  # ,,
 
             RS = ChunkedCSV.RowStatus
             testctx = TestContext()
@@ -2487,6 +2527,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 garbage,garbage,garbage
                 garbage,5,garbage
                 # comment
+                ,,
                 """),
                 [Int,Int,Nothing],
                 testctx,
@@ -2507,6 +2548,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test testctx.results[1].row_statuses[8] == RS.HasColumnIndicators | RS.ValueParsingError
             @test testctx.results[1].row_statuses[9] == RS.HasColumnIndicators | RS.ValueParsingError
             @test testctx.results[1].row_statuses[10] == RS.HasColumnIndicators | RS.SkippedRow
+            @test testctx.results[1].row_statuses[11] == RS.HasColumnIndicators
             colinds = collect(testctx.results[1].column_indicators)
             @test colinds[1,:] == [false, true] # 2,,
             @test colinds[2,:] == [false, true] # 2,,2
@@ -2514,6 +2556,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test colinds[4,:] == [true, true]  # garbage,garbage,garbage
             @test colinds[5,:] == [true, false] # garbage,1,garbage
             @test colinds[6,:] == [true, true]  # # comment
+            @test colinds[7,:] == [true, true]  # ,,
 
             RS = ChunkedCSV.RowStatus
             testctx = TestContext()
@@ -2529,6 +2572,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 garbage,garbage,garbage
                 garbage,5,garbage
                 # comment
+                ,,
                 """),
                 [Int,Nothing,Nothing],
                 testctx,
@@ -2548,10 +2592,12 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test testctx.results[1].row_statuses[8] == RS.HasColumnIndicators | RS.ValueParsingError
             @test testctx.results[1].row_statuses[9] == RS.HasColumnIndicators | RS.ValueParsingError
             @test testctx.results[1].row_statuses[10] == RS.HasColumnIndicators | RS.SkippedRow
+            @test testctx.results[1].row_statuses[11] == RS.HasColumnIndicators
             colinds = collect(testctx.results[1].column_indicators)
             @test colinds[1,:] == [true] # garbage,garbage,garbage
             @test colinds[2,:] == [true] # garbage,1,garbage
             @test colinds[3,:] == [true] # # comment
+            @test colinds[4,:] == [true] # ,,
         end
     end
 end # for (io_t, alg)

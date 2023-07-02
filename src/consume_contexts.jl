@@ -132,13 +132,21 @@ function ChunkedBase.consume!(ctx::TestContext, payload::ParsedPayload)
     parsing_ctx = payload.parsing_ctx
     chunking_ctx = payload.chunking_ctx
     task_buf  = payload.results
+    cols = task_buf.cols
     row_num = payload.row_num
     strings = Vector{String}[]
-    for col in task_buf.cols
-        if eltype(col) === Parsers.PosLen31
-            push!(strings, [Parsers.getstring(chunking_ctx.bytes, x, parsing_ctx.escapechar) for x in col::BufferedVector{Parsers.PosLen31}])
-        else
-            push!(strings, String[])
+    @inbounds for (i, T) in enumerate(parsing_ctx.schema)
+        str_col = String[]
+        push!(strings, str_col)
+        if T === Parsers.PosLen31
+            col_iter = ColumnIterator(cols[i]::BufferedVector{Parsers.PosLen31}, i, task_buf.row_statuses, task_buf.column_indicators)
+            for (value, isinvalidrow, ismissingvalue) in col_iter
+                if ismissingvalue
+                    push!(str_col, "")
+                else
+                    push!(str_col, Parsers.getstring(chunking_ctx.bytes, value, parsing_ctx.escapechar))
+                end
+            end
         end
     end
     Base.@lock ctx.lock begin

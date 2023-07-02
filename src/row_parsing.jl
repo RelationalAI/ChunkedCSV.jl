@@ -1,12 +1,12 @@
 skip_row!(result_buf::AbstractResultBuffer, row_bytes, comment::Nothing) = false
 function skip_row!(result_buf::AbstractResultBuffer, row_bytes, comment::Vector{UInt8})
-    if ChunkedBase._startswith(row_bytes, comment)
-        foreach(skip_element!, result_buf.cols)
-        unsafe_push!(result_buf.row_statuses, RowStatus.HasColumnIndicators | RowStatus.SkippedRow)
-        addrows!(result_buf.column_indicators, 1, true)
-        return true
-    end
-    return false
+    return ChunkedBase._startswith(row_bytes, comment) && skip_row!(result_buf)
+end
+function skip_row!(result_buf::AbstractResultBuffer)
+    foreach(skip_element!, result_buf.cols)
+    unsafe_push!(result_buf.row_statuses, RowStatus.HasColumnIndicators | RowStatus.SkippedRow)
+    addrows!(result_buf.column_indicators, 1, true)
+    return true
 end
 
 @inline function parsecustom!(::Type{customtypes}, row_bytes, pos, len, col_idx, cols, options, _type, row_status, colinds) where {customtypes}
@@ -74,16 +74,17 @@ function ChunkedBase.populate_result_buffer!(
     ignorerepeated = options.ignorerepeated
     ignoreemptyrows = options.ignoreemptylines
     colinds = result_buf.column_indicators
+    cols = result_buf.cols
 
     N = length(schema)
     for row_idx in 2:length(newlines_segment)
         @inbounds prev_newline = newlines_segment[row_idx - 1]
         @inbounds curr_newline = newlines_segment[row_idx]
         isemptyrow = ChunkedBase._isemptyrow(prev_newline, curr_newline, buf)
-        (ignoreemptyrows && isemptyrow) && continue
+        (ignoreemptyrows && isemptyrow) && skip_row!(result_buf) && (colinds_row_idx += 1; continue)
         # +1 -1 to exclude newline chars
         @inbounds row_bytes = view(buf, prev_newline+Int32(1):curr_newline-Int32(1))
-        skip_row!(result_buf, row_bytes, comment) && continue
+        skip_row!(result_buf, row_bytes, comment) && (colinds_row_idx += 1; continue)
 
         len = length(row_bytes)
         pos = 1
@@ -96,7 +97,6 @@ function ChunkedBase.populate_result_buffer!(
         # Empty lines are treated as having too few columns
         code = isemptyrow ? Parsers.EOF : Int16(0)
         row_status = RowStatus.Ok
-        cols = result_buf.cols
         # Unlike `schema`, `enum_schema` also contains SKIP columns, so their lengths don't have to match
         # This way we know the schema of the TaskResultBuffers (schema) and the schema of the file (enum_schema)
         col_idx = 0

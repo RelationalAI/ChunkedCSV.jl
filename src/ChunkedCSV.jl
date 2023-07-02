@@ -201,7 +201,6 @@ function setup_parser(
         schema, header, Int(skipto), validate_type_map, default_colname_prefix,
         no_quoted_newlines, isnothing(newlinechar) ? newlinechar : UInt8(newlinechar),
     )
-    # TRACING #  clear_traces!()
 
     chunking_ctx = ChunkingContext(buffersize, nworkers, limit, comment)
     should_close, io = ChunkedBase._input_to_io(input, use_mmap)

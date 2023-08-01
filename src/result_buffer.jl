@@ -113,22 +113,48 @@ struct TaskResultBuffer <: AbstractResultBuffer
     column_indicators::BitSetMatrix
 end
 
-_translate_to_buffer_type(::Type{String}, lazystrings=true) = lazystrings ? Parsers.PosLen31 : String
-_translate_to_buffer_type(::Type{GuessDateTime}, lazystrings=true) = Dates.DateTime
-_translate_to_buffer_type(::Type{T}, lazystring=true) where {T} = T
+_translate_to_buffer_type(::Type{String}) = Parsers.PosLen31
+_translate_to_buffer_type(::Type{GuessDateTime}) = Dates.DateTime
+_translate_to_buffer_type(::Type{T}) where {T} = T
 
 TaskResultBuffer(id, schema) = TaskResultBuffer(id, schema, 0)
-TaskResultBuffer(id, schema::Vector{DataType}, n::Int) = TaskResultBuffer(
-    id,
-    BufferedVector[
-        BufferedVector{_translate_to_buffer_type(T)}(Vector{_translate_to_buffer_type(T)}(undef, n), 0)
-        for T
-        in schema
-        if T !== Nothing
-    ],
-    BufferedVector{RowStatus.T}(Vector{RowStatus.T}(undef, n), 0),
-    BitSetMatrix(0, count(x->x !== Nothing, schema)),
-)
+# Assumes `schema` has been `_translate_to_buffer_type`'d
+function TaskResultBuffer(id, schema::Vector{DataType}, n::Int)
+    TaskResultBuffer(
+        id,
+        BufferedVector[
+            BufferedVector{T}(Vector{T}(undef, n), 0)
+            for T
+            in schema
+            if T !== Nothing
+        ],
+        BufferedVector{RowStatus.T}(Vector{RowStatus.T}(undef, n), 0),
+        BitSetMatrix(0, count(x->x !== Nothing, schema)),
+    )
+end
+
+# Assumes `schema` has been `_translate_to_buffer_type`'d
+function _make_result_buffers(num_buffers::Integer, schema, n)
+    out = Vector{TaskResultBuffer}(undef, num_buffers)
+    for i in 1:num_buffers
+        @inbounds out[i] = TaskResultBuffer(
+            i,
+            Vector{BufferedVector}(undef, length(schema)),
+            BufferedVector{RowStatus.T}(Vector{RowStatus.T}(undef, n), 0),
+            BitSetMatrix(0, count(x->x !== Nothing, schema)),
+        )
+    end
+    for (j, T) in enumerate(schema)
+        _push_buffers!(T, out, j, n)
+    end
+    return out
+end
+
+function _push_buffers!(::Type{T}, out, i, n) where {T}
+    @inbounds for b in out
+        b.cols[i] = BufferedVector{T}(Vector{T}(undef, n), 0)
+    end
+end
 
 Base.length(buf::TaskResultBuffer) = length(buf.row_statuses)
 

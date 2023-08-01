@@ -31,7 +31,6 @@ end
 
 # Hold most inputs during the initialization stage where we verify them and and set things up for ChunkedBase.
 struct ParserSettings
-    schema::Union{Nothing,Vector{DataType},Dict{Symbol,DataType}}
     header::Union{Nothing,Vector{Symbol}}
     header_at::Int
     data_at::Int
@@ -39,12 +38,13 @@ struct ParserSettings
     default_colname_prefix::String
     no_quoted_newlines::Bool
     newlinechar::Union{Nothing,UInt8}
-    function ParserSettings(schema, header::Vector{Symbol}, data_at, validate_type_map, default_colname_prefix, no_quoted_newlines, newlinechar)
-        new(schema, header,  0,           Int(data_at), validate_type_map, default_colname_prefix, no_quoted_newlines, newlinechar)
+    deduplicate_names::Bool
+    function ParserSettings(header::Vector{Symbol}, data_at, validate_type_map, default_colname_prefix, no_quoted_newlines, newlinechar, deduplicate_names)
+        new(header,  0,           Int(data_at), validate_type_map, default_colname_prefix, no_quoted_newlines, newlinechar, deduplicate_names)
     end
 
-    function ParserSettings(schema, header::Integer,        data_at, validate_type_map, default_colname_prefix, no_quoted_newlines, newlinechar)
-        new(schema, nothing, Int(header), Int(data_at), validate_type_map, default_colname_prefix, no_quoted_newlines, newlinechar)
+    function ParserSettings(header::Integer,        data_at, validate_type_map, default_colname_prefix, no_quoted_newlines, newlinechar, deduplicate_names)
+        new(nothing, Int(header), Int(data_at), validate_type_map, default_colname_prefix, no_quoted_newlines, newlinechar, deduplicate_names)
     end
 end
 
@@ -55,14 +55,6 @@ function _is_supported_type(::Type{FixedDecimal{T,f}}) where {T,f}
     # https://github.com/JuliaMath/FixedPointDecimals.jl/blob/1328b9a372d2285765a7255f154f09ffdd692508/src/FixedPointDecimals.jl#L83-L91
     n = FixedPointDecimals.max_exp10(T)
     return f >= 0 && (n < 0 || f <= n)
-end
-function validate_schema(types::Vector{DataType})
-    unsupported_types = unique!(filter(!_is_supported_type, types))
-    if !isempty(unsupported_types)
-        err_msg = "Provided schema contains unsupported types: $(join(unsupported_types, ", "))."
-        throw(ArgumentError(err_msg))
-    end
-    return nothing
 end
 
 # Separate out the types that are not pre-compiled by the parser by default
@@ -82,20 +74,21 @@ end
 
 include("result_buffer.jl")
 include("detect.jl")
+include("init_parsing_utils.jl")
 include("init_parsing.jl")
 include("row_parsing.jl")
 include("consume_contexts.jl")
 
 function _create_options(;
-    delim::Union{UInt8,Char,Nothing}=',',
+    delim::Union{UInt8,Char,String,Nothing}=',',
     openquotechar::Union{UInt8,Char}='"',
     closequotechar::Union{UInt8,Char}='"',
     escapechar::Union{UInt8,Char}='"',
     sentinel::Union{Missing,Nothing,Vector{String}}=missing,
     groupmark::Union{Char,UInt8,Nothing}=nothing,
     stripwhitespace::Bool=false,
-    truestrings::Union{Nothing,Vector{String}}=["true", "True", "1", "t", "T"],
-    falsestrings::Union{Nothing,Vector{String}}=["false", "False", "0", "f", "F"],
+    truestrings::Union{Nothing,Vector{String}}=["true", "True", "TRUE", "1", "t", "T"],
+    falsestrings::Union{Nothing,Vector{String}}=["false", "False", "FALSE", "0", "f", "F"],
     dateformat::Union{String, Dates.DateFormat, Nothing, AbstractDict}=nothing,
     ignorerepeated::Bool=false,
     quoted::Bool=true,
@@ -110,7 +103,7 @@ function _create_options(;
         openquotechar=UInt8(openquotechar),
         closequotechar=UInt8(closequotechar),
         escapechar=UInt8(escapechar),
-        delim=UInt8(delim),
+        delim=delim,
         quoted=quoted,
         stripwhitespace=stripwhitespace,
         trues=truestrings,
@@ -125,11 +118,17 @@ function _create_options(;
 end
 
 _validate(header::Vector, schema::Vector, validate_type_map) = length(header) == length(schema) || throw(ArgumentError("Provided header and schema lengths don't match. Header has $(length(header)) columns, schema has $(length(schema))."))
-_validate(header::Vector, schema::Dict, validate_type_map) = !validate_type_map || issubset(keys(schema), header) || throw(ArgumentError("Provided header and schema names don't match. In schema, not in header: $(setdiff(keys(schema), header))). In header, not in schema: $(setdiff(header, keys(schema)))"))
+_validate(header::Vector, schema::Dict{Symbol}, validate_type_map) = !validate_type_map || issubset(keys(schema), header) || throw(ArgumentError("Provided header and schema names don't match. In schema, not in header: $(collect(setdiff(keys(schema), header))). In header, not in schema: $(setdiff(header, keys(schema)))"))
+function _validate(header::Vector, schema::Dict{Int}, validate_type_map)
+    validate_type_map || return
+    len = length(header)
+    (lo, hi) = extrema(keys(schema))
+    (lo < 1 || hi > len) && throw(ArgumentError("Provided schema indices are incompatible with header of length $(len). Offending indices from schema $(collect(setdiff(keys(schema), 1:len))))."))
+end
 _validate(header, schema, validate_type_map) = true
 
 _nbytes(::UInt8) = 1
-_nbytes(x::Char) = ncodeunits(x)
+_nbytes(x::Union{String,Char}) = ncodeunits(x)
 
 function validate_parser_args(;openquotechar, closequotechar, delim, escapechar, decimal, newlinechar, ignorerepeated)
     _nbytes(openquotechar) == 1 || throw(ArgumentError("`openquotechar` must be a single-byte character"))
@@ -153,12 +152,12 @@ end
 
 function setup_parser(
     input,
-    schema::Union{Nothing,Vector{DataType},Dict{Symbol,DataType}}=nothing;
-    header::Union{Vector{Symbol},Integer}=true,
+    schema::Union{Nothing,DataType,Base.Callable,Vector{DataType},Dict{Symbol,DataType},Dict{Int,DataType}}=nothing;
+    header::Union{Vector{Symbol},Vector{String},Integer}=true,
     skipto::Integer=0,
     limit::Integer=0,
     # Parsers.Options
-    delim::Union{UInt8,Char,Nothing}=',',
+    delim::Union{UInt8,Char,String,Nothing}=',',
     openquotechar::Union{UInt8,Char}='"',
     closequotechar::Union{UInt8,Char}='"',
     escapechar::Union{UInt8,Char}='"',
@@ -167,8 +166,8 @@ function setup_parser(
     groupmark::Union{Char,UInt8,Nothing}=nothing,
     stripwhitespace::Bool=false,
     ignorerepeated::Bool=false,
-    truestrings::Union{Nothing,Vector{String}}=["true", "True", "1", "t", "T"],
-    falsestrings::Union{Nothing,Vector{String}}=["false", "False", "0", "f", "F"],
+    truestrings::Union{Nothing,Vector{String}}=["true", "True", "TRUE", "1", "t", "T"],
+    falsestrings::Union{Nothing,Vector{String}}=["false", "False", "FALSE", "0", "f", "F"],
     dateformat::Union{String, Dates.DateFormat, Nothing, AbstractDict}=nothing,
     quoted::Bool=true,
     decimal::Union{Char,UInt8}='.',
@@ -184,28 +183,30 @@ function setup_parser(
     default_colname_prefix::String="COL_",
     use_mmap::Bool=false,
     no_quoted_newlines::Bool=false,
+    deduplicate_names::Bool=true,
 )
     0 <= skipto <= typemax(Int) || throw(ArgumentError("`skipto` argument must be positive and smaller than 9_223_372_036_854_775_808."))
     (header isa Integer && !(0 <= header <= typemax(Int))) && throw(ArgumentError("`header` row number must be positive and smaller than 9_223_372_036_854_775_808."))
-
+    (header isa Vector{String}) && (header = map(Symbol, header))
     if skipto == 0 && header isa Integer
         skipto = header + 1
     end
-    (header isa Integer && skipto < header) && throw(ArgumentError("`skipto` argument ($skipto) must come after `header` row ($header)"))
+    (header isa Integer && skipto <= header) && throw(ArgumentError("non-zero `skipto` argument ($skipto) must come after `header` row ($header)"))
 
     validate_parser_args(;openquotechar, closequotechar, delim, escapechar, decimal, newlinechar, ignorerepeated)
 
     _validate(header, schema, validate_type_map)
 
     settings = ParserSettings(
-        schema, header, Int(skipto), validate_type_map, default_colname_prefix,
+        header, Int(skipto), validate_type_map, default_colname_prefix,
         no_quoted_newlines, isnothing(newlinechar) ? newlinechar : UInt8(newlinechar),
+        deduplicate_names,
     )
 
     chunking_ctx = ChunkingContext(buffersize, nworkers, limit, comment)
     should_close, io = ChunkedBase._input_to_io(input, use_mmap)
     try
-        (lexer, lines_skipped_total) = initial_read_and_lex_and_skip!(io, chunking_ctx, settings, escapechar, openquotechar, closequotechar)
+        (lexer, lines_skipped_total) = initial_read_and_lex_and_skip!(io, chunking_ctx, settings, escapechar, openquotechar, closequotechar, ignoreemptyrows)
         # At this point we have skipped `header` rows and subsequent commented rows.
         # The next row should contain the header and should contain clean enough data to infer
         # the delimiter.
@@ -220,7 +221,8 @@ function setup_parser(
         )
 
         parsing_ctx = ParsingContext(DataType[], Enums.CSV_TYPE[], Symbol[], escapechar, options)
-        process_header_and_schema_and_finish_row_skip!(parsing_ctx, chunking_ctx, lexer, settings, lines_skipped_total)
+        process_header_and_schema_and_finish_row_skip!(parsing_ctx, chunking_ctx, lexer, schema, settings, lines_skipped_total)
+        deduplicate_names && (parsing_ctx.header .= makeunique(parsing_ctx.header))
         return should_close, parsing_ctx, chunking_ctx, lexer
     catch
         should_close && close(io)
@@ -230,13 +232,13 @@ end
 
 function parse_file(
     input,
-    schema::Union{Nothing,Vector{DataType},Dict{Symbol,DataType}}=nothing,
+    schema::Union{Nothing,DataType,Base.Callable,Vector{DataType},Dict{Symbol,DataType},Dict{Int,DataType}}=nothing,
     consume_ctx::AbstractConsumeContext=DebugContext();
-    header::Union{Nothing,Vector{Symbol},Integer}=true,
+    header::Union{Vector{Symbol},Vector{String},Integer}=true,
     skipto::Integer=0,
     limit::Integer=0,
     # Parsers.Options
-    delim::Union{UInt8,Char,Nothing}=',',
+    delim::Union{UInt8,Char,String,Nothing}=',',
     openquotechar::Union{UInt8,Char}='"',
     closequotechar::Union{UInt8,Char}='"',
     escapechar::Union{UInt8,Char}='"',
@@ -245,8 +247,8 @@ function parse_file(
     groupmark::Union{Char,UInt8,Nothing}=nothing,
     stripwhitespace::Bool=false,
     ignorerepeated::Bool=false,
-    truestrings::Union{Nothing,Vector{String}}=["true", "True", "1", "t", "T"],
-    falsestrings::Union{Nothing,Vector{String}}=["false", "False", "0", "f", "F"],
+    truestrings::Union{Nothing,Vector{String}}=["true", "True", "TRUE", "1", "t", "T"],
+    falsestrings::Union{Nothing,Vector{String}}=["false", "False", "FALSE", "0", "f", "F"],
     dateformat::Union{String, Dates.DateFormat, Nothing, AbstractDict}=nothing,
     quoted::Bool=true,
     decimal::Union{Char,UInt8}='.',
@@ -263,6 +265,7 @@ function parse_file(
     default_colname_prefix::String="COL_",
     use_mmap::Bool=false,
     no_quoted_newlines::Bool=false,
+    deduplicate_names::Bool=false,
 )
     _force in (:default, :serial, :parallel) || throw(ArgumentError("`_force` argument must be one of (:default, :serial, :parallel)."))
     (should_close, parsing_ctx, chunking_ctx, lexer) = setup_parser(
@@ -270,7 +273,8 @@ function parse_file(
         header, skipto, delim, openquotechar, closequotechar, limit, escapechar, newlinechar,
         sentinel, groupmark, stripwhitespace, truestrings, falsestrings, dateformat, comment,
         rounding, validate_type_map, default_colname_prefix, buffersize, nworkers,
-        use_mmap, no_quoted_newlines, ignorerepeated, quoted, decimal, ignoreemptyrows
+        use_mmap, no_quoted_newlines, ignorerepeated, quoted, decimal, ignoreemptyrows,
+        deduplicate_names,
     )
     try
         parse_file(lexer, parsing_ctx, consume_ctx, chunking_ctx, _force)
@@ -295,7 +299,7 @@ function parse_file(
     if ChunkedBase.should_use_parallel(chunking_ctx, _force)
         ntasks = tasks_per_chunk(chunking_ctx)
         nbuffers = total_result_buffers_count(chunking_ctx)
-        result_buffers = TaskResultBuffer[TaskResultBuffer(id, parsing_ctx.schema, cld(nrows, ntasks)) for id in 1:nbuffers]
+        result_buffers = _make_result_buffers(nbuffers, schema, cld(nrows, ntasks))
         parse_file_parallel(lexer, parsing_ctx, consume_ctx, chunking_ctx, result_buffers, CT)
     else
         result_buf = TaskResultBuffer(0, parsing_ctx.schema, nrows)

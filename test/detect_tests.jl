@@ -55,18 +55,11 @@ end
 
     # Header only -- take the max count delim
     s = b"a,b,c,d,e:f:g:h:i:j:k:l:m"
-    @assert !(UInt8('!') in ChunkedCSV.CANDIDATE_DELIMS)
     @test ChunkedCSV._detect_delim(s, 1, length(s), Q, Q, E, true) == UInt8(':')
 
     # One single complete row that is not a header -- take the max count delim
     s = b"a,b,c,d,e:f:g:h:i:j:k:l:m\n"
-    @assert !(UInt8('!') in ChunkedCSV.CANDIDATE_DELIMS)
     @test ChunkedCSV._detect_delim(s, 1, length(s), Q, Q, E, false) == UInt8(':')
-
-    # Incomplete row which is not a header -- use default delim
-    s = b"a,b,c,d,e:f:g:h:i:j:k:l:m"
-    @assert !(UInt8('!') in ChunkedCSV.CANDIDATE_DELIMS)
-    @test ChunkedCSV._detect_delim(s, 1, length(s), Q, Q, E, false) == UInt8(',')
 
     testctx = ChunkedCSV.TestContext()
     ChunkedCSV.parse_file(IOBuffer("a,b,c\ne,f,g\n"), [String, String, String], testctx, delim=nothing)

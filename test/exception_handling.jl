@@ -221,7 +221,7 @@ end
         header=true,
     )
 
-    @test_throws ArgumentError("Provided header and schema names don't match. In schema, not in header: Set([:q])). In header, not in schema: [:a, :b, :c]") parse_file(IOBuffer("""
+    @test_throws ArgumentError("Provided header and schema names don't match. In schema, not in header: [:q]. In header, not in schema: [:a, :b, :c]") parse_file(IOBuffer("""
         a,b,c
         1,2,3
         3,4,5
@@ -231,12 +231,22 @@ end
         validate_type_map=true,
     )
 
-    @test_throws ArgumentError("Unknown columns from schema mapping: Set([:q]), parsed header: [:a, :b, :c], row 1") parse_file(IOBuffer("""
+    @test_throws ArgumentError("Unknown columns from schema mapping: [:q], parsed header: [:a, :b, :c], row 1") parse_file(IOBuffer("""
         a,b,c
         1,2,3
         3,4,5
         """),
         Dict(:q => Int),
+        header=true,
+        validate_type_map=true,
+    )
+
+    @test_throws ArgumentError("Invalid column indices in schema mapping: [4], parsed header: [:a, :b, :c], row 1") parse_file(IOBuffer("""
+        a,b,c
+        1,2,3
+        3,4,5
+        """),
+        Dict(4 => Int),
         header=true,
         validate_type_map=true,
     )
@@ -258,4 +268,11 @@ end
     @test_throws ArgumentError ChunkedCSV.validate_parser_args(;openquotechar='"', closequotechar='"', delim=',', escapechar='α', decimal='.', newlinechar='\n', ignorerepeated=false)
     @test_throws ArgumentError ChunkedCSV.validate_parser_args(;openquotechar='"', closequotechar='"', delim=',', escapechar='\\', decimal='α', newlinechar='α', ignorerepeated=false)
     @test_throws ArgumentError ChunkedCSV.validate_parser_args(;openquotechar='"', closequotechar='"', delim=nothing, escapechar='\\', decimal='.', newlinechar='α', ignorerepeated=true)
+end
+
+@testset "other invalid args" begin
+    @test_throws ArgumentError parse_file(IOBuffer("a,b,c\ne,f,g\n"), nothing, ChunkedCSV.SkipContext(), header=-1)
+    @test_throws ArgumentError parse_file(IOBuffer("a,b,c\ne,f,g\n"), nothing, ChunkedCSV.SkipContext(), skipto=-1)
+    @test_throws ArgumentError parse_file(IOBuffer("a,b,c\ne,f,g\n"), nothing, ChunkedCSV.SkipContext(), header=1, skipto=1)
+    @test_throws ArgumentError parse_file(IOBuffer("a,b,c\ne,f,g\n"), nothing, ChunkedCSV.SkipContext(), header=2, skipto=1)
 end

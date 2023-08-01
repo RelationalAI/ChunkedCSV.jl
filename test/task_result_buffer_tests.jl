@@ -9,14 +9,12 @@ using Dates
 @testset "_translate_to_buffer_type" begin
     @test ChunkedCSV._translate_to_buffer_type(Int) == Int
     @test ChunkedCSV._translate_to_buffer_type(Float64) == Float64
-    @test ChunkedCSV._translate_to_buffer_type(Float64, false) == Float64
     @test ChunkedCSV._translate_to_buffer_type(String) == Parsers.PosLen31
-    @test ChunkedCSV._translate_to_buffer_type(String, false) == String
     @test ChunkedCSV._translate_to_buffer_type(ChunkedCSV.GuessDateTime) == DateTime
 end
 
 @testset "TaskResultBuffer constructors" begin
-    buf = ChunkedCSV.TaskResultBuffer(1, [Int, Float64, String], 10)
+    buf = ChunkedCSV.TaskResultBuffer(1, [Int, Float64, Parsers.PosLen31], 10)
     @test buf.id == 1
     @test buf.cols isa Vector{ChunkedCSV.BufferedVector}
     @test buf.cols[1] isa ChunkedCSV.BufferedVector{Int}
@@ -35,7 +33,7 @@ end
     @test length(buf.cols[3].elements) == 10
     @test size(buf.column_indicators) == (0, 3)
 
-    buf = ChunkedCSV.TaskResultBuffer(1, [Int, Float64, String])
+    buf = ChunkedCSV.TaskResultBuffer(1, [Int, Float64, Parsers.PosLen31])
     @test buf.id == 1
     @test buf.cols isa Vector{ChunkedCSV.BufferedVector}
     @test buf.cols[1] isa ChunkedCSV.BufferedVector{Int}
@@ -53,10 +51,47 @@ end
     @test length(buf.cols[3]) == 0
     @test length(buf.cols[3].elements) == 0
     @test size(buf.column_indicators) == (0, 3)
+
+    bufs = ChunkedCSV._make_result_buffers(2, [Int, Float64, Parsers.PosLen31], 3)
+    @test length(bufs) == 2
+    @test bufs[1].id == 1
+    @test bufs[1].cols isa Vector{ChunkedCSV.BufferedVector}
+    @test bufs[1].cols[1] isa ChunkedCSV.BufferedVector{Int}
+    @test bufs[1].cols[2] isa ChunkedCSV.BufferedVector{Float64}
+    @test bufs[1].cols[3] isa ChunkedCSV.BufferedVector{Parsers.PosLen31}
+    @test bufs[1].row_statuses isa ChunkedCSV.BufferedVector{ChunkedCSV.RowStatus.T}
+    @test bufs[1].column_indicators isa ChunkedCSV.BitSetMatrix
+    @test length(bufs[1].cols) == 3
+    @test length(bufs[1].row_statuses) == 0
+    @test length(bufs[1].row_statuses.elements) == 3
+    @test length(bufs[1].cols[1]) == 0
+    @test length(bufs[1].cols[1].elements) == 3
+    @test length(bufs[1].cols[2]) == 0
+    @test length(bufs[1].cols[2].elements) == 3
+    @test length(bufs[1].cols[3]) == 0
+    @test length(bufs[1].cols[3].elements) == 3
+    @test size(bufs[1].column_indicators) == (0, 3)
+    @test bufs[2].id == 2
+    @test bufs[2].cols isa Vector{ChunkedCSV.BufferedVector}
+    @test bufs[2].cols[1] isa ChunkedCSV.BufferedVector{Int}
+    @test bufs[2].cols[2] isa ChunkedCSV.BufferedVector{Float64}
+    @test bufs[2].cols[3] isa ChunkedCSV.BufferedVector{Parsers.PosLen31}
+    @test bufs[2].row_statuses isa ChunkedCSV.BufferedVector{ChunkedCSV.RowStatus.T}
+    @test bufs[2].column_indicators isa ChunkedCSV.BitSetMatrix
+    @test length(bufs[2].cols) == 3
+    @test length(bufs[2].row_statuses) == 0
+    @test length(bufs[2].row_statuses.elements) == 3
+    @test length(bufs[2].cols[1]) == 0
+    @test length(bufs[2].cols[1].elements) == 3
+    @test length(bufs[2].cols[2]) == 0
+    @test length(bufs[2].cols[2].elements) == 3
+    @test length(bufs[2].cols[3]) == 0
+    @test length(bufs[2].cols[3].elements) == 3
+    @test size(bufs[2].column_indicators) == (0, 3)
 end
 
 @testset "TaskResultBuffer empty! and ensureroom" begin
-    buf = ChunkedCSV.TaskResultBuffer(1, [Int, Float64, String], 10)
+    buf = ChunkedCSV.TaskResultBuffer(1, [Int, Float64, Parsers.PosLen31], 10)
     push!(buf.cols[1], 1)
     push!(buf.cols[2], 1.0)
     push!(buf.cols[3], Parsers.PosLen31(1, 1))
@@ -69,6 +104,7 @@ end
     @test length(buf.cols[2].elements) == 10
     @test length(buf.cols[3]) == 1
     @test length(buf.cols[3].elements) == 10
+    @test length(buf) == 1
     @test length(buf.row_statuses) == 1
     @test length(buf.row_statuses.elements) == 10
     @test size(buf.column_indicators) == (1, 3)
@@ -79,6 +115,7 @@ end
     @test length(buf.cols[2].elements) == 10
     @test length(buf.cols[3]) == 0
     @test length(buf.cols[3].elements) == 10
+    @test length(buf) == 0
     @test length(buf.row_statuses) == 0
     @test length(buf.row_statuses.elements) == 10
     @test size(buf.column_indicators) == (0, 3)

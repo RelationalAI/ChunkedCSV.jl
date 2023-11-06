@@ -58,7 +58,7 @@ end
 function ChunkedBase.populate_result_buffer!(
     result_buf::AbstractResultBuffer,
     newlines_segment::AbstractVector{Int32},
-    parsing_ctx::AbstractParsingContext,
+    parsing_ctx::ParsingContext,
     buf::Vector{UInt8},
     comment::Union{Nothing,Vector{UInt8}}=nothing,
     ::Type{CT}=Tuple{}

@@ -1,9 +1,9 @@
-
+# A consume context that prints out simple debug information about the parsed chunks
 struct DebugContext <: AbstractConsumeContext
-    error_only::Bool
-    n::Int
-    err_len::Int
-    show_values::Bool
+    error_only::Bool  # whether we should only print errored rows
+    n::Int            # number of rows valid rows to print when `error_only is false`
+    err_len::Int      # number of bytes to print for errored rows
+    show_values::Bool # whether we should print the parsed values for errored rows
 
     DebugContext(error_only::Bool=true, n::Int=3, err_len::Int=255, show_values::Bool=false) = new(error_only, n, err_len, show_values)
 end
@@ -119,6 +119,8 @@ function ChunkedBase.consume!(consume_ctx::DebugContext, payload::ParsedPayload)
     return nothing
 end
 
+# Used in tests to collect the results in sorted order
+# and to materialize the strings for each column
 struct TestContext <: AbstractConsumeContext
     results::Vector{TaskResultBuffer}
     strings::Vector{Vector{Vector{String}}}

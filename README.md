@@ -2,7 +2,7 @@
 
 The main goal of this package is to offer a parser for CSV files that can be used for streaming purposes. This means that it can work with data that is too large to fit into memory or in situations where we only need to process parts of the input data at a time. The parser reads the data in chunks, and it can parse each chunk in parallel while simultaneously prefetching the next one to increase throughput. Additionally, the parsed data is passed to a user-defined function that can consume it in any way required.
 
-Moreover, the package can automatically handle `Parsers.jl`-compatible types without dynamic dispatch overhead and with a low compilation overhead. This is done without specializing on input schema, and the memory usage is upper bound by the user, who can control the chunk size. All internally allocated buffers are reused, and the memory overhead for inputs with uniform density is fixed.
+Moreover, the package can automatically handle [`Parsers.jl`](https://github.com/JuliaData/Parsers.jl)-compatible types without dynamic dispatch overhead and with a low compilation overhead. This is done without specializing on input schema, and the memory usage is upper bound by the user, who can control the chunk size. All internally allocated buffers are reused, and the memory overhead for inputs with uniform density is fixed.
 
 ## Overview
 

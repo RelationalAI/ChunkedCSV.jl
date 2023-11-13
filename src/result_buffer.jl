@@ -44,12 +44,27 @@ end
     BitSetMatrix <: AbstractMatrix{Bool}
 
 A matrix representing the missingness of values in the result buffer.
-The matrix has as many rows, as there are rows with at least one missing value in the result buffer,
-but the number of columns is always the same.
+The number of rows in the matrix is equals the number of rows with at least one missing value in the result buffer.
+The number of columns in the matrix is equal to the number of columns in the results buffer.
 
-It is this recommended to iterate the result buffer from start to finish and note the `RowStatus` for
-the `HasColumnIndicators` which signals that the row contains missing values. Using `ColumnIterator`s
-is the easiest way to do this.
+When consuming a `TaskResultBuffer` it is this recommended to iterate it from start to finish
+and note the `RowStatus` for the `HasColumnIndicators` which signals that the row contains missing values.
+Using `ColumnIterator`s is the easiest way to do this. For example:
+
+```julia
+# The first column has type T
+for (value, isinvalidrow, ismissingvalue) for ColumnIterator{T}(result_buffer, 1)
+    if isinvalidrow
+        # The row didn't match the schema, so we better discard it
+        continue
+    end
+    if ismissingvalue
+        # The value is missing, so we can't use it
+        continue
+    end
+    # Use the value
+end
+```
 
 ## Indexing
 - `bs[r, c]`: Get the value at row `r` and column `c` of the matrix.
@@ -158,7 +173,8 @@ end
 # Since the chunk size if always <= 2GiB, we can never never overflow a PosLen31
 # which uses 31 bits for the position and 31 bits for the length
 _translate_to_buffer_type(::Type{String}) = Parsers.PosLen31
-# GuessDateTime is just a DateTime parser that tries a bit harder handle ISO8601
+# GuessDateTime is just a DateTime parser that instead of parsing a specific format string,
+# tries a bit harder to handle multiple ISO8601 compatible formats, including time zones.
 _translate_to_buffer_type(::Type{GuessDateTime}) = Dates.DateTime
 _translate_to_buffer_type(::Type{T}) where {T} = T
 

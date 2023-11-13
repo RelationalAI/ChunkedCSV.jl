@@ -1,25 +1,4 @@
 const _API_DOCS_SHARED = """
-    parse_file(input, schema=nothing, consume_ctx::C; kwargs...) where {C<:AbstractConsumeContext} -> Nothing
-
-    setup_parser(input, schema=nothing; kwargs...) -> (Bool, ParsingContext, ChunkingContext, Lexer)
-    parse_file(
-        should_close::Bool,
-        parsing_ctx::ParsingContext,
-        consume_ctx::C,
-        chunking_ctx::ChunkingContext,
-        lexer::Lexer;
-        _force::Symbol=:default,
-    ) where {C<:AbstractConsumeContext} -> Nothing
-
-Parse a CSV input by chunks of size `buffersize` and parse them in parallel using `nworkers` tasks.
-
-Before calling this function, you should define a custom `consume_ctx::C` which is a subtype of `AbstractConsumeContext` and implement a `consume!(::C, ::ParsedPayload)` method.
-Then, the `consume_ctx` is used to consume the parsed data, by internally dispatching on `consume!(::C, ::ParsedPayload)` which are also called in parallel.
-The parsed results can be found in the `results` field `ParsedPayload`, see `TaskResultBuffer` for more information about the format in which the results are stored.
-
-If you need to know the header and / or the schema which will be used to parse the file before creating your `consume_ctx`, you can call `setup_parser`
-and inspect the returned `ParsingContext`, then call `parse_file` with the other objects returned by `setup_parser`.
-
 ## Arguments
 - `input`: The input source to parse. Can be a `String` file path or an `IO` object.
 - `schema`: An optional schema for the CSV file, if omitted, all columns would be parsed as `String`s. It can be
@@ -29,7 +8,7 @@ and inspect the returned `ParsingContext`, then call `parse_file` with the other
     - a `Dict{Int,DataType}` which will map types to columns by position, or
     - a `Base.Callable` which will be called with the column index and name and should return a `DataType`.
     For the vector case, the length must match the number of columns in the CSV file.
-    For the dictionary case, the keys must be a subset of the column names in the CSV file,
+    For the dictionary case, the keys must be a subset of the column names in the CSV file (unless `validate_type_map` is set to `false`),
     columns that are not present in the mapping will be parsed as `String`s.
 - `consume_ctx`: A user-defined `<:AbstractConsumeContext` object which will be used to dispatch on `consume!(::C, ::ParsedPayload)` to consume the parsed data om each of `nworkers` tasks in parallel.
 ## Keyword arguments
@@ -42,6 +21,7 @@ and inspect the returned `ParsingContext`, then call `parse_file` with the other
 - `skipto`: The number of rows to skip before parsing the CSV file. Defaults to `0` (no skipping).
     This number is relative to the first row that wasn't empty and/or commented if you set `ignoreemptyrows` and/or `comment`.
 - `limit`: The maximum number of rows to parse. Defaults to `0` (no limit). Used in [`ChunkedBase.ChunkingContext`](@ref).
+### Parsing-related options
 - `delim`: The delimiter character used in the CSV file. Defaults to `','`. Only single-byte characters are supported. `nothing` indicates that the delimiter should be inferred from the first chunk of data. Used in [`Parsers.Options`](@ref).
 - `openquotechar`: The character used to open quoted fields in the CSV file. Defaults to `'"'`. Only single-byte characters are supported. Used in [`Parsers.Options`](@ref).
 - `closequotechar`: The character used to close quoted fields in the CSV file. Defaults to `'"'`. Only single-byte characters are supported. Used in [`Parsers.Options`](@ref).
@@ -61,14 +41,16 @@ and inspect the returned `ParsingContext`, then call `parse_file` with the other
 - `rounding`: The rounding mode used for `FixedDecimal` and `DateTime` values in the CSV file. Defaults to `RoundNearest`. Used in [`Parsers.Options`](@ref).
 - `validate_type_map`: Whether to validate the type map in the CSV file. Defaults to `true`.
 - `comment`: The string or byte prefix used to indicate comments in the CSV file. Defaults to `nothing` which means no comment skipping will be performed. Used in [`ChunkedBase.ChunkingContext`](@ref).
+### Chunking and parallelism
 - `nworkers`: The number of worker threads to use for parsing the CSV file. Defaults to `max(1, Threads.nthreads() - 1)`. Used in [`ChunkedBase.ChunkingContext`](@ref).
 - `buffersize`: The size of the buffer used for parsing the CSV file, in bytes. Defaults to `nworkers * 1024 * 1024`. Must be larger than any single row in input and smaller than 2GiB.
     If the input is larger than `buffersize` and if we're using `nworkers` > 1, a secondary buffer will be allocated internally to facilitate double-buffering. Used in [`ChunkedBase.ChunkingContext`](@ref).
+### Misc
 - `default_colname_prefix`: The default prefix to use for generated column names in the CSV file. Defaults to `"COL_"`.
 - `use_mmap`: Whether to use memory-mapped I/O for parsing the CSV file when the `input` is a `String` path. Defaults to `false`.
 - `no_quoted_newlines`: Assert that all newline characters in the file are record delimiters and never part of string field data. This allows the lexer to find newlines more efficiently. Defaults to `false`.
 - `deduplicate_names`: Whether to deduplicate column names in the CSV file. Defaults to `true`.
-- `_force`: Force parallel or serial parsing regardless of input size of `nworkers`. One of `:default`, `:serial` or `:parallel`. Defaults to `:default`, which won't parallelize small files or use the parallel code-path with `nworkers == 1`.
+- `_force`: Force parallel or serial parsing regardless of input size of `nworkers`. One of `:default`, `:serial` or `:parallel`. Defaults to `:default`, which won't parallelize small files or use the parallel code-path with `nworkers == 1`. Useful for debugging.
 """
 
 const _SEE_ALSO = """
@@ -77,7 +59,15 @@ const _SEE_ALSO = """
 - `ChunkedBase.jl` for more information about the `ChunkedBase` API.
 """
 
+
 """
+    setup_parser(input, schema=nothing; kwargs...) -> (Bool, ParsingContext, ChunkingContext, Lexer)
+
+For when you need to know the header and / or the schema which will be used to parse the file before creating your `consume_ctx`.
+
+`setup_parser` will validate user input, ingest enough data chunks to reach the first valid row in the input, and then examine the first row to ensure we have a valid header and schema.
+You can then inspect the returned `ParsingContext` to see what the header and schema will be, and then call `parse_file` with the other objects returned by `setup_parser`.
+
 $_API_DOCS_SHARED
 
 ## Returns
@@ -87,6 +77,7 @@ $_API_DOCS_SHARED
 - `lexer::NewlineLexers.Lexer`: Internal object, which is used to find newlines in the ingested chunks and which is also needed by `ChunkedBase.jl`
 
 $_SEE_ALSO
+- [`parse_file`](@ref)
 """
 function setup_parser(
     input,
@@ -169,12 +160,32 @@ function setup_parser(
 end
 
 """
+parse_file(input, schema=nothing, consume_ctx::C; kwargs...) where {C<:AbstractConsumeContext} -> Nothing
+parse_file(
+    should_close::Bool,
+    parsing_ctx::ParsingContext,
+    consume_ctx::C,
+    chunking_ctx::ChunkingContext,
+    lexer::Lexer;
+    _force::Symbol=:default,
+) where {C<:AbstractConsumeContext} -> Nothing
+
+Parse a CSV input by chunks of size `buffersize` and parse them in parallel using `nworkers` tasks.
+
+Before calling this function, you should define a custom `consume_ctx::C` which is a subtype of `AbstractConsumeContext` and implement a `consume!(::C, ::ParsedPayload)` method.
+Then, the `consume_ctx` is used to consume the parsed data, by internally dispatching on `consume!(::C, ::ParsedPayload)` which are also called in parallel.
+The parsed results can be found in the `results` field `ParsedPayload`, see `TaskResultBuffer` for more information about the format in which the results are stored.
+
+If you need to know the header and / or the schema which will be used to parse the file before creating your `consume_ctx`, you can call `setup_parser`
+and inspect the returned `ParsingContext`, then call `parse_file` with the other objects returned by `setup_parser`.
+
 $_API_DOCS_SHARED
 
 ## Returns
 - `Nothing`
 
 $_SEE_ALSO
+- [`setup_parser`](@ref)
 """
 function parse_file end
 

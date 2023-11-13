@@ -1,5 +1,7 @@
-# These are the user-provided arguments to `parse_file` or `setup_parser`.
-# We'll use them to construct the `ParsingContext` and `ChunkingContext`,
+# These are the user-provided arguments to `parse_file` or `setup_parser`, that we need to
+# use for the bootstrapping phase, when we skip any unwanted leading rows and sniff the beginning of
+# the file to determine/validate the newline, header, schema, etc.
+# We'll use them to construct the `Lexer`, `ParsingContext` and `ChunkingContext`,
 # after we sniff the beginning the file to determine the newline,
 # header, etc.
 struct InputArguments
@@ -25,6 +27,8 @@ _is_supported_type(::Type{T}) where {T} = Parsers.supportedtype(T)
 _is_supported_type(::Type{Nothing}) = true # Column skipping
 _is_supported_type(::Type{GuessDateTime}) = true # Our custom DateTime parser that handles multiple subsets of ISO8601
 function _is_supported_type(::Type{FixedDecimal{T,f}}) where {T,f}
+    # This check is copied from FixedPointDecimals.jl, the library uses it as runtime check,
+    # but we want to fail early if the user is trying to parse something is not possible to construct.
     # https://github.com/JuliaMath/FixedPointDecimals.jl/blob/1328b9a372d2285765a7255f154f09ffdd692508/src/FixedPointDecimals.jl#L83-L91
     n = FixedPointDecimals.max_exp10(T)
     return f >= 0 && (n < 0 || f <= n)
@@ -33,7 +37,7 @@ end
 # Separate out the types that are not pre-compiled by the parser by default
 # and return them as a single Tuple of unique types which can be passed to
 # populate_result_buffer! to trigger recompilation. See `parsecustom!`
-# in src/row_parsing.jl for how this is used.
+# in src/populate_result_buffer.jl for how this is used.
 function _custom_types(schema::Vector{DataType})
     # We sort the unique types to always produce the same Tuple for the same
     # schema. But maybe the default ordering from the IdDict is good enough?
@@ -46,7 +50,7 @@ function _custom_types(schema::Vector{DataType})
     return Tuple{custom_types...}
 end
 
-# Parsers.Options constructor with our defaults
+# Parsers.Options constructor with our defaults.
 function _create_options(;
     delim::Union{UInt8,Char,String,Nothing}=',',
     openquotechar::Union{UInt8,Char}='"',

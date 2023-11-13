@@ -48,7 +48,7 @@ include("init_parsing.jl")
 # Main entrypoints
 #
 
-include("api.jl")
+include("parse_file.jl")
 
 # Temporary hack to register new DateTime
 function __init__()

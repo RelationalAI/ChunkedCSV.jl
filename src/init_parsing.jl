@@ -1,10 +1,11 @@
 struct HeaderParsingError <: Exception
     msg::String
 end
-Base.showerror(io::IO, e::HeaderParsingError) = print(io, e.msg)
+Base.showerror(io::IO, e::HeaderParsingError) = print(io, "HeaderParsingError: ", e.msg)
 
 # We might need to skip to get to the header and then skip again to get to the data
 # This function does the *first* skip and initializes the lexer
+# If the newline is not provided, we'll need to detect it first
 function initial_read_and_lex_and_skip!(io, chunking_ctx, input_args, escapechar, openquotechar, closequotechar, ignoreemptyrows)
     # First ingestion of raw bytes from io
     bytes_read_in = ChunkedBase.initial_read!(io, chunking_ctx)
@@ -30,10 +31,12 @@ function initial_read_and_lex_and_skip!(io, chunking_ctx, input_args, escapechar
     return lexer, lines_skipped_total
 end
 
-# This function does the *second* skip and initializes the parsing context.
-# The parsing context requires us knowing the schema and the header, so we
-# need to parse the header first. We don't do type inference yet, so any
-# unknown types will be filled with String.
+# This function does the *second* skip and initializes the parsing context
+# (see the function above for the first skip).
+# We cannot construct the parsing contect without knowing the schema and the header,
+# we'll take what the user has provided and we'll reconcile it with the header row or
+# at least with the number of columns in the file. We don't do type inference yet, so any
+# unknown types will be filled with String if the user didn't give us a vector of types already.
 function process_header_and_schema_and_finish_row_skip!(
     parsing_ctx::ParsingContext,
     chunking_ctx::ChunkingContext,
@@ -53,7 +56,7 @@ function process_header_and_schema_and_finish_row_skip!(
     schema_provided && validate_schema(schema_input)
     newlines = chunking_ctx.newline_positions
 
-    @inbounds if schema_provided & header_provided
+    if schema_provided & header_provided
         # The user actually provided a schema and a header, so we just give to the parsing context
         append!(parsing_ctx.header, input_args.header)
         append!(schema, schema_input)

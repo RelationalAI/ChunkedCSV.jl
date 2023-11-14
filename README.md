@@ -11,7 +11,7 @@ All internally allocated buffers are reused, so if the number of values per MiB 
 
 ## Overview
 
-The package builds on [`ChunkedBase.jl`](https://github.com/JuliaData/ChunkedBase.jl), which provides a framework for parser packages, enabling them to customize three main aspects of the parsing process: how the data is parsed into a result buffer, what is the layout of the result buffer, and how the result buffer is consumed.
+The package builds on [`ChunkedBase.jl`](https://github.com/JuliaData/ChunkedBase.jl), which provides a framework for parser packages, enabling them to customize three main aspects of the parsing process: how the data is parsed into a result buffer, what is the layout of the result buffer, and how the result buffer is consumed. `ChunkedBase.jl` itself handles IO, splitting chunks by newlines and distributing them among multiple workers in parallel, where they are parsed by this package and consumed.
 
 For the parsing part, this package uses the `Parsers.jl` package, and special care is taken to avoid dynamic dispatch overhead when parsing user-provided schemas without specializing on them. 
 See the `src/populate_result_buffer.jl` file for more details about how this is done.
@@ -162,7 +162,10 @@ end
 
 When compared to established packages like [`CSV.jl`](https://github.com/JuliaData/CSV.jl), our package has a few notable differences:
 * We don't do any type inference for column types, so the user has to provide a schema. Otherwise, all columns will be parsed as `String`s.
-* We don't give you back any table-like object. Instead all, results are only temporarily available in the `consume!` method of the `AbstractConsumeContext` you provide. You could use this to build a table-like object inside of the context object, but we don't do it for you.
+* We don't give the user back any table-like object. Instead all, results are only temporarily available in the `consume!` method of the `AbstractConsumeContext` provided. One could use this package to build a table-like object inside of the context object, but this is not provided out out of the box.
+* We pre-lex the chunks of data so that parallel parsing can be safe. `CSV.jl` does the often faster and riskier thing, where parser tasks jump directly in the file at various offsets, without knowing the record boundaries, and try to recover.
+* At the time of writing, `CSV.jl` doesn't support multithreaded parsing of *chunks*, while we do.
+* The package plays nicely with `PrefetchedDownloadStream.jl` from [`CloudStore.jl`](https://github.com/JuliaServices/CloudStore.jl), which is an IO stream that prefetches chunks of data from Amazon S3/Azure Blob Storage. This is useful for parsing large files from the cloud without having to download the whole file first, even if it is compressed.
 
 ## Advanced usage
 

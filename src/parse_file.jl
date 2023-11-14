@@ -34,23 +34,23 @@ const _API_DOCS_SHARED = """
 - `ignorerepeated`: Whether to ignore repeated delimiters in the CSV file. Defaults to `false`. Used in [`Parsers.Options`](@ref).
 - `truestrings`: A vector of strings representing `true` values in the CSV file. Defaults to `["true", "True", "TRUE", "1", "t", "T"]`. Used in [`Parsers.Options`](@ref).
 - `falsestrings`: A vector of strings representing `false` values in the CSV file. Defaults to `["false", "False", "FALSE", "0", "f", "F"]`. Used in [`Parsers.Options`](@ref).
-- `dateformat`: The date format used in the CSV file. Defaults to `nothing`. Consider using `GuessDateTime` as a schema type instead. Used in [`Parsers.Options`](@ref).
+- `dateformat`: The date format used in the CSV file. Defaults to `nothing`, in which case `Parsers.defaul_format` is used. Consider using `GuessDateTime` as a schema type instead. Used in [`Parsers.Options`](@ref).
 - `quoted`: Whether fields in the CSV file are quoted. Defaults to `true`. Used in [`Parsers.Options`](@ref).
 - `decimal`: The character used as the decimal separator in numbers in the CSV file. Defaults to `'.'`. Only single-byte characters are supported. Used in [`Parsers.Options`](@ref).
 - `ignoreemptyrows`: Whether to ignore empty rows in the CSV file. Defaults to `true`. Used in [`Parsers.Options`](@ref).
 - `rounding`: The rounding mode used for `FixedDecimal` and `DateTime` values in the CSV file. Defaults to `RoundNearest`. Used in [`Parsers.Options`](@ref).
-- `validate_type_map`: Whether to validate the type map in the CSV file. Defaults to `true`.
+- `validate_type_map`: Whether to validate the keys in provided schema dictionaries against the column names / the number of columns in the CSV file. Defaults to `true`.
 - `comment`: The string or byte prefix used to indicate comments in the CSV file. Defaults to `nothing` which means no comment skipping will be performed. Used in [`ChunkedBase.ChunkingContext`](@ref).
 ### Chunking and parallelism
 - `nworkers`: The number of worker threads to use for parsing the CSV file. Defaults to `max(1, Threads.nthreads() - 1)`. Used in [`ChunkedBase.ChunkingContext`](@ref).
 - `buffersize`: The size of the buffer used for parsing the CSV file, in bytes. Defaults to `nworkers * 1024 * 1024`. Must be larger than any single row in input and smaller than 2GiB.
     If the input is larger than `buffersize` and if we're using `nworkers` > 1, a secondary buffer will be allocated internally to facilitate double-buffering. Used in [`ChunkedBase.ChunkingContext`](@ref).
 ### Misc
-- `default_colname_prefix`: The default prefix to use for generated column names in the CSV file. Defaults to `"COL_"`.
+- `default_colname_prefix`: The default prefix to use for generated column names in the CSV file, used when some of the names are missing or when the file is missing the header altogether. Defaults to `"COL_"`.
 - `use_mmap`: Whether to use memory-mapped I/O for parsing the CSV file when the `input` is a `String` path. Defaults to `false`.
-- `no_quoted_newlines`: Assert that all newline characters in the file are record delimiters and never part of string field data. This allows the lexer to find newlines more efficiently. Defaults to `false`.
-- `deduplicate_names`: Whether to deduplicate column names in the CSV file. Defaults to `true`.
-- `_force`: Force parallel or serial parsing regardless of input size of `nworkers`. One of `:default`, `:serial` or `:parallel`. Defaults to `:default`, which won't parallelize small files or use the parallel code-path with `nworkers == 1`. Useful for debugging.
+- `no_quoted_newlines`: Assert that all newline characters in the file are record delimiters and never part of string field data. This allows the lexer to find newlines more efficiently, but will lead to parsing errors if there are quoted newlines in the file. Defaults to `false`.
+- `deduplicate_names`: Whether to deduplicate column names in the CSV file by enumerating the colliding names with a `_1`, `_2`... suffixes. Defaults to `true`. Columns names are not significant during parsing, but they might be significant for the user when consuming the parsed data.
+- `force`: Force parallel or serial parsing regardless of input size of `nworkers`. One of `:default`, `:serial` or `:parallel`. Defaults to `:default`, which won't parallelize small files or use the parallel code-path with `nworkers == 1`. Useful for debugging.
 """
 
 const _SEE_ALSO = """
@@ -167,7 +167,7 @@ parse_file(
     consume_ctx::C,
     chunking_ctx::ChunkingContext,
     lexer::Lexer;
-    _force::Symbol=:default,
+    force::Symbol=:default,
 ) where {C<:AbstractConsumeContext} -> Nothing
 
 Parse a CSV input by chunks of size `buffersize` and parse them in parallel using `nworkers` tasks.
@@ -220,13 +220,13 @@ function parse_file(
     # In bytes. This absolutely has to be larger than any single row.
     # Much safer if any two consecutive rows are smaller than this threshold.
     buffersize::Integer=(nworkers * 1024 * 1024),
-    _force::Symbol=:default,
+    force::Symbol=:default,
     default_colname_prefix::String="COL_",
     use_mmap::Bool=false,
     no_quoted_newlines::Bool=false,
-    deduplicate_names::Bool=false,
+    deduplicate_names::Bool=true,
 )
-    _force in (:default, :serial, :parallel) || throw(ArgumentError("`_force` argument must be one of (:default, :serial, :parallel)."))
+    force in (:default, :serial, :parallel) || throw(ArgumentError("`force` argument must be one of (:default, :serial, :parallel)."))
     (should_close, parsing_ctx, chunking_ctx, lexer) = setup_parser(
         input, schema;
         header, skipto, delim, openquotechar, closequotechar, limit, escapechar, newlinechar,
@@ -236,7 +236,7 @@ function parse_file(
         deduplicate_names,
     )
     try
-        parse_file(lexer, parsing_ctx, consume_ctx, chunking_ctx, _force)
+        parse_file(lexer, parsing_ctx, consume_ctx, chunking_ctx, force)
     finally
         should_close && close(lexer.io)
     end
@@ -248,14 +248,14 @@ function parse_file(
     parsing_ctx::ParsingContext,
     consume_ctx::AbstractConsumeContext,
     chunking_ctx::ChunkingContext,
-    _force::Symbol=:default,
+    force::Symbol=:default,
 )
-    _force in (:default, :serial, :parallel) || throw(ArgumentError("`_force` argument must be one of (:default, :serial, :parallel)."))
+    force in (:default, :serial, :parallel) || throw(ArgumentError("`force` argument must be one of (:default, :serial, :parallel)."))
     schema = parsing_ctx.schema
     CT = _custom_types(schema)
 
     nrows = length(chunking_ctx.newline_positions) - 1
-    if ChunkedBase.should_use_parallel(chunking_ctx, _force)
+    if ChunkedBase.should_use_parallel(chunking_ctx, force)
         ntasks = tasks_per_chunk(chunking_ctx)
         nbuffers = total_result_buffers_count(chunking_ctx)
         result_buffers = _make_result_buffers(nbuffers, schema, cld(nrows, ntasks))

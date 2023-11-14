@@ -137,7 +137,7 @@ end
                 """),
                 [Int,Int],
                 throw_ctx,
-                _force=:serial,
+                force=:serial,
                 buffersize=6
             )
             @assert !isempty(throw_ctx.tasks)
@@ -153,7 +153,7 @@ end
                 [Int,Int],
                 throw_ctx,
                 nworkers=min(3, nthreads()),
-                _force=:parallel,
+                force=:parallel,
                 buffersize=12,
             )
             sleep(0.2)
@@ -176,7 +176,7 @@ end
                 ThrowingIO("a,b\n" * ("1,2\n3,4\n" ^ 10)), # 20 rows total
                 [Int,Int],
                 throw_ctx,
-                _force=:serial,
+                force=:serial,
                 buffersize=6,
             )
             @assert !isempty(throw_ctx.tasks)
@@ -191,7 +191,7 @@ end
                 [Int,Int],
                 throw_ctx,
                 nworkers=min(3, nthreads()),
-                _force=:parallel,
+                force=:parallel,
                 buffersize=12,
             )
             sleep(0.2)

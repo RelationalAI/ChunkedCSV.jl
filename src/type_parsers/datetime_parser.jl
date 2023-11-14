@@ -1,4 +1,39 @@
-# TODO: Ugly
+"""
+    GuessDateTime
+
+A type that implements `Parsers.typeparser` to parse various ISO8601-like formats into a `DateTime`.
+If the input timestamp has a timezone information, we always convert it to UTC.
+
+It will parse the following formats:
+- `yyyy-mm-dd`
+- `yyyy-mm-dd HH:MM:SS`
+- `yyyy-mm-dd HH:MM:SS.s`  # where `s` is 1-3 digits, but we also support rounding to milliseconds
+- `yyyy-mm-dd HH:MM:SSZ`   # where `Z` is any valid timezone
+- `yyyy-mm-dd HH:MM:SS.sZ`
+- `yyyy-mm-dd`
+- `yyyy-mm-ddTHH:MM:SS`
+- `yyyy-mm-ddTHH:MM:SS.s`
+- `yyyy-mm-ddTHH:MM:SSZ`
+- `yyyy-mm-ddTHH:MM:SS.sZ`
+
+# Examples:
+```julia
+julia> Parsers.xparse(ChunkedCSV.GuessDateTime, "2014-01-01")
+Parsers.Result{Dates.DateTime}(code=`SUCCESS: OK | EOF `, tlen=10, val=2014-01-01T00:00:00)
+
+julia> Parsers.xparse(ChunkedCSV.GuessDateTime, "2014-01-01 12:34:56")
+Parsers.Result{Dates.DateTime}(code=`SUCCESS: OK | EOF `, tlen=19, val=2014-01-01T00:00:00)
+
+julia> Parsers.xparse(ChunkedCSV.GuessDateTime, "2014-01-01 12:34:56.789")
+Parsers.Result{Dates.DateTime}(code=`SUCCESS: OK | EOF `, tlen=23, val=2014-01-01T12:34:56.789)
+
+julia> Parsers.xparse(ChunkedCSV.GuessDateTime, "2014-01-01 12:34:56Z")
+Parsers.Result{Dates.DateTime}(code=`SUCCESS: OK | EOF `, tlen=20, val=2014-01-01T12:34:56)
+
+julia> Parsers.xparse(ChunkedCSV.GuessDateTime, "2014-01-01 12:34:56.789Z")
+Parsers.Result{Dates.DateTime}(code=`SUCCESS: OK | EOF `, tlen=24, val=2014-01-01T12:34:56.789)
+```
+"""
 struct GuessDateTime <: Dates.TimeType; x::Dates.DateTime  end
 GuessDateTime(vals...) = GuessDateTime(DateTime(vals...))
 Base.convert(::Type{DateTime}, x::GuessDateTime) = x.x
@@ -119,9 +154,15 @@ Base.@propagate_inbounds function _default_tryparse_timestamp(buf, pos, len, cod
         end
 
         i == 0 && (return _unsafe_datetime(year, month, day, hour, minute, second), code | Parsers.INVALID, pos)
-        if millisecond > 999
+        i < 3 && (millisecond *= 10 ^ (3 - i))
+
+        if i > 3
             if rounding === nothing
-                return (_unsafe_datetime(year, month, day, hour, minute, second), code | Parsers.INEXACT, pos)
+                d, r = divrem(millisecond, Int64(10) ^ (i - 3))
+                if r != 0
+                    return (_unsafe_datetime(year, month, day, hour, minute, second), code | Parsers.INEXACT, pos)
+                end
+                millisecond = d
             elseif rounding::RoundingMode === RoundNearest
                 millisecond = div(millisecond, Int64(10) ^ (i - 3), RoundNearest)
             elseif rounding::RoundingMode === RoundNearestTiesAway

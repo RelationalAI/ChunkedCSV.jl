@@ -67,7 +67,7 @@ parse_file(
     ), 
     [Int, Int], 
     buffersize=8, 
-    _force=:parallel,
+    force=:parallel,
 )
 # [ Info: Start row: 1, nrows: 1, Task (runnable) @0x00007f6806c41f50 ❚
 # [ Info: Start row: 4, nrows: 1, Task (runnable) @0x00007f6806c41f50 ❚
@@ -139,7 +139,17 @@ For increased ergonomics, we can also define a convenience method that calls `pa
 ```julia
 ChunkedCSV.parse_file(f::Function, input, schema; kwargs...) = parse_file(input, schema, ClosureContext(f); kwargs...)
 
-parse_file(IOBuffer("a,b\n1,2\n3,4\n5,6\n7,8\n9,10\n"), [Int, Int], buffersize=8) do payload
+io = IOBuffer("""
+    a,b
+    1,2
+    3,4
+    5,6
+    7,8
+    9,10
+    """
+)
+
+parse_file(io, [Int, Int], buffersize=8) do payload
     println("Hi there! We're at start row: $(payload.row_num), nrows: $(payload.len) in this chunk")
 end
 # Hi there! We're at start row: 1, nrows: 1 in this chunk

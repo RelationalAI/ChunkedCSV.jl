@@ -1,6 +1,6 @@
 module ChunkedCSV
 
-export setup_parser, parse_file, ColumnIterator, DebugContext
+export setup_parser, parse_file, ColumnIterator, DebugContext, GuessDateTime
 export AbstractConsumeContext, ParsedPayload
 export consume!, setup_tasks!, task_done!
 

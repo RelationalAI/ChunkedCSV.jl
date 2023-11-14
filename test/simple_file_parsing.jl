@@ -48,7 +48,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 """),
                 [Int,Int,Int],
                 testctx,
-                _force=alg,
+                force=alg,
             )
             @test testctx.header == [:a, :b, :c]
             @test testctx.schema == [Int, Int, Int]
@@ -69,7 +69,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 """),
                 [Float64, Float64],
                 testctx,
-                _force=alg,
+                force=alg,
             )
             @test testctx.header == [:a, :b]
             @test testctx.schema == [Float64, Float64]
@@ -88,7 +88,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 """),
                 [FixedDecimal{Int32,2},FixedDecimal{Int64,3},FixedDecimal{UInt128,2}],
                 testctx,
-                _force=alg,
+                force=alg,
             )
             @test testctx.header == [:a, :b, :c]
             @test testctx.schema == [FixedDecimal{Int32,2},FixedDecimal{Int64,3}, FixedDecimal{UInt128,2}]
@@ -109,7 +109,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 """),
                 [Date,Date],
                 testctx,
-                _force=alg,
+                force=alg,
             )
             @test testctx.header == [:a, :b]
             @test testctx.schema == [Date, Date]
@@ -140,7 +140,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 """),
                 [Int,GuessDateTime,GuessDateTime,GuessDateTime],
                 testctx,
-                _force=alg,
+                force=alg,
             )
             @test testctx.header == [:id, :a, :b, :c]
             @test testctx.schema == [Int, DateTime,DateTime,DateTime]
@@ -163,7 +163,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 """),
                 [Int,DateTime,DateTime,DateTime],
                 testctx,
-                _force=alg,
+                force=alg,
             )
             @test testctx.header == [:id, :a, :b, :c]
             @test testctx.schema == [Int, DateTime,DateTime,DateTime]
@@ -184,7 +184,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 """),
                 [Int,DateTime],
                 testctx,
-                _force=alg,
+                force=alg,
                 dateformat=Dates.dateformat"yyyy-mm-dd HH:MM:SS.sss",
             )
             @test testctx.header == [:id, :a]
@@ -204,7 +204,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 """),
                 [String,String],
                 testctx,
-                _force=alg,
+                force=alg,
             )
             @test testctx.header == [:a, :b]
             @test testctx.schema == [Parsers.PosLen31, Parsers.PosLen31]
@@ -222,7 +222,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 """),
                 [String,String,String],
                 testctx,
-                _force=alg,
+                force=alg,
             )
             @test testctx.header == [:a, :b, :c]
             @test testctx.schema == [Parsers.PosLen31, Parsers.PosLen31, Parsers.PosLen31]
@@ -244,7 +244,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 ,,"""),
                 [String,String,String],
                 testctx,
-                _force=alg,
+                force=alg,
             )
             @test testctx.header == [:a, :b, :c]
             @test testctx.schema == [Parsers.PosLen31, Parsers.PosLen31, Parsers.PosLen31]
@@ -271,7 +271,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 """),
                 [Char,Char,Char],
                 testctx,
-                _force=alg,
+                force=alg,
             )
             @test testctx.header == [:a, :b, :c]
             @test testctx.schema == [Char, Char, Char]
@@ -303,7 +303,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 """),
                 [Bool,Bool],
                 testctx,
-                _force=alg,
+                force=alg,
             )
             @test testctx.header == [:a, :b]
             @test testctx.schema == [Bool, Bool]
@@ -326,7 +326,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 [Int,Int],
                 empty!(testctx),
                 buffersize=6,
-                _force=alg,
+                force=alg,
             )
             @test testctx.header == [:a, :b]
             @test testctx.schema == [Int, Int]
@@ -351,7 +351,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 [Float64, Float64],
                 testctx,
                 buffersize=10,
-                _force=alg,
+                force=alg,
             )
             @test testctx.header == [:a, :b]
             @test testctx.schema == [Float64, Float64]
@@ -376,7 +376,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 [String,String],
                 testctx,
                 buffersize=8,
-                _force=alg,
+                force=alg,
             )
             @test testctx.header == [:a, :b]
             @test testctx.schema == [Parsers.PosLen31, Parsers.PosLen31]
@@ -413,7 +413,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 [String,String],
                 testctx,
                 buffersize=8,
-                _force=alg,
+                force=alg,
                 header=5,
             )
             @test testctx.header == [:a, :b]
@@ -454,7 +454,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 [Int,Int],
                 testctx,
                 buffersize=4,
-                _force=alg,
+                force=alg,
                 header=5,
             )
             @test testctx.header == [:a, :b]
@@ -489,7 +489,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 [Float64,Float64],
                 testctx,
                 buffersize=8,
-                _force=alg,
+                force=alg,
                 header=5,
             )
             @test testctx.header == [:a, :b]
@@ -519,7 +519,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 testctx,
                 limit=1,
                 header=false,
-                _force=alg,
+                force=alg,
             )
             @test testctx.header == [:COL_1, :COL_2]
             @test testctx.schema == [Int, Int]
@@ -540,7 +540,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 limit=1,
                 header=false,
                 skipto=3,
-                _force=alg,
+                force=alg,
             )
             @test testctx.header == [:COL_1, :COL_2]
             @test testctx.schema == [Int, Int]
@@ -555,7 +555,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 testctx,
                 limit=50,
                 header=false,
-                _force=alg,
+                force=alg,
                 buffersize=10,
             )
             res = collect(testctx)
@@ -575,7 +575,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 limit=1,
                 skipto=2,
                 header=false,
-                _force=alg,
+                force=alg,
             )
             @test testctx.header == [:COL_1, :COL_2]
             @test testctx.schema == [Int, Int]
@@ -595,7 +595,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 testctx,
                 limit=1,
                 header=2,
-                _force=alg,
+                force=alg,
             )
             @test testctx.header == [:a, :b]
             @test testctx.schema == [Int, Int]
@@ -623,7 +623,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 [Int, Int],
                 testctx,
                 comment="#",
-                _force=alg
+                force=alg
             )
             @test testctx.header == [:a, :b]
             @test testctx.schema == [Int, Int]
@@ -651,7 +651,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 [Int, Int],
                 testctx,
                 comment="#",
-                _force=alg,
+                force=alg,
                 buffersize=5,
             )
             @test testctx.header == [:a, :b]
@@ -689,7 +689,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 [Int, Int],
                 testctx,
                 comment="#",
-                _force=alg,
+                force=alg,
                 header=5,
             )
             @test testctx.header == [:a, :b]
@@ -720,7 +720,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 [Int, Int],
                 testctx,
                 comment="#",
-                _force=alg,
+                force=alg,
                 buffersize=5,
                 header=5,
             )
@@ -761,7 +761,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 [Int, Int],
                 testctx,
                 comment="#",
-                _force=alg,
+                force=alg,
                 header=5,
                 skipto=9,
             )
@@ -794,7 +794,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 [Int, Int],
                 testctx,
                 comment="#",
-                _force=alg,
+                force=alg,
                 buffersize=5,
                 header=4,
                 skipto=8,
@@ -836,7 +836,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 [Int, Int],
                 testctx,
                 comment="#",
-                _force=alg,
+                force=alg,
                 header=5,
                 skipto=8,
                 buffersize=5,
@@ -863,7 +863,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 [Int, Int],
                 testctx,
                 comment="#",
-                _force=alg,
+                force=alg,
                 header=false,
                 buffersize=5,
             )
@@ -885,7 +885,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 nothing,
                 testctx,
                 header=false,
-                _force=alg,
+                force=alg,
             )
             @test testctx.header == [:COL_1, :COL_2]
             @test testctx.schema == [Parsers.PosLen31, Parsers.PosLen31]
@@ -907,7 +907,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 testctx,
                 header=false,
                 skipto=3,
-                _force=alg,
+                force=alg,
             )
             @test testctx.header == [:COL_1, :COL_2]
             @test testctx.schema == [Parsers.PosLen31, Parsers.PosLen31]
@@ -929,7 +929,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                     [Int,Int],
                     testctx,
                     header=false,
-                    _force=alg,
+                    force=alg,
                 )
                 @test testctx.header == [:COL_1, :COL_2]
                 @test testctx.schema == [Int, Int]
@@ -949,7 +949,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                     testctx,
                     header=false,
                     skipto=3,
-                    _force=alg,
+                    force=alg,
                 )
                 @test testctx.header == [:COL_1, :COL_2]
                 @test testctx.schema == [Int, Int]
@@ -969,7 +969,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 [Int,Int],
                 testctx,
                 header=false,
-                _force=alg,
+                force=alg,
                 default_colname_prefix="#"
             )
             @test testctx.header == [Symbol("#1"), Symbol("#2")]
@@ -983,7 +983,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 nothing,
                 testctx,
                 header=false,
-                _force=alg,
+                force=alg,
                 default_colname_prefix="##"
             )
             @test testctx.header == [Symbol("##1"), Symbol("##2")]
@@ -999,7 +999,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 Dict(:q => Int, :b => Int),
                 testctx,
                 header=[:a, :b, :c],
-                _force=alg,
+                force=alg,
                 validate_type_map=false,
             )
             @test testctx.header == [:a, :b, :c]
@@ -1014,7 +1014,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 Dict(:q => Int, :b => Int),
                 testctx,
                 header=1,
-                _force=alg,
+                force=alg,
                 validate_type_map=false,
             )
             @test testctx.header == [:a, :b, :c]
@@ -1028,7 +1028,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 """),
                 [String,String,String],
                 testctx,
-                _force=alg,
+                force=alg,
                 escapechar='"',
             )
             @test testctx.header == [:a, :b, Symbol("c\"")]
@@ -1039,7 +1039,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 """),
                 [String,String,String],
                 testctx,
-                _force=alg,
+                force=alg,
                 escapechar='\\',
             )
             @test testctx.header == [:a, :b, Symbol("c\"")]
@@ -1050,7 +1050,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                     """),
                 nothing,
                 testctx,
-                _force=alg,
+                force=alg,
                 escapechar='"',
             )
             @test testctx.header == [:a, :b, Symbol("c\"")]
@@ -1061,7 +1061,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 """),
                 nothing,
                 testctx,
-                _force=alg,
+                force=alg,
                 escapechar='\\',
             )
             @test testctx.header == [:a, :b, Symbol("c\"")]
@@ -1072,28 +1072,28 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
     @testset "Empty input ($(io_t), $(alg))" begin
         @testset "Empty lines" begin
             testctx = TestContext()
-            parse_file(io_t("a,b,c\n\n"), nothing, testctx, _force=alg, ignoreemptyrows=false)
+            parse_file(io_t("a,b,c\n\n"), nothing, testctx, force=alg, ignoreemptyrows=false)
             @test testctx.header == [:a, :b, :c]
             @test testctx.results[1].row_statuses == [RowStatus.TooFewColumns | RowStatus.HasColumnIndicators]
 
             testctx = TestContext()
-            parse_file(io_t("a,b,c\n\n"), nothing, testctx, _force=alg, ignoreemptyrows=true)
+            parse_file(io_t("a,b,c\n\n"), nothing, testctx, force=alg, ignoreemptyrows=true)
             @test testctx.header == [:a, :b, :c]
             @test testctx.results[1].row_statuses == [RowStatus.SkippedRow | RowStatus.HasColumnIndicators]
 
             testctx = TestContext()
-            parse_file(io_t("a,b,c\r\r"), nothing, testctx, _force=alg, ignoreemptyrows=true, newlinechar='\r')
+            parse_file(io_t("a,b,c\r\r"), nothing, testctx, force=alg, ignoreemptyrows=true, newlinechar='\r')
             @test testctx.header == [:a, :b, :c]
             @test testctx.results[1].row_statuses == [RowStatus.SkippedRow | RowStatus.HasColumnIndicators]
 
             testctx = TestContext()
-            parse_file(io_t("a,b,c\r\n\r\n"), nothing, testctx, _force=alg, ignoreemptyrows=true, newlinechar='\n')
+            parse_file(io_t("a,b,c\r\n\r\n"), nothing, testctx, force=alg, ignoreemptyrows=true, newlinechar='\n')
             @test testctx.header == [:a, :b, :c]
             @test testctx.results[1].row_statuses == [RowStatus.SkippedRow | RowStatus.HasColumnIndicators]
 
 
             testctx = TestContext()
-            parse_file(io_t("a,b,c\r\n\r\n1,2,3\r\n4,5,6"), [Int,Int,Int], testctx, _force=alg, ignoreemptyrows=true)
+            parse_file(io_t("a,b,c\r\n\r\n1,2,3\r\n4,5,6"), [Int,Int,Int], testctx, force=alg, ignoreemptyrows=true)
             @test testctx.header == [:a, :b, :c]
             @test testctx.results[1].row_statuses == [RowStatus.SkippedRow | RowStatus.HasColumnIndicators, RowStatus.Ok, RowStatus.Ok]
             @test testctx.results[1].cols[1][2:3] == [1, 4]
@@ -1101,7 +1101,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test testctx.results[1].cols[3][2:3] == [3, 6]
 
             testctx = TestContext()
-            parse_file(io_t("a,b,c\n\n1,2,3\n4,5,6"), [Int,Int,Int], testctx, _force=alg, ignoreemptyrows=true)
+            parse_file(io_t("a,b,c\n\n1,2,3\n4,5,6"), [Int,Int,Int], testctx, force=alg, ignoreemptyrows=true)
             @test testctx.header == [:a, :b, :c]
             @test testctx.results[1].row_statuses == [RowStatus.SkippedRow | RowStatus.HasColumnIndicators, RowStatus.Ok, RowStatus.Ok]
             @test testctx.results[1].cols[1][2:3] == [1, 4]
@@ -1109,7 +1109,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test testctx.results[1].cols[3][2:3] == [3, 6]
 
             testctx = TestContext()
-            parse_file(io_t("a,b,c\r\r1,2,3\r4,5,6"), [Int,Int,Int], testctx, _force=alg, ignoreemptyrows=true, newlinechar='\r')
+            parse_file(io_t("a,b,c\r\r1,2,3\r4,5,6"), [Int,Int,Int], testctx, force=alg, ignoreemptyrows=true, newlinechar='\r')
             @test testctx.header == [:a, :b, :c]
             @test testctx.results[1].row_statuses == [RowStatus.SkippedRow | RowStatus.HasColumnIndicators, RowStatus.Ok, RowStatus.Ok]
             @test testctx.results[1].cols[1][2:3] == [1, 4]
@@ -1117,7 +1117,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test testctx.results[1].cols[3][2:3] == [3, 6]
 
             testctx = TestContext()
-            parse_file(io_t("a,b,c\r\n\r\n1,2,3\r\n\r\n4,5,6"), [Int,Int,Int], testctx, _force=alg, ignoreemptyrows=true)
+            parse_file(io_t("a,b,c\r\n\r\n1,2,3\r\n\r\n4,5,6"), [Int,Int,Int], testctx, force=alg, ignoreemptyrows=true)
             @test testctx.header == [:a, :b, :c]
             @test testctx.results[1].row_statuses == [RowStatus.SkippedRow | RowStatus.HasColumnIndicators, RowStatus.Ok, RowStatus.SkippedRow | RowStatus.HasColumnIndicators, RowStatus.Ok]
             @test testctx.results[1].cols[1][[2,4]] == [1, 4]
@@ -1127,7 +1127,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
 
         @testset "no file header, no provided header, no schema" begin
             testctx = TestContext()
-            parse_file(io_t(""), nothing, testctx, _force=alg, header=false)
+            parse_file(io_t(""), nothing, testctx, force=alg, header=false)
             @test isempty(testctx.results[1].cols)
             @test isempty(testctx.header)
             @test isempty(testctx.schema)
@@ -1135,7 +1135,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
 
         @testset "no file header, has provided header, no schema" begin
             testctx = TestContext()
-            parse_file(io_t(""), nothing, testctx, _force=alg, header=[:A, :B])
+            parse_file(io_t(""), nothing, testctx, force=alg, header=[:A, :B])
             @test length(testctx.results[1].cols) == 2
             @test testctx.header == [:A, :B]
             @test testctx.schema == [Parsers.PosLen31, Parsers.PosLen31]
@@ -1143,7 +1143,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
 
         @testset "no file header, no provided header, has schema" begin
             testctx = TestContext()
-            parse_file(io_t(""), [Int, String], testctx, _force=alg, header=false)
+            parse_file(io_t(""), [Int, String], testctx, force=alg, header=false)
             @test length(testctx.results[1].cols) == 2
             @test testctx.header == [:COL_1, :COL_2]
             @test testctx.schema == [Int, Parsers.PosLen31]
@@ -1151,7 +1151,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
 
         @testset "has file header, has provided header, has schema" begin
             testctx = TestContext()
-            parse_file(io_t(""), [Int, String], testctx, _force=alg, header=[:A, :B])
+            parse_file(io_t(""), [Int, String], testctx, force=alg, header=[:A, :B])
             @test length(testctx.results[1].cols) == 2
             @test testctx.header == [:A, :B]
             @test testctx.schema == [Int, Parsers.PosLen31]
@@ -1159,7 +1159,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
 
         @testset "has file header, no provided header, no schema" begin
             testctx = TestContext()
-            parse_file(io_t(""), nothing, testctx, _force=alg, header=true)
+            parse_file(io_t(""), nothing, testctx, force=alg, header=true)
             @test isempty(testctx.results[1].cols)
             @test isempty(testctx.header)
             @test isempty(testctx.schema)
@@ -1167,7 +1167,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
 
         @testset "has file header, no provided header, has schema" begin
             testctx = TestContext()
-            parse_file(io_t(""), [Int, String], testctx, _force=alg, header=true)
+            parse_file(io_t(""), [Int, String], testctx, force=alg, header=true)
             @test length(testctx.results[1].cols) == 2
             @test testctx.header == [:COL_1, :COL_2]
             @test testctx.schema == [Int, Parsers.PosLen31]
@@ -1179,7 +1179,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
         # https://www.ietf.org/rfc/rfc4180.txt
         @testset "Each record is located on a separate line, delimited by a line break (CRLF)." begin
             testctx = TestContext()
-            parse_file(io_t("aaa,bbb,ccc\nzzz,yyy,xxx\n"), nothing, testctx, _force=alg, header=false)
+            parse_file(io_t("aaa,bbb,ccc\nzzz,yyy,xxx\n"), nothing, testctx, force=alg, header=false)
             @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen31(1, 3), Parsers.PosLen31(13, 3)]
             @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen31(5, 3), Parsers.PosLen31(17, 3)]
             @test testctx.results[1].cols[3][1:2] == [Parsers.PosLen31(9, 3), Parsers.PosLen31(21, 3)]
@@ -1191,7 +1191,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test length(testctx.results[1].cols[3]) == 2
 
             testctx = TestContext()
-            parse_file(io_t("aaa,bbb,ccc\r\nzzz,yyy,xxx\r\n"), nothing, testctx, _force=alg, header=false)
+            parse_file(io_t("aaa,bbb,ccc\r\nzzz,yyy,xxx\r\n"), nothing, testctx, force=alg, header=false)
             @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen31(1, 3), Parsers.PosLen31(14, 3)]
             @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen31(5, 3), Parsers.PosLen31(18, 3)]
             @test testctx.results[1].cols[3][1:2] == [Parsers.PosLen31(9, 3), Parsers.PosLen31(22, 3)]
@@ -1205,7 +1205,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
 
         @testset "The last record in the file may or may not have an ending line break." begin
             testctx = TestContext()
-            parse_file(io_t("aaa,bbb,ccc\nzzz,yyy,xxx"), nothing, testctx, _force=alg, header=false)
+            parse_file(io_t("aaa,bbb,ccc\nzzz,yyy,xxx"), nothing, testctx, force=alg, header=false)
             @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen31(1, 3), Parsers.PosLen31(13, 3)]
             @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen31(5, 3), Parsers.PosLen31(17, 3)]
             @test testctx.results[1].cols[3][1:2] == [Parsers.PosLen31(9, 3), Parsers.PosLen31(21, 3)]
@@ -1217,7 +1217,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test length(testctx.results[1].cols[3]) == 2
 
             testctx = TestContext()
-            parse_file(io_t("aaa,bbb,ccc\r\nzzz,yyy,xxx"), nothing, testctx, _force=alg, header=false)
+            parse_file(io_t("aaa,bbb,ccc\r\nzzz,yyy,xxx"), nothing, testctx, force=alg, header=false)
             @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen31(1, 3), Parsers.PosLen31(14, 3)]
             @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen31(5, 3), Parsers.PosLen31(18, 3)]
             @test testctx.results[1].cols[3][1:2] == [Parsers.PosLen31(9, 3), Parsers.PosLen31(22, 3)]
@@ -1238,8 +1238,8 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             should be indicated via the optional "header" parameter of this
             MIME type).""" begin
             testctx = TestContext()
-            parse_file(io_t("field_name,field_name,field_name\naaa,bbb,ccc\nzzz,yyy,xxx"), nothing, testctx, _force=alg)
-            @test testctx.header == [:field_name, :field_name, :field_name]
+            parse_file(io_t("field_name,field_name,field_name\naaa,bbb,ccc\nzzz,yyy,xxx"), nothing, testctx, force=alg)
+            @test testctx.header == [:field_name, :field_name_1, :field_name_2]
             @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen31(33+1, 3), Parsers.PosLen31(33+13, 3)]
             @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen31(33+5, 3), Parsers.PosLen31(33+17, 3)]
             @test testctx.results[1].cols[3][1:2] == [Parsers.PosLen31(33+9, 3), Parsers.PosLen31(33+21, 3)]
@@ -1251,8 +1251,8 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test length(testctx.results[1].cols[3]) == 2
 
             testctx = TestContext()
-            parse_file(io_t("field_name,field_name,field_name\r\naaa,bbb,ccc\r\nzzz,yyy,xxx"), nothing, testctx, _force=alg)
-            @test testctx.header == [:field_name, :field_name, :field_name]
+            parse_file(io_t("field_name,field_name,field_name\r\naaa,bbb,ccc\r\nzzz,yyy,xxx"), nothing, testctx, force=alg)
+            @test testctx.header == [:field_name, :field_name_1, :field_name_2]
             @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen31(34+1, 3), Parsers.PosLen31(34+14, 3)]
             @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen31(34+5, 3), Parsers.PosLen31(34+18, 3)]
             @test testctx.results[1].cols[3][1:2] == [Parsers.PosLen31(34+9, 3), Parsers.PosLen31(34+22, 3)]
@@ -1272,7 +1272,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             record must not be followed by a comma.
             """ begin
             testctx = TestContext()
-            parse_file(io_t("aaa,bbb,ccc"), nothing, testctx, _force=alg, header=false)
+            parse_file(io_t("aaa,bbb,ccc"), nothing, testctx, force=alg, header=false)
             @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen31(1, 3)]
             @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen31(5, 3)]
             @test testctx.results[1].cols[3][1:1] == [Parsers.PosLen31(9, 3)]
@@ -1290,7 +1290,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             at all).  If fields are not enclosed with double quotes, then
             double quotes may not appear inside the fields. """ begin
             testctx = TestContext()
-            parse_file(io_t("\"aaa\",\"bbb\",\"ccc\"\nzzz,yyy,xxx"), nothing, testctx, _force=alg, header=false)
+            parse_file(io_t("\"aaa\",\"bbb\",\"ccc\"\nzzz,yyy,xxx"), nothing, testctx, force=alg, header=false)
             @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen31(2, 3), Parsers.PosLen31(19, 3)]
             @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen31(8, 3), Parsers.PosLen31(23, 3)]
             @test testctx.results[1].cols[3][1:2] == [Parsers.PosLen31(14, 3), Parsers.PosLen31(27, 3)]
@@ -1302,7 +1302,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test length(testctx.results[1].cols[3]) == 2
 
             testctx = TestContext()
-            parse_file(io_t("\"aaa\",\"bbb\",\"ccc\"\r\nzzz,yyy,xxx"), nothing, testctx, _force=alg, header=false)
+            parse_file(io_t("\"aaa\",\"bbb\",\"ccc\"\r\nzzz,yyy,xxx"), nothing, testctx, force=alg, header=false)
             @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen31(2, 3), Parsers.PosLen31(20, 3)]
             @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen31(8, 3), Parsers.PosLen31(24, 3)]
             @test testctx.results[1].cols[3][1:2] == [Parsers.PosLen31(14, 3), Parsers.PosLen31(28, 3)]
@@ -1318,7 +1318,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             Fields containing line breaks (CRLF), double quotes, and commas
             should be enclosed in double-quotes.""" begin
             testctx = TestContext()
-            parse_file(io_t("\"aaa\",\"b\nbb\",\"ccc\"\nzzz,yyy,xxx"), nothing, testctx, _force=alg, header=false)
+            parse_file(io_t("\"aaa\",\"b\nbb\",\"ccc\"\nzzz,yyy,xxx"), nothing, testctx, force=alg, header=false)
             @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen31(2, 3), Parsers.PosLen31(20, 3)]
             @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen31(8, 4), Parsers.PosLen31(24, 3)]
             @test testctx.results[1].cols[3][1:2] == [Parsers.PosLen31(15, 3), Parsers.PosLen31(28, 3)]
@@ -1330,7 +1330,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test length(testctx.results[1].cols[3]) == 2
 
             testctx = TestContext()
-            parse_file(io_t("\"aaa\",\"b\r\nbb\",\"ccc\"\r\nzzz,yyy,xxx"), nothing, testctx, _force=alg, header=false)
+            parse_file(io_t("\"aaa\",\"b\r\nbb\",\"ccc\"\r\nzzz,yyy,xxx"), nothing, testctx, force=alg, header=false)
             @test testctx.results[1].cols[1][1:2] == [Parsers.PosLen31(2, 3), Parsers.PosLen31(22, 3)]
             @test testctx.results[1].cols[2][1:2] == [Parsers.PosLen31(8, 5), Parsers.PosLen31(26, 3)]
             @test testctx.results[1].cols[3][1:2] == [Parsers.PosLen31(16, 3), Parsers.PosLen31(30, 3)]
@@ -1347,7 +1347,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             appearing inside a field must be escaped by preceding it with
             another double quote. """ begin
             testctx = TestContext()
-            parse_file(io_t("\"aaa\",\"b\"\"bb\",\"ccc\""), nothing, testctx, _force=alg, header=false)
+            parse_file(io_t("\"aaa\",\"b\"\"bb\",\"ccc\""), nothing, testctx, force=alg, header=false)
             @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen31(2, 3)]
             @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen31(8, 5, false, true)]
             @test testctx.results[1].cols[3][1:1] == [Parsers.PosLen31(16, 3)]
@@ -1364,7 +1364,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
     @testset "Whitespace ($(io_t), $(alg))" begin
         @testset "Unquoted string fields preserve whitespace" begin
             testctx = TestContext()
-            parse_file(io_t("""a, b\n  foo  , "bar"    \n"""), nothing, testctx, _force=alg)
+            parse_file(io_t("""a, b\n  foo  , "bar"    \n"""), nothing, testctx, force=alg)
             @test testctx.header == [:a, :b]
             @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen31(6, 7)]
             @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen31(16, 3)]
@@ -1376,7 +1376,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
 
         @testset "Whitespace surrounding quoted fields is stripped" begin
             testctx = TestContext()
-            parse_file(io_t("""a, b\n  "foo"  , "bar"    \n"""), nothing, testctx, _force=alg)
+            parse_file(io_t("""a, b\n  "foo"  , "bar"    \n"""), nothing, testctx, force=alg)
             @test testctx.header == [:a, :b]
             @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen31(9, 3)]
             @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen31(18, 3)]
@@ -1386,7 +1386,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test length(testctx.results[1].cols[2]) == 1
 
             testctx = TestContext()
-            parse_file(io_t("""a, b\n"foo"  , "bar"    \n"""), nothing, testctx, _force=alg)
+            parse_file(io_t("""a, b\n"foo"  , "bar"    \n"""), nothing, testctx, force=alg)
             @test testctx.header == [:a, :b]
             @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen31(7, 3)]
             @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen31(16, 3)]
@@ -1398,7 +1398,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
 
         @testset "Newlines inside a quoted field are handled properly" begin
             testctx = TestContext()
-            parse_file(io_t("""a, b\n     "foo", "bar\n     acsas"\n"""), nothing, testctx, _force=alg)
+            parse_file(io_t("""a, b\n     "foo", "bar\n     acsas"\n"""), nothing, testctx, force=alg)
             @test testctx.header == [:a, :b]
             @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen31(12, 3)]
             @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen31(19, 14)]
@@ -1408,7 +1408,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test length(testctx.results[1].cols[2]) == 1
 
             testctx = TestContext()
-            parse_file(io_t("""a, b\n     "foo", "bar\n\r     acsas"\n"""), nothing, testctx, _force=alg)
+            parse_file(io_t("""a, b\n     "foo", "bar\n\r     acsas"\n"""), nothing, testctx, force=alg)
             @test testctx.header == [:a, :b]
             @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen31(12, 3)]
             @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen31(19, 15)]
@@ -1420,7 +1420,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
 
         @testset "Escaped quotes inside a quoted field are handled properly" begin
             testctx = TestContext()
-            parse_file(io_t("""a, b\n"foo"  ,"The cat said, ""meow"" "\n"""), nothing, testctx, _force=alg)
+            parse_file(io_t("""a, b\n"foo"  ,"The cat said, ""meow"" "\n"""), nothing, testctx, force=alg)
             @test testctx.header == [:a, :b]
             @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen31(7, 3)]
             @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen31(15, 23, false, true)]
@@ -1430,7 +1430,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test length(testctx.results[1].cols[2]) == 1
 
             testctx = TestContext()
-            parse_file(io_t("""a, b\n"foo"  ,"The cat said, \\"meow\\" "\n"""), nothing, testctx, _force=alg, escapechar='\\')
+            parse_file(io_t("""a, b\n"foo"  ,"The cat said, \\"meow\\" "\n"""), nothing, testctx, force=alg, escapechar='\\')
             @test testctx.header == [:a, :b]
             @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen31(7, 3)]
             @test testctx.results[1].cols[2][1:1] == [Parsers.PosLen31(15, 23, false, true)]
@@ -1442,7 +1442,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
 
         @testset "Characters outside of a quoted field should be marked as ValueParsingError" begin
             testctx = TestContext()
-            parse_file(io_t("""a, b\n"foo"  , "bar"         234235\n"""), nothing, testctx, _force=alg)
+            parse_file(io_t("""a, b\n"foo"  , "bar"         234235\n"""), nothing, testctx, force=alg)
             @test testctx.header == [:a, :b]
             @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen31(7, 3)]
             @test testctx.strings[1][1][1:1] == ["foo"]
@@ -1464,7 +1464,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                     """),
                     [Int,Int],
                     testctx,
-                    _force=alg,
+                    force=alg,
                 )
                 @test testctx.header == [:a, :b]
                 @test testctx.schema == [Int,Int]
@@ -1486,7 +1486,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                     """),
                     [Int,FixedDecimal{Int,4}],
                     testctx,
-                    _force=alg,
+                    force=alg,
                 )
                 @test testctx.header == [:a, :b]
                 @test testctx.schema == [Int,FixedDecimal{Int,4}]
@@ -1511,7 +1511,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                     """),
                     [Int,GuessDateTime],
                     testctx,
-                    _force=alg,
+                    force=alg,
                 )
                 @test testctx.header == [:a, :b]
                 @test testctx.schema == [Int,DateTime]
@@ -1530,7 +1530,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                     parse_file(io_t("a,b,c\r1,2,3\r3,4,4"),
                         [Int,Int,Int],
                         testctx,
-                        _force=alg,
+                        force=alg,
                         newlinechar='\r'
                     )
                     @test testctx.header == [:a, :b, :c]
@@ -1557,7 +1557,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             [Int,String],
             testctx,
             buffersize=8, # last char of the current chunk is a newline
-            _force=alg,
+            force=alg,
             escapechar='"',
         )
         @test testctx.header == [:a, :b]
@@ -1583,7 +1583,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             [Int,String],
             testctx,
             buffersize=15, # first char of the next chunk is a newline
-            _force=alg,
+            force=alg,
             escapechar='"',
         )
         @test testctx.header == [:a, :b]
@@ -1612,7 +1612,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 """),
                 [Int,Float64,Float64,Float64,Float64],
                 testctx,
-                _force=alg,
+                force=alg,
             )
             @test testctx.header == [:a, :b, :c, :d, :e]
             @test testctx.schema == [Int,Float64,Float64,Float64,Float64]
@@ -1639,7 +1639,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 """),
                 [Int,GuessDateTime,GuessDateTime,GuessDateTime,GuessDateTime],
                 testctx,
-                _force=alg,
+                force=alg,
             )
             @test testctx.header == [:a, :b, :c, :d, :e]
             @test testctx.schema == [Int,DateTime,DateTime,DateTime,DateTime]
@@ -1662,7 +1662,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 """),
                 [Int,FixedDecimal{Int,4},FixedDecimal{Int,4},FixedDecimal{Int,4},FixedDecimal{Int,4}],
                 testctx,
-                _force=alg,
+                force=alg,
             )
             @test testctx.header == [:a, :b, :c, :d, :e]
             @test testctx.schema == [Int,FixedDecimal{Int,4},FixedDecimal{Int,4},FixedDecimal{Int,4},FixedDecimal{Int,4}]
@@ -1684,7 +1684,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 """),
                 nothing,
                 testctx,
-                _force=alg,
+                force=alg,
                 openquotechar='S',
                 closequotechar='E',
             )
@@ -1710,7 +1710,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 buffersize=8,
                 escapechar='"',
                 header=false,
-                _force=alg,
+                force=alg,
             )
             @test testctx.schema == [Int,Parsers.PosLen31]
             @test length(testctx.results) == 5
@@ -1744,7 +1744,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 nothing,
                 testctx,
                 escapechar='\\',
-                _force=alg,
+                force=alg,
                 delim='|',
             )
             @test testctx.header == [:a, :b]
@@ -1781,7 +1781,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 """),
                 nothing,
                 testctx,
-                _force=alg,
+                force=alg,
                 escapechar='\\'
             )
             @test testctx.header == [:a, :b]
@@ -1806,7 +1806,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                     testctx,
                     buffersize=buffersize,
                     escapechar='"',
-                    _force=alg,
+                    force=alg,
                 )
                 @test testctx.header == [:a, :b]
                 @test testctx.schema == [Int,Parsers.PosLen31]
@@ -1828,7 +1828,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                     testctx,
                     buffersize=buffersize,
                     escapechar='\\',
-                    _force=alg,
+                    force=alg,
                 )
                 @test testctx.header == [:a, :b]
                 @test testctx.schema == [Int,Parsers.PosLen31]
@@ -1850,7 +1850,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                     testctx,
                     buffersize=buffersize,
                     escapechar='\\',
-                    _force=alg,
+                    force=alg,
                 )
                 @test testctx.header == [:a, :b]
                 @test testctx.schema == [Int,Parsers.PosLen31]
@@ -1879,7 +1879,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                         testctx,
                         buffersize=buffersize, # first S in on position 12, second on 24...
                         escapechar='"',
-                        _force=alg,
+                        force=alg,
                     )
                     @test testctx.header == [:a, :b]
                     @test testctx.schema == [Int,Parsers.PosLen31]
@@ -1913,7 +1913,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 header=false,
                 buffersize=8,
                 escapechar='"',
-                _force=alg,
+                force=alg,
             )
             @test testctx.results[1].cols[1] == [Parsers.PosLen31(1, 6)]
             @test testctx.results[2].cols[1] == [Parsers.PosLen31(2, 5, false, true)]
@@ -1931,7 +1931,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 header=false,
                 buffersize=8,
                 escapechar='"',
-                _force=alg,
+                force=alg,
             )
             @test testctx.results[1].cols[1] == [Parsers.PosLen31(1, 5)]
             @test testctx.results[2].cols[1] == [Parsers.PosLen31(2, 5, false, true)]
@@ -1949,7 +1949,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 header=false,
                 buffersize=8,
                 escapechar='\\',
-                _force=alg,
+                force=alg,
             )
             @test testctx.results[1].cols[1] == [Parsers.PosLen31(1, 5)]
             @test testctx.results[2].cols[1] == [Parsers.PosLen31(2, 5, false, true)]
@@ -2024,7 +2024,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 """),
                 nothing,
                 testctx,
-                _force=alg,
+                force=alg,
                 escapechar='\\',
                 buffersize=10,
             )
@@ -2045,7 +2045,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 """),
                 nothing,
                 testctx,
-                _force=alg,
+                force=alg,
                 escapechar='\\',
                 buffersize=200,
             )
@@ -2072,7 +2072,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                     """),
                     [Int,Int,Int],
                     testctx,
-                    _force=alg,
+                    force=alg,
                     sentinel=isempty(sentinel) ? missing : [sentinel],
                 )
                 @test testctx.header == [:a, :b, :c]
@@ -2103,7 +2103,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                     """),
                     [Char,Char,Char],
                     testctx,
-                    _force=alg,
+                    force=alg,
                     sentinel=isempty(sentinel) ? missing : [sentinel],
                 )
                 @test testctx.header == [:a, :b, :c]
@@ -2139,7 +2139,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                     [FixedDecimal{Int32,1}, FixedDecimal{UInt32,2}, FixedDecimal{Int64,3}],
                     testctx,
                     sentinel=isempty(sentinel) ? missing : [sentinel],
-                    _force=alg,
+                    force=alg,
                 )
                 @test testctx.header == [:a, :b, :c]
                 @test testctx.schema == [FixedDecimal{Int32,1}, FixedDecimal{UInt32,2}, FixedDecimal{Int64,3}]
@@ -2182,7 +2182,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                     [GuessDateTime,GuessDateTime,GuessDateTime],
                     testctx,
                     sentinel=isempty(sentinel) ? missing : [sentinel],
-                    _force=alg,
+                    force=alg,
                 )
                 @test testctx.header == [:a, :b, :c]
                 @test testctx.schema == [DateTime,DateTime,DateTime]
@@ -2225,7 +2225,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                     [DateTime,DateTime,DateTime],
                     testctx,
                     sentinel=isempty(sentinel) ? missing : [sentinel],
-                    _force=alg,
+                    force=alg,
                 )
                 @test testctx.header == [:a, :b, :c]
                 @test testctx.schema == [DateTime,DateTime,DateTime]
@@ -2270,7 +2270,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                     [Parsers.SHA1,Parsers.SHA1,Parsers.SHA1],
                     testctx,
                     sentinel=isempty(sentinel) ? missing : [sentinel],
-                    _force=alg,
+                    force=alg,
                 )
                 @test testctx.header == [:a, :b, :c]
                 @test testctx.schema == [Parsers.SHA1,Parsers.SHA1,Parsers.SHA1]
@@ -2314,7 +2314,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                     [UUID,UUID,UUID],
                     testctx,
                     sentinel=isempty(sentinel) ? missing : [sentinel],
-                    _force=alg,
+                    force=alg,
                 )
                 @test testctx.header == [:a, :b, :c]
                 @test testctx.schema == [UUID,UUID,UUID]
@@ -2357,7 +2357,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                         """),
                         [S,S,S],
                         testctx,
-                        _force=alg,
+                        force=alg,
                     )
                     @test testctx.header == [:a, :b, :c]
                     @test testctx.schema == [S,S,S]
@@ -2388,7 +2388,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 """),
                 [Int,Int,Int],
                 testctx,
-                _force=alg,
+                force=alg,
                 comment="# ",
             )
             @test testctx.header == [:a, :b, :c]
@@ -2440,7 +2440,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 """),
                 [Nothing,Int,Int],
                 testctx,
-                _force=alg,
+                force=alg,
                 comment="# ",
             )
             @test testctx.header == [:b, :c]
@@ -2486,7 +2486,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 """),
                 [Int,Nothing,Int],
                 testctx,
-                _force=alg,
+                force=alg,
                 comment="# ",
             )
             @test testctx.header == [:a, :c]
@@ -2531,7 +2531,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 """),
                 [Int,Int,Nothing],
                 testctx,
-                _force=alg,
+                force=alg,
                 comment="# ",
             )
             @test testctx.header == [:a, :b]
@@ -2576,7 +2576,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 """),
                 [Int,Nothing,Nothing],
                 testctx,
-                _force=alg,
+                force=alg,
                 comment="# ",
             )
             @test testctx.header == [:a]

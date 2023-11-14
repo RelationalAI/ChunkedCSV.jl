@@ -44,7 +44,7 @@ end
     BitSetMatrix <: AbstractMatrix{Bool}
 
 A matrix representing the missingness of values in the result buffer.
-The number of rows in the matrix is equals the number of rows with at least one missing value in the result buffer.
+The number of rows in the matrix is equal the number of rows with at least one missing value in the result buffer.
 The number of columns in the matrix is equal to the number of columns in the results buffer.
 
 When consuming a `TaskResultBuffer` it is this recommended to iterate it from start to finish

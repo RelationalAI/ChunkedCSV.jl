@@ -51,6 +51,7 @@ function _custom_types(schema::Vector{DataType})
 end
 
 # Parsers.Options constructor with our defaults.
+# Used in `setup_parser`.
 function _create_options(;
     delim::Union{UInt8,Char,String,Nothing}=',',
     openquotechar::Union{UInt8,Char}='"',

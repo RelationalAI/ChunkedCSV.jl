@@ -3,8 +3,8 @@ struct HeaderParsingError <: Exception
 end
 Base.showerror(io::IO, e::HeaderParsingError) = print(io, "HeaderParsingError: ", e.msg)
 
-# We might need to skip to get to the header and then skip again to get to the data
-# This function does the *first* skip and initializes the lexer
+# We might need to skip some rows to get to the header and then skip again to get to the data
+# This function does the *first* skip and initializes the ChunkingContext and Lexer
 # If the newline is not provided, we'll need to detect it first
 function initial_read_and_lex_and_skip!(io, chunking_ctx, input_args, escapechar, openquotechar, closequotechar, ignoreemptyrows)
     # First ingestion of raw bytes from io
@@ -33,10 +33,10 @@ end
 
 # This function does the *second* skip and initializes the parsing context
 # (see the function above for the first skip).
-# We cannot construct the parsing contect without knowing the schema and the header,
-# we'll take what the user has provided and we'll reconcile it with the header row or
-# at least with the number of columns in the file. We don't do type inference yet, so any
-# unknown types will be filled with String if the user didn't give us a vector of types already.
+# We cannot construct the parsing context without knowing the schema and the header,
+# we'll take inputs the user provided for schema and header and we'll reconcile it with the
+# header row or at least with the number of columns in the file. We don't do type inference yet,
+# so any unknown types will be filled with String if the user didn't give us a vector of types already.
 function process_header_and_schema_and_finish_row_skip!(
     parsing_ctx::ParsingContext,
     chunking_ctx::ChunkingContext,

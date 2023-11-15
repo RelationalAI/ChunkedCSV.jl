@@ -1,3 +1,20 @@
+# What we need to forward to `ChunkedBase.populate_result_buffer!`
+# Knowing the schema allows us to unroll on column types in a type
+# stable way without specializations.
+struct ParsingContext <: AbstractParsingContext
+    # The schema of the TaskResultBuffer.cols
+    schema::Vector{DataType}
+    # The schema of the file as enums from src/Enums.jl.
+    # This includes even skipped columns and is easier for the compiler to unroll on.
+    enum_schema::Vector{Enums.CSV_TYPE}
+    # The names of the columns in the TaskResultBuffer.cols.
+    header::Vector{Symbol}
+    # The escape character for the quoted strings in the file.
+    escapechar::UInt8
+    # The sets up how Parsers.xparse parses data
+    options::Parsers.Options
+end
+
 skip_row!(result_buf::AbstractResultBuffer, row_bytes, comment::Nothing) = false
 function skip_row!(result_buf::AbstractResultBuffer, row_bytes, comment::Vector{UInt8})
     return ChunkedBase._startswith(row_bytes, comment) && skip_row!(result_buf)
@@ -9,6 +26,12 @@ function skip_row!(result_buf::AbstractResultBuffer)
     return true
 end
 
+# This generated function unrolls on the "custom types" in the schema. Custom types are those that we
+# don't unroll manually in populate_result_buffer.jl and for which we have corresponding Enum.jl values.
+# Unrolling means generating type stable if-else branches which check the type in the conditional and then
+# type assert in the body of the branch, it is a form of manual dispatch. This is necessary because otherwise,
+# we'd hit dynamic dispatch on custom types which is bad for performance.
+# This code has been adapted from CSV.jl
 @inline function parsecustom!(::Type{customtypes}, row_bytes, pos, len, col_idx, cols, options, _type, row_status, colinds) where {customtypes}
     if @generated
         block = Expr(:block)
@@ -47,6 +70,11 @@ end
     end
 end
 
+# Mark a value as missing in the `column_indicators` matrix in the `result_buf`.
+# If the `column_indicators` matrix is too small, add a row.
+# We use the lazily grown `column_indicators` matrix instead of using Union{Missing,T},
+# for smaller memory footprint (Missing uses 1 byte per element, we approach 1 bit per element
+# if there are missings in the row).
 function mark_missing!(colinds, colinds_row_idx, col_idx)
     row_diff = colinds_row_idx - size(colinds, 1)
     @assert row_diff == 0 || row_diff == 1

@@ -1,9 +1,22 @@
+# A consume context that prints out simple debug information about the parsed chunks
+"""
+    DebugContext(error_only::Bool=true, n::Int=3, err_len::Int=255, show_values::Bool=false)
 
+A consume context that prints out simple debug information about the parsed chunks.
+We print the first `err_len` bytes of the first `n` rows with error `RowStatus` in each chunk,
+and optionally the parsed values for those rows.
+
+# Arguments:
+- `error_only`: Set to `false` to also see the first `n` parsed values for each column in each chunk.
+- `n`: Number of rows to print for each chunk.
+- `err_len`: Number of bytes to print for each errored row.
+- `show_values`: Set to `true` to also see the parsed values for each errored row.
+"""
 struct DebugContext <: AbstractConsumeContext
-    error_only::Bool
-    n::Int
-    err_len::Int
-    show_values::Bool
+    error_only::Bool  # whether we should only print errored rows
+    n::Int            # number of rows valid rows to print when `error_only is false`
+    err_len::Int      # number of bytes to print for errored rows
+    show_values::Bool # whether we should print the parsed values for errored rows
 
     DebugContext(error_only::Bool=true, n::Int=3, err_len::Int=255, show_values::Bool=false) = new(error_only, n, err_len, show_values)
 end
@@ -105,13 +118,13 @@ function ChunkedBase.consume!(consume_ctx::DebugContext, payload::ParsedPayload)
                 s = chunking_ctx.newline_positions[eol_idx + i - 1]+1
                 e = chunking_ctx.newline_positions[eol_idx + i]-1
                 l = consume_ctx.err_len
-                if e - s > l
-                    println(io, repr(String(chunking_ctx.bytes[s:s+l-3])), "...")
+                if e - s >= l
+                    println(io, repr(String(chunking_ctx.bytes[s:max(s,s + min(l, e - s + 1) - 1)])), "...")
                 else
                     println(io, repr(String(chunking_ctx.bytes[s:e])))
                 end
                 errcnt += 1
-                errcnt > consume_ctx.n && break
+                errcnt >= consume_ctx.n && break
             end
         end
     end
@@ -119,6 +132,8 @@ function ChunkedBase.consume!(consume_ctx::DebugContext, payload::ParsedPayload)
     return nothing
 end
 
+# Used in tests to collect the results in sorted order
+# and to materialize the strings for each column
 struct TestContext <: AbstractConsumeContext
     results::Vector{TaskResultBuffer}
     strings::Vector{Vector{Vector{String}}}

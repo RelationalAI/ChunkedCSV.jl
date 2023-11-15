@@ -9,10 +9,12 @@
     @precompile_all_calls begin
         # all calls in this block will be precompiled, regardless of whether
         # they belong to your package or not (on Julia 1.8 and higher)
-        ChunkedCSV.parse_file(IOBuffer(PRECOMPILE_DATA), [Int,Float64,Date,DateTime,Bool,String,String,FixedDecimal{Int64,8}], ChunkedCSV.SkipContext())
-        ChunkedCSV.parse_file(IOBuffer(PRECOMPILE_DATA), [Int,Float64,Date,DateTime,Bool,String,String,FixedDecimal{Int64,8}], ChunkedCSV.SkipContext(), _force=:parallel)
-        ChunkedCSV.parse_file(IOBuffer(PRECOMPILE_DATA), [Int,Float64,Date,GuessDateTime,Bool,String,String,Int], ChunkedCSV.SkipContext())
-        ChunkedCSV.parse_file(IOBuffer(PRECOMPILE_DATA), [Int,Float64,Date,GuessDateTime,Bool,String,String,Int], ChunkedCSV.SkipContext(), _force=:parallel)
+        # We use small `buffersize` to make sure that tha parallel parsing codepath
+        # has more than one chunk to work with.
+        ChunkedCSV.parse_file(IOBuffer(PRECOMPILE_DATA), [Int,Float64,Date,DateTime,Bool,String,String,FixedDecimal{Int64,8}], ChunkedCSV.SkipContext(), buffersize=64)
+        ChunkedCSV.parse_file(IOBuffer(PRECOMPILE_DATA), [Int,Float64,Date,DateTime,Bool,String,String,FixedDecimal{Int64,8}], ChunkedCSV.SkipContext(), force=:parallel, nworkers=2, buffersize=64)
+        ChunkedCSV.parse_file(IOBuffer(PRECOMPILE_DATA), [Int,Float64,Date,GuessDateTime,Bool,String,String,Int], ChunkedCSV.SkipContext(), buffersize=64)
+        ChunkedCSV.parse_file(IOBuffer(PRECOMPILE_DATA), [Int,Float64,Date,GuessDateTime,Bool,String,String,Int], ChunkedCSV.SkipContext(), force=:parallel, nworkers=2, buffersize=64)
     end
 end
 

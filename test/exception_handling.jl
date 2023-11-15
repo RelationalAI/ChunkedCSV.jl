@@ -11,11 +11,11 @@ end
 
 # Throws when a specified row is greater than the first row of a task buffer
 struct TestThrowingContext <: AbstractConsumeContext
-    tasks::Vector{Task}
-    conds::Vector{ChunkedCSV.TaskCounter}
+    tasks::Base.IdSet{Task}
+    conds::Base.IdSet{ChunkedCSV.TaskCounter}
     throw_row::Int
 end
-TestThrowingContext(throw_row) = TestThrowingContext(Task[], ChunkedCSV.TaskCounter[], throw_row)
+TestThrowingContext(throw_row) = TestThrowingContext(Base.IdSet{Task}(), Base.IdSet{ChunkedCSV.TaskCounter}(), throw_row)
 
 # Throws in the last quarter of the buffer
 struct ThrowingIO <: IO
@@ -29,8 +29,8 @@ Base.eof(io::ThrowingIO) = Base.eof(io.io)
 function ChunkedCSV.consume!(ctx::TestThrowingContext, payload::ChunkedCSV.ParsedPayload)
     t = current_task()
     c = payload.chunking_ctx.counter
-    c in ctx.conds || push!(ctx.conds, c)
-    t in ctx.tasks || push!(ctx.tasks, t)
+    push!(ctx.conds, c)
+    push!(ctx.tasks, t)
     payload.row_num >= ctx.throw_row && error("These contexts are for throwing, and that's all what they do")
     sleep(0.01) # trying to get the task off a fast path to claim everything from the parsing queue
     return nothing
@@ -137,12 +137,12 @@ end
                 """),
                 [Int,Int],
                 throw_ctx,
-                _force=:serial,
+                force=:serial,
                 buffersize=6
             )
             @assert !isempty(throw_ctx.tasks)
-            @test throw_ctx.tasks[1] == current_task()
-            @test throw_ctx.conds[1].exception isa ErrorException
+            @test only(throw_ctx.tasks) == current_task()
+            @test only(throw_ctx.conds).exception isa ErrorException
         end
 
         @testset "parallel" begin
@@ -153,16 +153,19 @@ end
                 [Int,Int],
                 throw_ctx,
                 nworkers=min(3, nthreads()),
-                _force=:parallel,
+                force=:parallel,
                 buffersize=12,
             )
             sleep(0.2)
             @test length(throw_ctx.tasks) == min(3, nthreads())
             @test all(istaskdone, throw_ctx.tasks)
-            @test throw_ctx.conds[1].exception isa CapturedException
-            @test throw_ctx.conds[1].exception.ex.msg == "These contexts are for throwing, and that's all what they do"
-            @test throw_ctx.conds[2].exception isa CapturedException
-            @test throw_ctx.conds[2].exception.ex.msg == "These contexts are for throwing, and that's all what they do"
+            conds = collect(throw_ctx.conds)
+            cond = pop!(conds)
+            @test cond.exception isa CapturedException
+            @test cond.exception.ex.msg == "These contexts are for throwing, and that's all what they do"
+            cond = pop!(conds)
+            @test cond.exception isa CapturedException
+            @test cond.exception.ex.msg == "These contexts are for throwing, and that's all what they do"
         end
     end
 
@@ -173,12 +176,12 @@ end
                 ThrowingIO("a,b\n" * ("1,2\n3,4\n" ^ 10)), # 20 rows total
                 [Int,Int],
                 throw_ctx,
-                _force=:serial,
+                force=:serial,
                 buffersize=6,
             )
             @assert !isempty(throw_ctx.tasks)
-            @test throw_ctx.tasks[1] == current_task()
-            @test throw_ctx.conds[1].exception isa ErrorException
+            @test only(throw_ctx.tasks) == current_task()
+            @test only(throw_ctx.conds).exception isa ErrorException
         end
 
         @testset "parallel" begin
@@ -188,16 +191,20 @@ end
                 [Int,Int],
                 throw_ctx,
                 nworkers=min(3, nthreads()),
-                _force=:parallel,
+                force=:parallel,
                 buffersize=12,
             )
             sleep(0.2)
             @test length(throw_ctx.tasks) == min(3, nthreads())
             @test all(istaskdone, throw_ctx.tasks)
-            @test throw_ctx.conds[1].exception isa CapturedException
-            @test throw_ctx.conds[1].exception.ex.task.result.msg == "That should be enough data for everyone"
-            @test throw_ctx.conds[2].exception isa CapturedException
-            @test throw_ctx.conds[2].exception.ex.task.result.msg == "That should be enough data for everyone"
+
+            conds = collect(throw_ctx.conds)
+            cond = pop!(conds)
+            @test cond.exception isa CapturedException
+            @test cond.exception.ex.task.result.msg == "That should be enough data for everyone"
+            cond = pop!(conds)
+            @test cond.exception isa CapturedException
+            @test cond.exception.ex.task.result.msg == "That should be enough data for everyone"
         end
     end
 end

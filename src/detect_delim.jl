@@ -1,4 +1,4 @@
-# Common delimiters used in textual, delimited files
+# Common delimiters used in textual delimited files
 const CANDIDATE_DELIMS = (UInt8(','), UInt8(';'), UInt8('|'), UInt8(':'), UInt8('\t'), UInt8(' '))
 const DEFAULT_LINES_TO_DETECT_DELIM = 11
 @assert !(0xFF in CANDIDATE_DELIMS)

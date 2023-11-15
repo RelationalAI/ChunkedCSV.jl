@@ -2,11 +2,30 @@
 # RowStatus
 #
 
-module RowStatus
-    const T = UInt8
+"""
+    RowStatus
 
-    # TODO: currently we set `HasColumnIndicators` for all `TooFewColumns`, `TooManyColumns`, `ValueParsingError`, `UnknownTypeError`, `SkippedRow`
-    #       but for `TooManyColumns` and `SkippedRow` we don't need them.
+A module implementing a bitflag type used to indicate the status of a row in a `TaskResultBuffer`.
+
+- `0x00` -- `Ok`: All fields were parsed successfully.
+- `0x01` -- `HasColumnIndicators`: Some fields have missing values.
+- `0x02` -- `TooFewColumns`: The row has fewer fields than expected according to the schema. Implies `HasColumnIndicators`.
+- `0x04` -- `TooManyColumns`: The row has more fields than expected according to the schema.
+- `0x08` -- `ValueParsingError`: Some fields could not be parsed due to an unknown instance of a particular type. Implies `HasColumnIndicators`.
+- `0x10` -- `UnknownTypeError`: Some fields could not be parsed due to an unknown type. Unused.
+- `0x20` -- `SkippedRow`: The row contains no valid values, e.g. it was a comment. Implies `HasColumnIndicators`.
+
+Multiple flags can be set at the same time, e.g. `HasColumnIndicators | TooFewColumns` means that at least column in the row does not have a known value and that there were not enough fields in this row.
+If a row has `HasColumnIndicators` flag set, then the `column_indicators` field of the `TaskResultBuffer` will contain a bitset indicating which columns have missing values.
+
+Distinguishing which values are missing due (i.e. successfully parsed `sentinel` values) and which failed to parse is currently unsupported, as we assume the integrity of the entire row is required.
+
+# See also:
+- [`TaskResultBuffer`](#TaskResultBuffer)
+"""
+module RowStatus
+    const T = UInt8                  # Type of the row status flags
+
     const Ok                  = 0x00 # All ok
     const HasColumnIndicators = 0x01 # Some fields have missing values
     const TooFewColumns       = 0x02 # Some fields have missing values due field count mismatch with the schema
@@ -15,11 +34,45 @@ module RowStatus
     const UnknownTypeError    = 0x10 # We couldn't parse some fields because we don't know how to parse any instance of that type
     const SkippedRow          = 0x20 # The row contains no valid values
 
+    # Used in DebugContext
     const Marks = ('✓', '?', '<', '>', '!', 'T', '#')
     const Names = ("Ok", "HasColumnIndicators", "TooFewColumns", "TooManyColumns", "ValueParsingError", "UnknownTypeError", "SkippedRow")
     const Flags = (0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20)
 end
 
+"""
+    BitSetMatrix <: AbstractMatrix{Bool}
+
+A matrix representing the missingness of values in the result buffer.
+The number of rows in the matrix is equal the number of rows with at least one missing value in the result buffer.
+The number of columns in the matrix is equal to the number of columns in the results buffer.
+
+When consuming a `TaskResultBuffer` it is this recommended to iterate it from start to finish
+and note the `RowStatus` for the `HasColumnIndicators` which signals that the row contains missing values.
+Using `ColumnIterator`s is the easiest way to do this. For example:
+
+```julia
+# The first column has type T
+for (value, isinvalidrow, ismissingvalue) for ColumnIterator{T}(result_buffer, 1)
+    if isinvalidrow
+        # The row didn't match the schema, so we better discard it
+        continue
+    end
+    if ismissingvalue
+        # The value is missing, so we can't use it
+        continue
+    end
+    # Use the value
+end
+```
+
+## Indexing
+- `bs[r, c]`: Get the value at row `r` and column `c` of the matrix.
+- `bs[r, :]`: Get the values in row `r` of the matrix.
+
+## See also:
+- [`TaskResultBuffer`](@ref), [`RowStatus`](@ref), [`ColumnIterator`](@ref)
+"""
 mutable struct BitSetMatrix <: AbstractMatrix{Bool}
     data::BitVector
     nrows::Int
@@ -79,7 +132,11 @@ Holds the parsed results in columnar buffers.
 - `row_statuses::BufferedVector{RowStatus.T}`: Contains a $(RowStatus.T) status flag for each row.
 - `column_indicators::BitSetMatrix`: a special type of `BitMatrix` where each row is a bitset signalling missing column values. Number of rows corresponds to the number of row statuses where `HasColumnIndicators` flag is set.
 
-Note: strings are stored lazily as `Parsers.PosLen31` pointers to the underlying byte buffer (available in the `bytes` field of `ParsingContext`.).
+# Notes
+- Each column in the `cols` field is a `BufferedVector` of the same type as the corresponding column in the `ParsingContext` schema.
+- The `row_statuses` vector has the same length as each of the `cols` vectors.
+- Strings are stored lazily as `Parsers.PosLen31` pointers to the underlying byte buffer (available in the `bytes` field of `ParsingContext`).
+- When the file was parsed with `ignoreemptyrows=true` and/or a non-default `comment` argument, the `row_statuses` field might contain `SkippedRow` flags for all rows that were skipped.
 
 # Example:
 
@@ -113,7 +170,11 @@ struct TaskResultBuffer <: AbstractResultBuffer
     column_indicators::BitSetMatrix
 end
 
+# Since the chunk size if always <= 2GiB, we can never never overflow a PosLen31
+# which uses 31 bits for the position and 31 bits for the length
 _translate_to_buffer_type(::Type{String}) = Parsers.PosLen31
+# GuessDateTime is just a DateTime parser that instead of parsing a specific format string,
+# tries a bit harder to handle multiple ISO8601 compatible formats, including time zones.
 _translate_to_buffer_type(::Type{GuessDateTime}) = Dates.DateTime
 _translate_to_buffer_type(::Type{T}) where {T} = T
 
@@ -191,9 +252,9 @@ end
 Base.length(itr::ColumnIterator) = length(itr.statuses)
 
 struct ParsedField{T}
-    value::T
-    isinvalidrow::Bool
-    ismissingvalue::Bool
+    value::T             # The parsed value, garbage if `ismissingvalue` is true
+    isinvalidrow::Bool   # True if the row didn't match the schema
+    ismissingvalue::Bool # True if the value was missing or invalid
 end
 Base.iterate(t::ParsedField, iter=1) = iter > nfields(t) ? nothing : (getfield(t, iter), iter + 1)
 

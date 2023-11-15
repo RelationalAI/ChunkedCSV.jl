@@ -20,7 +20,7 @@ for alg in (:serial, :parallel)
             """),
             [Int,Int,Int],
             testctx,
-            _force=alg,
+            force=alg,
             buffersize=8,
             use_mmap=true,
         )

@@ -14,11 +14,13 @@ TimeZones = "f269a46b-ccf7-5d73-abea-4c690281aa53"
 
 [compat]
 ChunkedBase = "0.3"
+Dates = "1"
 FixedPointDecimals = "0.4.3"
 Parsers = "2.7"
 SentinelArrays = "1"
 SnoopPrecompile = "1"
 TimeZones = "1"
+julia = "1.6"
 
 [extras]
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"

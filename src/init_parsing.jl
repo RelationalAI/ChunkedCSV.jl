@@ -97,7 +97,13 @@ function process_header_and_schema_and_finish_row_skip!(
                 elseif !Parsers.ok(code)
                     throw(HeaderParsingError("Error parsing header for column $i at $(lines_skipped_total+1):$(pos) (row:pos)."))
                 else
-                    push!(parsing_ctx.header, Symbol(strip(Parsers.getstring(row_bytes, val, options.e))))
+                    identifier_s = strip(Parsers.getstring(row_bytes, val, options.e))
+                    try
+                        push!(parsing_ctx.header, Symbol(identifier_s))
+                    catch
+                        throw(HeaderParsingError("Error parsing header for column $i ('$(identifier_s)') at " *
+                            "$(lines_skipped_total+1):$pos (row:pos): presence of invalid non text bytes in the CSV snippet"))
+                    end
                 end
                 pos += tlen
             end
@@ -166,7 +172,13 @@ function process_header_and_schema_and_finish_row_skip!(
             elseif !Parsers.ok(code)
                 throw(HeaderParsingError("Error parsing header for column $i at $(lines_skipped_total+1):$pos (row:pos)."))
             else
-                push!(parsing_ctx.header, Symbol(strip(Parsers.getstring(row_bytes, val, options.e))))
+                identifier_s = strip(Parsers.getstring(row_bytes, val, options.e))
+                try
+                    push!(parsing_ctx.header, Symbol(identifier_s))
+                catch
+                    throw(HeaderParsingError("Error parsing header for column $i ('$(identifier_s)') at " *
+                        "$(lines_skipped_total+1):$pos (row:pos): presence of invalid non text bytes in the CSV snippet"))
+                end
             end
             pos += tlen
             i += 1

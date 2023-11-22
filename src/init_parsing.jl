@@ -101,7 +101,8 @@ function process_header_and_schema_and_finish_row_skip!(
                     try
                         push!(parsing_ctx.header, Symbol(identifier_s))
                     catch
-                        throw(HeaderParsingError("Error parsing header for column $i ('$(identifier_s)') at " *
+                        # defensively truncate identifier_s to 2k characters in case something is very cursed
+                        throw(HeaderParsingError("Error parsing header for column $i ('$(first(identifier_s, 2000))') at " *
                             "$(lines_skipped_total+1):$pos (row:pos): presence of invalid non text bytes in the CSV snippet"))
                     end
                 end
@@ -176,7 +177,8 @@ function process_header_and_schema_and_finish_row_skip!(
                 try
                     push!(parsing_ctx.header, Symbol(identifier_s))
                 catch
-                    throw(HeaderParsingError("Error parsing header for column $i ('$(identifier_s)') at " *
+                    # defensively truncate identifier_s to 2k characters in case something is very cursed
+                    throw(HeaderParsingError("Error parsing header for column $i ('$(first(identifier_s, 2000))') at " *
                         "$(lines_skipped_total+1):$pos (row:pos): presence of invalid non text bytes in the CSV snippet"))
                 end
             end

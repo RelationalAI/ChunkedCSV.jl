@@ -5,7 +5,13 @@ using Aqua
 Threads.nthreads() == 1 && @warn "Running tests with a single thread -- won't be able to spot concurrency issues"
 
 @testset "ChunkedCSV.jl" begin
-    Aqua.test_all(ChunkedCSV, ambiguities=false)
+    # For persistent_tasks, we are getting:
+    # ┌ Error: Unexpected error: /var/folders/jq/n4hkdx3968z1qw60dlgzgmnr0000gn/T/jl_YzeXgbOreL/done.log was not created, but precompilation exited
+    # └ @ Aqua ~/.julia/packages/Aqua/rTj6Y/src/persistent_tasks.jl:159
+    # The error only seem to replicate when running tests
+    Aqua.test_all(ChunkedCSV, ambiguities=false, deps_compat=false, persistent_tasks=false)
+    Aqua.test_ambiguities(ChunkedCSV) # Our dependencies are not passing this test
+    Aqua.test_deps_compat(ChunkedCSV, check_extras=false) # No bounds on extras
     include("guess_datetime.jl")
     include("simple_file_parsing.jl")
     include("exception_handling.jl")

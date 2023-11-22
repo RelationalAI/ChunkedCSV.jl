@@ -228,6 +228,14 @@ end
         header=true,
     )
 
+    @test_throws ChunkedCSV.HeaderParsingError("Error parsing header for column 1 ('a\0') at 1:1 (row:pos): presence of invalid non text bytes in the CSV snippet") parse_file(IOBuffer("""
+        a\0,b
+        1,2
+        """),
+        [Int,Int],
+        header=true,
+    )
+
     @test_throws ArgumentError("Provided header and schema names don't match. In schema, not in header: [:q]. In header, not in schema: [:a, :b, :c]") parse_file(IOBuffer("""
         a,b,c
         1,2,3

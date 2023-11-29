@@ -195,10 +195,10 @@ end
                 buffersize=12,
             )
             sleep(0.2)
-            @test length(throw_ctx.tasks) == min(3, nthreads())
+            @test length(throw_ctx.tasks) == min(3, nthreads()) # flaky
             @test all(istaskdone, throw_ctx.tasks)
 
-            conds = collect(throw_ctx.conds)
+            conds = collect(throw_ctx.conds) # flaky
             cond = pop!(conds)
             @test cond.exception isa CapturedException
             @test cond.exception.ex.task.result.msg == "That should be enough data for everyone"

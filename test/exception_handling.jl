@@ -31,9 +31,9 @@ function ChunkedCSV.consume!(ctx::TestThrowingContext, payload::ChunkedCSV.Parse
     t = current_task()
     c = payload.chunking_ctx.counter
     Base.@lock ctx.lock begin
-        get!(ctx.tasks.dict, t) do
+        if !(t in ctx.tasks)
+            push!(ctx.tasks, t)
             sleep(0.5) # once the task is in the set, we give opportunity to other tasks to get in
-            return nothing
         end
         push!(ctx.conds, c)
     end

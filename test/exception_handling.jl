@@ -11,11 +11,12 @@ end
 
 # Throws when a specified row is greater than the first row of a task buffer
 struct TestThrowingContext <: AbstractConsumeContext
+    lock::ReentrantLock
     tasks::Base.IdSet{Task}
     conds::Base.IdSet{ChunkedCSV.TaskCounter}
     throw_row::Int
 end
-TestThrowingContext(throw_row) = TestThrowingContext(Base.IdSet{Task}(), Base.IdSet{ChunkedCSV.TaskCounter}(), throw_row)
+TestThrowingContext(throw_row) = TestThrowingContext(ReentrantLock(), Base.IdSet{Task}(), Base.IdSet{ChunkedCSV.TaskCounter}(), throw_row)
 
 # Throws in the last quarter of the buffer
 struct ThrowingIO <: IO
@@ -29,10 +30,14 @@ Base.eof(io::ThrowingIO) = Base.eof(io.io)
 function ChunkedCSV.consume!(ctx::TestThrowingContext, payload::ChunkedCSV.ParsedPayload)
     t = current_task()
     c = payload.chunking_ctx.counter
-    push!(ctx.conds, c)
-    push!(ctx.tasks, t)
+    Base.@lock ctx.lock begin
+        if !(t in ctx.tasks)
+            push!(ctx.tasks, t)
+            sleep(0.5) # once the task is in the set, we give opportunity to other tasks to get in
+        end
+        push!(ctx.conds, c)
+    end
     payload.row_num >= ctx.throw_row && error("These contexts are for throwing, and that's all what they do")
-    sleep(0.01) # trying to get the task off a fast path to claim everything from the parsing queue
     return nothing
 end
 

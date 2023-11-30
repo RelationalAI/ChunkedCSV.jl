@@ -18,6 +18,7 @@ Threads.nthreads() == 1 && @warn "Running tests with a single thread -- won't be
     include("task_result_buffer_tests.jl")
     include("misc_tests.jl")
     include("detect_tests.jl")
+    include("snowflake_generated_csvs.jl")
 end
 
 #=

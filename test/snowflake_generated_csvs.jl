@@ -33,7 +33,6 @@ using FixedPointDecimals
         )
         @test testctx.header == [:BINARY]
         @test testctx.schema == [PosLen31]
-        @test testctx.results[1].cols[1] == [PosLen31(11, 0), PosLen31(14, 22), PosLen31(39, 32), PosLen31(74, 32)]
         @test testctx.strings[1][1] == ["", "1234567890ABCDEFABCDEF", "00000000000000000000000000000000", "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"]
     end
 

@@ -26,13 +26,8 @@ using FixedPointDecimals
     #        ('FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF'::BINARY);
     @testset "binary" begin
         testctx = TestContext()
-        parse_file(IOBuffer("""
-            "BINARY"
-            ""
-            "1234567890ABCDEFABCDEF"
-            "00000000000000000000000000000000"
-            "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"
-            """),
+        parse_file(
+            joinpath(pkgdir(ChunkedCSV), "test", "test_files", "binary_test_cases.csv"),
             [String],
             testctx,
         )
@@ -46,11 +41,8 @@ using FixedPointDecimals
     # INSERT INTO boolean_test_cases VALUES (True::BOOLEAN), (False::BOOLEAN);
     @testset "boolean" begin
         testctx = TestContext()
-        parse_file(IOBuffer("""
-            "BOOL"
-            true
-            false
-            """),
+        parse_file(
+            joinpath(pkgdir(ChunkedCSV), "test", "test_files", "boolean_test_cases.csv"),
             [Bool],
             testctx,
         )
@@ -59,22 +51,17 @@ using FixedPointDecimals
         @test testctx.results[1].cols[1] == [true, false]
     end
 
+    # NOTE: Snowflake allows CHAR to be empty, but Julia does not, so one should probably use VARCHAR instead
     # CREATE OR REPLACE TABLE char_test_cases (char CHAR);
     # INSERT INTO char_test_cases VALUES
-    #        (''::CHAR),  // 0 codeunits
     #        ('a'::CHAR), // 1 codeunit
     #        ('£'::CHAR), // 2 codeunits
     #        ('€'::CHAR), // 3 codeunits
     #        ('𐍈');       // 4 codeunits
     @testset "char" begin
         testctx = TestContext()
-        parse_file(IOBuffer("""
-            "CHAR"
-            "a"
-            "£"
-            "€"
-            "𐍈"
-            """),
+        parse_file(
+            joinpath(pkgdir(ChunkedCSV), "test", "test_files", "char_test_cases.csv"),
             [Char],
             testctx,
         )
@@ -91,13 +78,8 @@ using FixedPointDecimals
     #        ('9999-12-31'::DATE); // 9999 is the max recommended year in Snowflake
     @testset "date" begin
         testctx = TestContext()
-        parse_file(IOBuffer("""
-            "DATE"
-            "2023-12-31"
-            "1970-01-01"
-            "1582-01-01"
-            "9999-12-31"
-            """),
+        parse_file(
+            joinpath(pkgdir(ChunkedCSV), "test", "test_files", "date_test_cases.csv"),
             [Date],
             testctx,
         )
@@ -128,22 +110,8 @@ using FixedPointDecimals
     #        (NULL::FLOAT);
     @testset "float snowflake output" begin
         testctx = TestContext()
-        parse_file(IOBuffer("""
-            "FLOAT64"
-            0
-            -0
-            1
-            -inf
-            inf
-            NaN
-            -1.79769313486232e+308
-            1.79769313486232e+308
-            4.940656458e-324
-            2.225073859e-308
-            2.225073859e-308
-            9.00719925474099e+15
-            -9.00719925474099e+15
-            """),
+        parse_file(
+            joinpath(pkgdir(ChunkedCSV), "test", "test_files", "float_test_cases.csv"),
             [Float64],
             testctx,
         )
@@ -190,13 +158,8 @@ using FixedPointDecimals
     #        (-9.9999999999999999999999999999999999999::NUMBER(38,37), -99999999999999999999999999999999999999::NUMBER(38,0), -9.999999999999999999::NUMBER(19,18), -9999999999999999999::NUMBER(19,0));
     @testset "number pt 1" begin
         testctx = TestContext()
-        parse_file(IOBuffer("""
-            "NUMBER_38_37","NUMBER_38_0","NUMBER_19_18","NUMBER_19_0"
-            0.0000000000000000000000000000000000000,0,0.000000000000000000,0
-            1.2345678901234567890123456789012345678,12345678901234567890123456789012345678,1.234567890123456789,1234567890123456789
-            9.9999999999999999999999999999999999999,99999999999999999999999999999999999999,9.999999999999999999,9999999999999999999
-            -9.9999999999999999999999999999999999999,-99999999999999999999999999999999999999,-9.999999999999999999,-9999999999999999999
-            """),
+        parse_file(
+            joinpath(pkgdir(ChunkedCSV), "test", "test_files", "numeric_test_cases1.csv"),
             [FixedDecimal{Int128,37},Int128,FixedDecimal{Int128,18},Int128],
             testctx,
         )
@@ -236,13 +199,8 @@ using FixedPointDecimals
     #        (-9.99999999999999999::NUMBER(18,17), -999999999999999999::NUMBER(18,0));
     @testset "number pt 2" begin
         testctx = TestContext()
-        parse_file(IOBuffer("""
-            "NUMBER_18_17","NUMBER_18_0"
-            0.00000000000000000,0
-            1.23456789012345678,123456789012345678
-            9.99999999999999999,999999999999999999
-            -9.99999999999999999,-999999999999999999
-            """),
+        parse_file(
+            joinpath(pkgdir(ChunkedCSV), "test", "test_files", "numeric_test_cases2.csv"),
             [FixedDecimal{Int64,17},Int64],
             testctx,
         )
@@ -271,13 +229,8 @@ using FixedPointDecimals
     #        (       NULL::NUMBER(9,8),   NULL::NUMBER(4,3), NULL::NUMBER(2,1));
     @testset "number pt 3" begin
         testctx = TestContext()
-        parse_file(IOBuffer("""
-            "NUMBER_9_8","NUMBER_4_3","NUMBER_2_1"
-            0.00000000,0.000,0.0
-            1.23456789,1.234,1.2
-            9.99999999,9.999,9.9
-            -9.99999999,-9.999,-9.9
-            """),
+        parse_file(
+            joinpath(pkgdir(ChunkedCSV), "test", "test_files", "numeric_test_cases3.csv"),
             [FixedDecimal{Int32,8},FixedDecimal{Int16,3},FixedDecimal{Int8,1}],
             testctx,
         )
@@ -343,13 +296,8 @@ using FixedPointDecimals
     #        (                NULL::TIME);
     @testset "time pt 1" begin
         testctx = TestContext()
-        parse_file(IOBuffer("""
-            "TIME"
-            "12:34:56"
-            "12:34:56"
-            "00:00:00"
-            "23:59:59"
-            """),
+        parse_file(
+            joinpath(pkgdir(ChunkedCSV), "test", "test_files", "time_test_cases.csv"),
             [Time],
             testctx,
         )
@@ -389,13 +337,8 @@ using FixedPointDecimals
     #        ('9999-12-31 23:59:59.999999999'::TIMESTAMP_LTZ);
     @testset "timestamps pt 1 America/Los_Angeles" begin
         testctx = TestContext()
-        parse_file(IOBuffer("""
-            "DATETIME"
-            "2023-12-31 12:34:56.500 -0800"
-            "1970-01-01 12:34:56.123 -0800"
-            "1582-01-01 00:00:00.000 -0752"
-            "9999-12-31 23:59:59.999 -0800"
-            """),
+        parse_file(
+            joinpath(pkgdir(ChunkedCSV), "test", "test_files", "timestamp_milli_los_angeles_test_cases.csv"),
             [GuessDateTime],
             testctx,
         )
@@ -418,13 +361,8 @@ using FixedPointDecimals
     #        ('9999-12-31 23:59:59.999999999'::TIMESTAMP_LTZ);
     @testset "timestamps pt 2 Australia/Perth" begin
         testctx = TestContext()
-        parse_file(IOBuffer("""
-            "DATETIME"
-            "2023-12-31 12:34:56.500 +0800"
-            "1970-01-01 12:34:56.123 +0800"
-            "1582-01-01 00:00:00.000 +0743"
-            "9999-12-31 23:59:59.999 +0800"
-            """),
+        parse_file(
+            joinpath(pkgdir(ChunkedCSV), "test", "test_files", "timestamp_milli_perth_test_cases.csv"),
             [GuessDateTime],
             testctx,
         )
@@ -447,13 +385,8 @@ using FixedPointDecimals
     #        ('9999-12-31 23:59:59.999999999'::TIMESTAMP_LTZ);
     @testset "timestamps pt 3 UTC" begin
         testctx = TestContext()
-        parse_file(IOBuffer("""
-            "DATETIME"
-            "2023-12-31 12:34:56.500 Z"
-            "1970-01-01 12:34:56.123 Z"
-            "1582-01-01 00:00:00.000 Z"
-            "9999-12-31 23:59:59.999 Z"
-            """),
+        parse_file(
+            joinpath(pkgdir(ChunkedCSV), "test", "test_files", "timestamp_milli_utc_test_cases.csv"),
             [GuessDateTime],
             testctx,
         )
@@ -484,10 +417,8 @@ using FixedPointDecimals
     #        (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11);
     @testset "tricky headers" begin
         testctx = TestContext()
-        parse_file(IOBuffer("""
-            "MYIDENTIFIER","MYIDENTIFIER1","MY\$IDENTIFIER","_MY_IDENTIFIER","MyIdentifier","my.identifier","my identifier","My 'Identifier'","3rd_identifier","\$Identifier","идентификатор"
-            1,2,3,4,5,6,7,8,9,10,11
-            """),
+        parse_file(
+            joinpath(pkgdir(ChunkedCSV), "test", "test_files", "tricky_headers_test_cases.csv"),
             nothing,
             testctx,
         )

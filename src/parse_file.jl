@@ -261,7 +261,7 @@ function parse_file(
         result_buffers = _make_result_buffers(nbuffers, schema, cld(nrows, ntasks))
         parse_file_parallel(lexer, parsing_ctx, consume_ctx, chunking_ctx, result_buffers, CT)
     else
-        result_buf = TaskResultBuffer(0, parsing_ctx.schema, nrows)
+        result_buf = TaskResultBuffer(0, parsing_ctx.schema, cld(nrows, chunking_ctx.nworkers))
         parse_file_serial(lexer, parsing_ctx, consume_ctx, chunking_ctx, result_buf, CT)
     end
 

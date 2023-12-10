@@ -59,19 +59,6 @@ end
     end
 end
 
-# Mark a value as missing in the `column_indicators` matrix in the `result_buf`.
-# If the `column_indicators` matrix is too small, add a row.
-# We use the lazily grown `column_indicators` matrix instead of using Union{Missing,T},
-# for smaller memory footprint (Missing uses 1 byte per element, we approach 1 bit per element
-# if there are missings in the row).
-function mark_missing!(colinds, colinds_row_idx, col_idx)
-    row_diff = colinds_row_idx - size(colinds, 1)
-    @assert row_diff == 0 || row_diff == 1
-    row_diff == 1 && addrows!(colinds)
-    @inbounds colinds[colinds_row_idx, col_idx] = true
-    return
-end
-
 function ChunkedBase.populate_result_buffer!(
     result_buf::AbstractResultBuffer,
     newlines_segment::AbstractVector{Int32},
@@ -88,13 +75,16 @@ function ChunkedBase.populate_result_buffer!(
 
     Base.ensureroom(result_buf, ceil(Int, length(newlines_segment) * 1.01))
 
-    ignorerepeated = options.ignorerepeated
-    ignoreemptyrows = options.ignoreemptylines
+    ignorerepeated = options.ignorerepeated::Bool
+    ignoreemptyrows = options.ignoreemptylines::Bool
     colinds = result_buf.column_indicators
     cols = result_buf.cols
 
     N = length(schema)
     for row_idx in 2:length(newlines_segment)
+        # We only grow the column indicators when we need to, this flag tacks whether we
+        # already added one for this row
+        added_collind_row = false
         @inbounds prev_newline = newlines_segment[row_idx - 1]
         @inbounds curr_newline = newlines_segment[row_idx]
         isemptyrow = ChunkedBase._isemptyrow(prev_newline, curr_newline, buf)
@@ -131,9 +121,10 @@ function ChunkedBase.populate_result_buffer!(
             if Parsers.eof(code) && !(col_idx == N && Parsers.delimited(code))
                 row_status |= RowStatus.TooFewColumns
                 row_status |= RowStatus.HasColumnIndicators
+                added_collind_row || (added_collind_row = true; addrows!(colinds))
                 for _col_idx in col_idx:N
                     skip_element!(cols[_col_idx])
-                    mark_missing!(colinds, colinds_row_idx, _col_idx)
+                    colinds[colinds_row_idx, _col_idx] = true
                 end
                 break
             end
@@ -174,11 +165,13 @@ function ChunkedBase.populate_result_buffer!(
             end
             if Parsers.sentinel(code)
                 row_status |= RowStatus.HasColumnIndicators
-                mark_missing!(colinds, colinds_row_idx, col_idx)
+                added_collind_row || (added_collind_row = true; addrows!(colinds))
+                @inbounds colinds[colinds_row_idx, col_idx] = true
             elseif !Parsers.ok(code)
                 row_status |= RowStatus.ValueParsingError
                 row_status |= RowStatus.HasColumnIndicators
-                mark_missing!(colinds, colinds_row_idx, col_idx)
+                added_collind_row || (added_collind_row = true; addrows!(colinds))
+                @inbounds colinds[colinds_row_idx, col_idx] = true
             end
             pos += tlen
         end # for col_idx

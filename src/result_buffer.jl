@@ -31,12 +31,11 @@ module RowStatus
     const TooFewColumns       = 0x02 # Some fields have missing values due field count mismatch with the schema
     const TooManyColumns      = 0x04 # We have a valid record according to schema, but we didn't parse some fields due to missing schema info
     const ValueParsingError   = 0x08 # We couldn't parse some fields because we don't know how to parse that particular instance of that type
-    const UnknownTypeError    = 0x10 # We couldn't parse some fields because we don't know how to parse any instance of that type
-    const SkippedRow          = 0x20 # The row contains no valid values
+    const SkippedRow          = 0x10 # The row contains no valid values
 
     # Used in DebugContext
-    const Marks = ('✓', '?', '<', '>', '!', 'T', '#')
-    const Names = ("Ok", "HasColumnIndicators", "TooFewColumns", "TooManyColumns", "ValueParsingError", "UnknownTypeError", "SkippedRow")
+    const Marks = ('✓', '?', '<', '>', '!', '#')
+    const Names = ("Ok", "HasColumnIndicators", "TooFewColumns", "TooManyColumns", "ValueParsingError", "SkippedRow")
     const Flags = (0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20)
 end
 

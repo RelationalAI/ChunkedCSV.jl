@@ -32,20 +32,9 @@ end
 # type assert in the body of the branch, it is a form of manual dispatch. This is necessary because otherwise,
 # we'd hit dynamic dispatch on custom types which is bad for performance.
 # This code has been adapted from CSV.jl
-@inline function parsecustom!(::Type{customtypes}, row_bytes, pos, len, col_idx, cols, options, _type, row_status, colinds) where {customtypes}
+@inline function parsecustom!(::Type{customtypes}, row_bytes, pos, len, col_idx, cols, options, _type) where {customtypes}
     if @generated
         block = Expr(:block)
-        push!(block.args, quote
-            # TODO: Currently, we shouldn't ever hit this path as we either throw an error for unsupported types
-            # or Parsers throw an error internally for weird custom Integer subtypes that don't have a parse method.
-            row_status |= RowStatus.UnknownTypeError
-            row_status |= RowStatus.HasColumnIndicators
-            colinds = setflag(colinds, col_idx)
-            skip_element!(cols[col_idx])
-            res = Parsers.xparse(String, row_bytes, pos, len, options, Parsers.PosLen31)::Parsers.Result{Parsers.PosLen31}
-            (val, tlen, code) = res.val, res.tlen, res.code
-            return val, tlen, code, row_status, colinds
-        end)
         for i = 1:fieldcount(customtypes)
             T = fieldtype(customtypes, i)
             pushfirst!(block.args, quote
@@ -53,7 +42,7 @@ end
                     res = Parsers.xparse($T, row_bytes, pos, len, options)::Parsers.Result{$T}
                     (val, tlen, code) = res.val, res.tlen, res.code
                     unsafe_push!(cols[col_idx]::BufferedVector{$T}, val)
-                    return val, tlen, code, row_status, colinds
+                    return val, tlen, code
                 end
             end)
         end
@@ -66,7 +55,7 @@ end
         res = Parsers.xparse(_type, row_bytes, pos, len, options)::Parsers.Result{_type}
         (val, tlen, code) = res.val, res.tlen, res.code
         unsafe_push!(cols[col_idx]::BufferedVector{_type}, val)
-        return val, tlen, code, row_status, colinds
+        return val, tlen, code
     end
 end
 
@@ -181,7 +170,7 @@ function ChunkedBase.populate_result_buffer!(
                 (val, tlen, code) = res.val, res.tlen, res.code
                 unsafe_push!(cols[col_idx]::BufferedVector{Parsers.PosLen31}, Parsers.PosLen31(prev_newline+val.pos, val.len, val.missingvalue, val.escapedvalue))
             else
-                (val, tlen, code, row_status, colinds) = parsecustom!(CT, row_bytes, pos, len, col_idx, cols, options, schema[col_idx], row_status, colinds)
+                (val, tlen, code) = parsecustom!(CT, row_bytes, pos, len, col_idx, cols, options, schema[col_idx])
             end
             if Parsers.sentinel(code)
                 row_status |= RowStatus.HasColumnIndicators

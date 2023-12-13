@@ -12,8 +12,7 @@ A module implementing a bitflag type used to indicate the status of a row in a `
 - `0x02` -- `TooFewColumns`: The row has fewer fields than expected according to the schema. Implies `HasColumnIndicators`.
 - `0x04` -- `TooManyColumns`: The row has more fields than expected according to the schema.
 - `0x08` -- `ValueParsingError`: Some fields could not be parsed due to an unknown instance of a particular type. Implies `HasColumnIndicators`.
-- `0x10` -- `UnknownTypeError`: Some fields could not be parsed due to an unknown type. Unused.
-- `0x20` -- `SkippedRow`: The row contains no valid values, e.g. it was a comment. Implies `HasColumnIndicators`.
+- `0x10` -- `SkippedRow`: The row contains no valid values, e.g. it was a comment. Implies `HasColumnIndicators`.
 
 Multiple flags can be set at the same time, e.g. `HasColumnIndicators | TooFewColumns` means that at least column in the row does not have a known value and that there were not enough fields in this row.
 If a row has `HasColumnIndicators` flag set, then the `column_indicators` field of the `TaskResultBuffer` will contain a bitset indicating which columns have missing values.
@@ -36,7 +35,7 @@ module RowStatus
     # Used in DebugContext
     const Marks = ('✓', '?', '<', '>', '!', '#')
     const Names = ("Ok", "HasColumnIndicators", "TooFewColumns", "TooManyColumns", "ValueParsingError", "SkippedRow")
-    const Flags = (0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20)
+    const Flags = (0x00, 0x01, 0x02, 0x04, 0x08, 0x10)
 end
 
 """

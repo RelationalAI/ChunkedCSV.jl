@@ -32,20 +32,9 @@ end
 # type assert in the body of the branch, it is a form of manual dispatch. This is necessary because otherwise,
 # we'd hit dynamic dispatch on custom types which is bad for performance.
 # This code has been adapted from CSV.jl
-@inline function parsecustom!(::Type{customtypes}, row_bytes, pos, len, col_idx, cols, options, _type, row_status, colinds) where {customtypes}
+@inline function parsecustom!(::Type{customtypes}, row_bytes, pos, len, col_idx, cols, options, _type) where {customtypes}
     if @generated
         block = Expr(:block)
-        push!(block.args, quote
-            # TODO: Currently, we shouldn't ever hit this path as we either throw an error for unsupported types
-            # or Parsers throw an error internally for weird custom Integer subtypes that don't have a parse method.
-            row_status |= RowStatus.UnknownTypeError
-            row_status |= RowStatus.HasColumnIndicators
-            colinds = setflag(colinds, col_idx)
-            skip_element!(cols[col_idx])
-            res = Parsers.xparse(String, row_bytes, pos, len, options, Parsers.PosLen31)::Parsers.Result{Parsers.PosLen31}
-            (val, tlen, code) = res.val, res.tlen, res.code
-            return val, tlen, code, row_status, colinds
-        end)
         for i = 1:fieldcount(customtypes)
             T = fieldtype(customtypes, i)
             pushfirst!(block.args, quote
@@ -53,7 +42,7 @@ end
                     res = Parsers.xparse($T, row_bytes, pos, len, options)::Parsers.Result{$T}
                     (val, tlen, code) = res.val, res.tlen, res.code
                     unsafe_push!(cols[col_idx]::BufferedVector{$T}, val)
-                    return val, tlen, code, row_status, colinds
+                    return val, tlen, code
                 end
             end)
         end
@@ -66,21 +55,8 @@ end
         res = Parsers.xparse(_type, row_bytes, pos, len, options)::Parsers.Result{_type}
         (val, tlen, code) = res.val, res.tlen, res.code
         unsafe_push!(cols[col_idx]::BufferedVector{_type}, val)
-        return val, tlen, code, row_status, colinds
+        return val, tlen, code
     end
-end
-
-# Mark a value as missing in the `column_indicators` matrix in the `result_buf`.
-# If the `column_indicators` matrix is too small, add a row.
-# We use the lazily grown `column_indicators` matrix instead of using Union{Missing,T},
-# for smaller memory footprint (Missing uses 1 byte per element, we approach 1 bit per element
-# if there are missings in the row).
-function mark_missing!(colinds, colinds_row_idx, col_idx)
-    row_diff = colinds_row_idx - size(colinds, 1)
-    @assert row_diff == 0 || row_diff == 1
-    row_diff == 1 && addrows!(colinds)
-    @inbounds colinds[colinds_row_idx, col_idx] = true
-    return
 end
 
 function ChunkedBase.populate_result_buffer!(
@@ -99,13 +75,16 @@ function ChunkedBase.populate_result_buffer!(
 
     Base.ensureroom(result_buf, ceil(Int, length(newlines_segment) * 1.01))
 
-    ignorerepeated = options.ignorerepeated
-    ignoreemptyrows = options.ignoreemptylines
+    ignorerepeated = options.ignorerepeated::Bool
+    ignoreemptyrows = options.ignoreemptylines::Bool
     colinds = result_buf.column_indicators
     cols = result_buf.cols
 
     N = length(schema)
     for row_idx in 2:length(newlines_segment)
+        # We only grow the column indicators when we need to, this flag tacks whether we
+        # already added one for this row
+        added_collind_row = false
         @inbounds prev_newline = newlines_segment[row_idx - 1]
         @inbounds curr_newline = newlines_segment[row_idx]
         isemptyrow = ChunkedBase._isemptyrow(prev_newline, curr_newline, buf)
@@ -142,9 +121,10 @@ function ChunkedBase.populate_result_buffer!(
             if Parsers.eof(code) && !(col_idx == N && Parsers.delimited(code))
                 row_status |= RowStatus.TooFewColumns
                 row_status |= RowStatus.HasColumnIndicators
+                added_collind_row || (added_collind_row = true; addrows!(colinds))
                 for _col_idx in col_idx:N
                     skip_element!(cols[_col_idx])
-                    mark_missing!(colinds, colinds_row_idx, _col_idx)
+                    colinds[colinds_row_idx, _col_idx] = true
                 end
                 break
             end
@@ -181,15 +161,17 @@ function ChunkedBase.populate_result_buffer!(
                 (val, tlen, code) = res.val, res.tlen, res.code
                 unsafe_push!(cols[col_idx]::BufferedVector{Parsers.PosLen31}, Parsers.PosLen31(prev_newline+val.pos, val.len, val.missingvalue, val.escapedvalue))
             else
-                (val, tlen, code, row_status, colinds) = parsecustom!(CT, row_bytes, pos, len, col_idx, cols, options, schema[col_idx], row_status, colinds)
+                (val, tlen, code) = parsecustom!(CT, row_bytes, pos, len, col_idx, cols, options, schema[col_idx])
             end
             if Parsers.sentinel(code)
                 row_status |= RowStatus.HasColumnIndicators
-                mark_missing!(colinds, colinds_row_idx, col_idx)
+                added_collind_row || (added_collind_row = true; addrows!(colinds))
+                @inbounds colinds[colinds_row_idx, col_idx] = true
             elseif !Parsers.ok(code)
                 row_status |= RowStatus.ValueParsingError
                 row_status |= RowStatus.HasColumnIndicators
-                mark_missing!(colinds, colinds_row_idx, col_idx)
+                added_collind_row || (added_collind_row = true; addrows!(colinds))
+                @inbounds colinds[colinds_row_idx, col_idx] = true
             end
             pos += tlen
         end # for col_idx

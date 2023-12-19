@@ -1,7 +1,7 @@
 name = "ChunkedCSV"
 uuid = "c0d0730e-6432-44b2-a51e-6ec55e1c8b99"
 authors = ["Tomáš Drvoštěp <tomas.drvostep@gmail.com>"]
-version = "0.1.1"
+version = "0.1.2"
 
 [deps]
 ChunkedBase = "a380dd43-0ebf-4429-88d6-6f06ea920732"

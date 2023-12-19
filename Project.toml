@@ -15,7 +15,7 @@ TimeZones = "f269a46b-ccf7-5d73-abea-4c690281aa53"
 [compat]
 ChunkedBase = "0.3"
 Dates = "1"
-FixedPointDecimals = "0.4.3"
+FixedPointDecimals = "0.4.3, 0.5"
 Parsers = "2.7"
 SentinelArrays = "1"
 SnoopPrecompile = "1"

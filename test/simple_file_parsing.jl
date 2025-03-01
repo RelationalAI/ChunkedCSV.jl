@@ -258,8 +258,8 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test length(testctx.results[1].cols[1]) == 1
             @test length(testctx.results[1].cols[2]) == 1
             @test length(testctx.results[1].cols[3]) == 1
-            @test testctx.results[1].row_statuses[1] == RowStatus.HasColumnIndicators
-            @test vec(collect(testctx.results[1].column_indicators)) == [true, true, true]
+            @test testctx.results[1].row_statuses[1] == RowStatus.MissingValues
+            @test vec(collect(testctx.results[1].missing_values)) == [true, true, true]
         end
 
         @testset "char" begin
@@ -631,7 +631,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test testctx.results[1].cols[2][[1, 3]] == [2, 6]
 
             @test length(testctx.results) == 1
-            @test testctx.results[1].row_statuses == [RowStatus.Ok, RowStatus.HasColumnIndicators | RowStatus.SkippedRow, RowStatus.Ok, RowStatus.HasColumnIndicators | RowStatus.SkippedRow]
+            @test testctx.results[1].row_statuses == [RowStatus.Ok, RowStatus.MissingValues | RowStatus.SkippedRow, RowStatus.Ok, RowStatus.MissingValues | RowStatus.SkippedRow]
             @test length(testctx.results[1].cols[1]) == 4
             @test length(testctx.results[1].cols[2]) == 4
         end
@@ -663,9 +663,9 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
 
             @test length(testctx.results) == 4
             @test testctx.results[1].row_statuses == [RowStatus.Ok]
-            @test testctx.results[2].row_statuses == [RowStatus.HasColumnIndicators | RowStatus.SkippedRow]
+            @test testctx.results[2].row_statuses == [RowStatus.MissingValues | RowStatus.SkippedRow]
             @test testctx.results[3].row_statuses == [RowStatus.Ok]
-            @test testctx.results[4].row_statuses == [RowStatus.HasColumnIndicators | RowStatus.SkippedRow]
+            @test testctx.results[4].row_statuses == [RowStatus.MissingValues | RowStatus.SkippedRow]
             @test length(testctx.results[2].cols[1]) == 1
             @test length(testctx.results[2].cols[2]) == 1
             @test length(testctx.results[4].cols[1]) == 1
@@ -698,7 +698,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test testctx.results[1].cols[2][[1, 3]] == [2, 6]
 
             @test length(testctx.results) == 1
-            @test testctx.results[1].row_statuses == [RowStatus.Ok, RowStatus.HasColumnIndicators | RowStatus.SkippedRow, RowStatus.Ok, RowStatus.HasColumnIndicators | RowStatus.SkippedRow]
+            @test testctx.results[1].row_statuses == [RowStatus.Ok, RowStatus.MissingValues | RowStatus.SkippedRow, RowStatus.Ok, RowStatus.MissingValues | RowStatus.SkippedRow]
             @test length(testctx.results[1].cols[1]) == 4
             @test length(testctx.results[1].cols[2]) == 4
         end
@@ -733,9 +733,9 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
 
             @test length(testctx.results) == 4
             @test testctx.results[1].row_statuses == [RowStatus.Ok]
-            @test testctx.results[2].row_statuses == [RowStatus.HasColumnIndicators | RowStatus.SkippedRow]
+            @test testctx.results[2].row_statuses == [RowStatus.MissingValues | RowStatus.SkippedRow]
             @test testctx.results[3].row_statuses == [RowStatus.Ok]
-            @test testctx.results[4].row_statuses == [RowStatus.HasColumnIndicators | RowStatus.SkippedRow]
+            @test testctx.results[4].row_statuses == [RowStatus.MissingValues | RowStatus.SkippedRow]
             @test length(testctx.results[2].cols[1]) == 1
             @test length(testctx.results[2].cols[2]) == 1
             @test length(testctx.results[4].cols[1]) == 1
@@ -771,7 +771,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test testctx.results[1].cols[2][[1, 3]] == [2, 6]
 
             @test length(testctx.results) == 1
-            @test testctx.results[1].row_statuses == [RowStatus.Ok, RowStatus.HasColumnIndicators | RowStatus.SkippedRow, RowStatus.Ok, RowStatus.HasColumnIndicators | RowStatus.SkippedRow]
+            @test testctx.results[1].row_statuses == [RowStatus.Ok, RowStatus.MissingValues | RowStatus.SkippedRow, RowStatus.Ok, RowStatus.MissingValues | RowStatus.SkippedRow]
             @test length(testctx.results[1].cols[1]) == 4
             @test length(testctx.results[1].cols[2]) == 4
         end
@@ -808,9 +808,9 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
 
             @test length(testctx.results) == 4
             @test testctx.results[1].row_statuses == [RowStatus.Ok]
-            @test testctx.results[2].row_statuses == [RowStatus.HasColumnIndicators | RowStatus.SkippedRow]
+            @test testctx.results[2].row_statuses == [RowStatus.MissingValues | RowStatus.SkippedRow]
             @test testctx.results[3].row_statuses == [RowStatus.Ok]
-            @test testctx.results[4].row_statuses == [RowStatus.HasColumnIndicators | RowStatus.SkippedRow]
+            @test testctx.results[4].row_statuses == [RowStatus.MissingValues | RowStatus.SkippedRow]
             @test length(testctx.results[2].cols[1]) == 1
             @test length(testctx.results[2].cols[2]) == 1
             @test length(testctx.results[4].cols[1]) == 1
@@ -1074,28 +1074,28 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             testctx = TestContext()
             parse_file(io_t("a,b,c\n\n"), nothing, testctx, force=alg, ignoreemptyrows=false)
             @test testctx.header == [:a, :b, :c]
-            @test testctx.results[1].row_statuses == [RowStatus.TooFewColumns | RowStatus.HasColumnIndicators]
+            @test testctx.results[1].row_statuses == [RowStatus.TooFewColumns]
 
             testctx = TestContext()
             parse_file(io_t("a,b,c\n\n"), nothing, testctx, force=alg, ignoreemptyrows=true)
             @test testctx.header == [:a, :b, :c]
-            @test testctx.results[1].row_statuses == [RowStatus.SkippedRow | RowStatus.HasColumnIndicators]
+            @test testctx.results[1].row_statuses == [RowStatus.SkippedRow | RowStatus.MissingValues]
 
             testctx = TestContext()
             parse_file(io_t("a,b,c\r\r"), nothing, testctx, force=alg, ignoreemptyrows=true, newlinechar='\r')
             @test testctx.header == [:a, :b, :c]
-            @test testctx.results[1].row_statuses == [RowStatus.SkippedRow | RowStatus.HasColumnIndicators]
+            @test testctx.results[1].row_statuses == [RowStatus.SkippedRow | RowStatus.MissingValues]
 
             testctx = TestContext()
             parse_file(io_t("a,b,c\r\n\r\n"), nothing, testctx, force=alg, ignoreemptyrows=true, newlinechar='\n')
             @test testctx.header == [:a, :b, :c]
-            @test testctx.results[1].row_statuses == [RowStatus.SkippedRow | RowStatus.HasColumnIndicators]
+            @test testctx.results[1].row_statuses == [RowStatus.SkippedRow | RowStatus.MissingValues]
 
 
             testctx = TestContext()
             parse_file(io_t("a,b,c\r\n\r\n1,2,3\r\n4,5,6"), [Int,Int,Int], testctx, force=alg, ignoreemptyrows=true)
             @test testctx.header == [:a, :b, :c]
-            @test testctx.results[1].row_statuses == [RowStatus.SkippedRow | RowStatus.HasColumnIndicators, RowStatus.Ok, RowStatus.Ok]
+            @test testctx.results[1].row_statuses == [RowStatus.SkippedRow | RowStatus.MissingValues, RowStatus.Ok, RowStatus.Ok]
             @test testctx.results[1].cols[1][2:3] == [1, 4]
             @test testctx.results[1].cols[2][2:3] == [2, 5]
             @test testctx.results[1].cols[3][2:3] == [3, 6]
@@ -1103,7 +1103,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             testctx = TestContext()
             parse_file(io_t("a,b,c\n\n1,2,3\n4,5,6"), [Int,Int,Int], testctx, force=alg, ignoreemptyrows=true)
             @test testctx.header == [:a, :b, :c]
-            @test testctx.results[1].row_statuses == [RowStatus.SkippedRow | RowStatus.HasColumnIndicators, RowStatus.Ok, RowStatus.Ok]
+            @test testctx.results[1].row_statuses == [RowStatus.SkippedRow | RowStatus.MissingValues, RowStatus.Ok, RowStatus.Ok]
             @test testctx.results[1].cols[1][2:3] == [1, 4]
             @test testctx.results[1].cols[2][2:3] == [2, 5]
             @test testctx.results[1].cols[3][2:3] == [3, 6]
@@ -1111,7 +1111,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             testctx = TestContext()
             parse_file(io_t("a,b,c\r\r1,2,3\r4,5,6"), [Int,Int,Int], testctx, force=alg, ignoreemptyrows=true, newlinechar='\r')
             @test testctx.header == [:a, :b, :c]
-            @test testctx.results[1].row_statuses == [RowStatus.SkippedRow | RowStatus.HasColumnIndicators, RowStatus.Ok, RowStatus.Ok]
+            @test testctx.results[1].row_statuses == [RowStatus.SkippedRow | RowStatus.MissingValues, RowStatus.Ok, RowStatus.Ok]
             @test testctx.results[1].cols[1][2:3] == [1, 4]
             @test testctx.results[1].cols[2][2:3] == [2, 5]
             @test testctx.results[1].cols[3][2:3] == [3, 6]
@@ -1119,7 +1119,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             testctx = TestContext()
             parse_file(io_t("a,b,c\r\n\r\n1,2,3\r\n\r\n4,5,6"), [Int,Int,Int], testctx, force=alg, ignoreemptyrows=true)
             @test testctx.header == [:a, :b, :c]
-            @test testctx.results[1].row_statuses == [RowStatus.SkippedRow | RowStatus.HasColumnIndicators, RowStatus.Ok, RowStatus.SkippedRow | RowStatus.HasColumnIndicators, RowStatus.Ok]
+            @test testctx.results[1].row_statuses == [RowStatus.SkippedRow | RowStatus.MissingValues, RowStatus.Ok, RowStatus.SkippedRow | RowStatus.MissingValues, RowStatus.Ok]
             @test testctx.results[1].cols[1][[2,4]] == [1, 4]
             @test testctx.results[1].cols[2][[2,4]] == [2, 5]
             @test testctx.results[1].cols[3][[2,4]] == [3, 6]
@@ -1447,7 +1447,7 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test testctx.results[1].cols[1][1:1] == [Parsers.PosLen31(7, 3)]
             @test testctx.strings[1][1][1:1] == ["foo"]
             @test testctx.results[1].row_statuses[1] & ChunkedCSV.RowStatus.ValueParsingError > 0
-            @test testctx.results[1].column_indicators[1, 2]
+            @test testctx.results[1].errored_values[1, 2]
             @test length(testctx.results[1].cols[1]) == 1
             @test length(testctx.results[1].cols[2]) == 1
         end
@@ -1471,8 +1471,8 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 @test length(testctx.results) == 1
                 @test testctx.results[1].cols[1][1:4] == 0:3
                 @test testctx.results[1].cols[2][1:3] == 1:3
-                @test testctx.results[1].row_statuses[4] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].column_indicators[1, 2]
+                @test testctx.results[1].row_statuses[4] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].missing_values[1, 2]
             end
 
             @testset "decimals" begin
@@ -1493,8 +1493,8 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 @test length(testctx.results) == 1
                 @test testctx.results[1].cols[1][1:4] == 0:3
                 @test testctx.results[1].cols[2][1:3] == fill(FixedDecimal{Int,4}(1), 3)
-                @test testctx.results[1].row_statuses[4] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].column_indicators[1, 2]
+                @test testctx.results[1].row_statuses[4] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].missing_values[1, 2]
             end
 
             @testset "guess datetimes" begin
@@ -1518,8 +1518,8 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 @test length(testctx.results) == 1
                 @test testctx.results[1].cols[1][1:7] == 0:6
                 @test testctx.results[1].cols[2][1:6] == fill(DateTime(1969, 7, 20), 6)
-                @test testctx.results[1].row_statuses[7] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].column_indicators[1, 2]
+                @test testctx.results[1].row_statuses[7] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].missing_values[1, 2]
             end
         end
 
@@ -2080,14 +2080,14 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 @test testctx.results[1].cols[1][1:2] == [1,3]
                 @test testctx.results[1].cols[2][2] == 4
                 @test testctx.results[1].cols[3][1] == 3
-                @test testctx.results[1].row_statuses[1] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[2] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[3] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].column_indicators[1, 2]
-                @test testctx.results[1].column_indicators[2, 3]
-                @test testctx.results[1].column_indicators[3, 1]
-                @test testctx.results[1].column_indicators[3, 2]
-                @test testctx.results[1].column_indicators[3, 3]
+                @test testctx.results[1].row_statuses[1] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[2] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[3] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].missing_values[1, 2]
+                @test testctx.results[1].missing_values[2, 3]
+                @test testctx.results[1].missing_values[3, 1]
+                @test testctx.results[1].missing_values[3, 2]
+                @test testctx.results[1].missing_values[3, 3]
                 @test length(testctx.results[1].cols[1]) == 3
                 @test length(testctx.results[1].cols[2]) == 3
                 @test length(testctx.results[1].cols[3]) == 3
@@ -2111,14 +2111,14 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 @test testctx.results[1].cols[1][1:2] == ['a','c']
                 @test testctx.results[1].cols[2][2] == 'd'
                 @test testctx.results[1].cols[3][1] == 'b'
-                @test testctx.results[1].row_statuses[1] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[2] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[3] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].column_indicators[1, 2]
-                @test testctx.results[1].column_indicators[2, 3]
-                @test testctx.results[1].column_indicators[3, 1]
-                @test testctx.results[1].column_indicators[3, 2]
-                @test testctx.results[1].column_indicators[3, 3]
+                @test testctx.results[1].row_statuses[1] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[2] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[3] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].missing_values[1, 2]
+                @test testctx.results[1].missing_values[2, 3]
+                @test testctx.results[1].missing_values[3, 1]
+                @test testctx.results[1].missing_values[3, 2]
+                @test testctx.results[1].missing_values[3, 3]
                 @test length(testctx.results[1].cols[1]) == 3
                 @test length(testctx.results[1].cols[2]) == 3
                 @test length(testctx.results[1].cols[3]) == 3
@@ -2146,22 +2146,22 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 @test testctx.results[1].cols[1][1:6] == [FixedDecimal{Int32,1}(1.0),FixedDecimal{Int32,1}(0.3),FixedDecimal{Int32,1}(0),FixedDecimal{Int32,1}(0),FixedDecimal{Int32,1}(0),FixedDecimal{Int32,1}(0)]
                 @test testctx.results[1].cols[2][[2,4,6]] == [FixedDecimal{UInt32,2}(40), FixedDecimal{UInt32,2}(0), FixedDecimal{UInt32,2}(0)]
                 @test testctx.results[1].cols[3][[1,3,5]] == [FixedDecimal{Int64,3}(30), FixedDecimal{Int64,3}(0), FixedDecimal{Int64,3}(0)]
-                @test testctx.results[1].row_statuses[1] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[2] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[3] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[4] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[5] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[6] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[7] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].column_indicators[1, 2]
-                @test testctx.results[1].column_indicators[2, 3]
-                @test testctx.results[1].column_indicators[3, 2]
-                @test testctx.results[1].column_indicators[4, 3]
-                @test testctx.results[1].column_indicators[5, 2]
-                @test testctx.results[1].column_indicators[6, 3]
-                @test testctx.results[1].column_indicators[7, 1]
-                @test testctx.results[1].column_indicators[7, 2]
-                @test testctx.results[1].column_indicators[7, 3]
+                @test testctx.results[1].row_statuses[1] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[2] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[3] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[4] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[5] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[6] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[7] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].missing_values[1, 2]
+                @test testctx.results[1].missing_values[2, 3]
+                @test testctx.results[1].missing_values[3, 2]
+                @test testctx.results[1].missing_values[4, 3]
+                @test testctx.results[1].missing_values[5, 2]
+                @test testctx.results[1].missing_values[6, 3]
+                @test testctx.results[1].missing_values[7, 1]
+                @test testctx.results[1].missing_values[7, 2]
+                @test testctx.results[1].missing_values[7, 3]
                 @test length(testctx.results[1].cols[1]) == 7
                 @test length(testctx.results[1].cols[2]) == 7
                 @test length(testctx.results[1].cols[3]) == 7
@@ -2189,22 +2189,22 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 @test testctx.results[1].cols[1][1:6] == [DateTime(1990, 3, 4), DateTime(1990, 3, 4), DateTime(1990, 3, 4), DateTime(1990, 3, 4), DateTime(1990, 3, 4), DateTime(1990, 3, 4)]
                 @test testctx.results[1].cols[2][[2, 4, 6]] == [DateTime(1990, 3, 6), DateTime(1990, 3, 6), DateTime(1990, 3, 6)]
                 @test testctx.results[1].cols[3][[1, 3, 5]] == [DateTime(1990, 3, 5), DateTime(1990, 3, 5), DateTime(1990, 3, 5)]
-                @test testctx.results[1].row_statuses[1] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[2] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[3] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[4] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[5] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[6] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[7] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].column_indicators[1, 2]
-                @test testctx.results[1].column_indicators[2, 3]
-                @test testctx.results[1].column_indicators[3, 2]
-                @test testctx.results[1].column_indicators[4, 3]
-                @test testctx.results[1].column_indicators[5, 2]
-                @test testctx.results[1].column_indicators[6, 3]
-                @test testctx.results[1].column_indicators[7, 1]
-                @test testctx.results[1].column_indicators[7, 2]
-                @test testctx.results[1].column_indicators[7, 3]
+                @test testctx.results[1].row_statuses[1] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[2] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[3] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[4] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[5] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[6] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[7] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].missing_values[1, 2]
+                @test testctx.results[1].missing_values[2, 3]
+                @test testctx.results[1].missing_values[3, 2]
+                @test testctx.results[1].missing_values[4, 3]
+                @test testctx.results[1].missing_values[5, 2]
+                @test testctx.results[1].missing_values[6, 3]
+                @test testctx.results[1].missing_values[7, 1]
+                @test testctx.results[1].missing_values[7, 2]
+                @test testctx.results[1].missing_values[7, 3]
                 @test length(testctx.results[1].cols[1]) == 7
                 @test length(testctx.results[1].cols[2]) == 7
                 @test length(testctx.results[1].cols[3]) == 7
@@ -2232,22 +2232,22 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 @test testctx.results[1].cols[1][1:6] == [DateTime(1990, 3, 4), DateTime(1990, 3, 4), DateTime(1990, 3, 4), DateTime(1990, 3, 4), DateTime(1990, 3, 4), DateTime(1990, 3, 4)]
                 @test testctx.results[1].cols[2][[2, 4, 6]] == [DateTime(1990, 3, 6), DateTime(1990, 3, 6), DateTime(1990, 3, 6)]
                 @test testctx.results[1].cols[3][[1, 3, 5]] == [DateTime(1990, 3, 5), DateTime(1990, 3, 5), DateTime(1990, 3, 5)]
-                @test testctx.results[1].row_statuses[1] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[2] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[3] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[4] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[5] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[6] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[7] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].column_indicators[1, 2]
-                @test testctx.results[1].column_indicators[2, 3]
-                @test testctx.results[1].column_indicators[3, 2]
-                @test testctx.results[1].column_indicators[4, 3]
-                @test testctx.results[1].column_indicators[5, 2]
-                @test testctx.results[1].column_indicators[6, 3]
-                @test testctx.results[1].column_indicators[7, 1]
-                @test testctx.results[1].column_indicators[7, 2]
-                @test testctx.results[1].column_indicators[7, 3]
+                @test testctx.results[1].row_statuses[1] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[2] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[3] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[4] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[5] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[6] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[7] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].missing_values[1, 2]
+                @test testctx.results[1].missing_values[2, 3]
+                @test testctx.results[1].missing_values[3, 2]
+                @test testctx.results[1].missing_values[4, 3]
+                @test testctx.results[1].missing_values[5, 2]
+                @test testctx.results[1].missing_values[6, 3]
+                @test testctx.results[1].missing_values[7, 1]
+                @test testctx.results[1].missing_values[7, 2]
+                @test testctx.results[1].missing_values[7, 3]
                 @test length(testctx.results[1].cols[1]) == 7
                 @test length(testctx.results[1].cols[2]) == 7
                 @test length(testctx.results[1].cols[3]) == 7
@@ -2277,22 +2277,22 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 @test testctx.results[1].cols[1][1:6] == [s, s, s, s, s, s]
                 @test testctx.results[1].cols[2][[2, 4, 6]] == [s, s, s]
                 @test testctx.results[1].cols[3][[1, 3, 5]] == [s, s, s]
-                @test testctx.results[1].row_statuses[1] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[2] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[3] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[4] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[5] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[6] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[7] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].column_indicators[1, 2]
-                @test testctx.results[1].column_indicators[2, 3]
-                @test testctx.results[1].column_indicators[3, 2]
-                @test testctx.results[1].column_indicators[4, 3]
-                @test testctx.results[1].column_indicators[5, 2]
-                @test testctx.results[1].column_indicators[6, 3]
-                @test testctx.results[1].column_indicators[7, 1]
-                @test testctx.results[1].column_indicators[7, 2]
-                @test testctx.results[1].column_indicators[7, 3]
+                @test testctx.results[1].row_statuses[1] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[2] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[3] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[4] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[5] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[6] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[7] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].missing_values[1, 2]
+                @test testctx.results[1].missing_values[2, 3]
+                @test testctx.results[1].missing_values[3, 2]
+                @test testctx.results[1].missing_values[4, 3]
+                @test testctx.results[1].missing_values[5, 2]
+                @test testctx.results[1].missing_values[6, 3]
+                @test testctx.results[1].missing_values[7, 1]
+                @test testctx.results[1].missing_values[7, 2]
+                @test testctx.results[1].missing_values[7, 3]
                 @test length(testctx.results[1].cols[1]) == 7
                 @test length(testctx.results[1].cols[2]) == 7
                 @test length(testctx.results[1].cols[3]) == 7
@@ -2321,22 +2321,22 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
                 @test testctx.results[1].cols[1][1:6] == [u, u, u, u, u, u]
                 @test testctx.results[1].cols[2][[2, 4, 6]] == [u, u, u]
                 @test testctx.results[1].cols[3][[1, 3, 5]] == [u, u, u]
-                @test testctx.results[1].row_statuses[1] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[2] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[3] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[4] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[5] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[6] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].row_statuses[7] == ChunkedCSV.RowStatus.HasColumnIndicators
-                @test testctx.results[1].column_indicators[1, 2]
-                @test testctx.results[1].column_indicators[2, 3]
-                @test testctx.results[1].column_indicators[3, 2]
-                @test testctx.results[1].column_indicators[4, 3]
-                @test testctx.results[1].column_indicators[5, 2]
-                @test testctx.results[1].column_indicators[6, 3]
-                @test testctx.results[1].column_indicators[7, 1]
-                @test testctx.results[1].column_indicators[7, 2]
-                @test testctx.results[1].column_indicators[7, 3]
+                @test testctx.results[1].row_statuses[1] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[2] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[3] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[4] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[5] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[6] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].row_statuses[7] == ChunkedCSV.RowStatus.MissingValues
+                @test testctx.results[1].missing_values[1, 2]
+                @test testctx.results[1].missing_values[2, 3]
+                @test testctx.results[1].missing_values[3, 2]
+                @test testctx.results[1].missing_values[4, 3]
+                @test testctx.results[1].missing_values[5, 2]
+                @test testctx.results[1].missing_values[6, 3]
+                @test testctx.results[1].missing_values[7, 1]
+                @test testctx.results[1].missing_values[7, 2]
+                @test testctx.results[1].missing_values[7, 3]
                 @test length(testctx.results[1].cols[1]) == 7
                 @test length(testctx.results[1].cols[2]) == 7
                 @test length(testctx.results[1].cols[3]) == 7
@@ -2397,25 +2397,26 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test testctx.results[1].cols[2][[1, 4, 6, 7, 9]] == [1, 3, 4, 4, 5]
             @test testctx.results[1].cols[3][[1, 2, 6, 7]] == [1, 2, 4, 4]
             @test testctx.results[1].row_statuses[1] == RS.Ok
-            @test testctx.results[1].row_statuses[2] == RS.HasColumnIndicators
-            @test testctx.results[1].row_statuses[3] == RS.HasColumnIndicators
-            @test testctx.results[1].row_statuses[4] == RS.HasColumnIndicators | RS.TooFewColumns
-            @test testctx.results[1].row_statuses[5] == RS.HasColumnIndicators | RS.TooFewColumns
+            @test testctx.results[1].row_statuses[2] == RS.MissingValues
+            @test testctx.results[1].row_statuses[3] == RS.MissingValues
+            @test testctx.results[1].row_statuses[4] == RS.TooFewColumns
+            @test testctx.results[1].row_statuses[5] == RS.TooFewColumns
             @test testctx.results[1].row_statuses[6] == RS.TooManyColumns
             @test testctx.results[1].row_statuses[7] == RS.TooManyColumns
-            @test testctx.results[1].row_statuses[8] == RS.HasColumnIndicators | RS.ValueParsingError
-            @test testctx.results[1].row_statuses[9] == RS.HasColumnIndicators | RS.ValueParsingError
-            @test testctx.results[1].row_statuses[10] == RS.HasColumnIndicators | RS.SkippedRow
-            @test testctx.results[1].row_statuses[11] == RS.HasColumnIndicators
-            colinds = collect(testctx.results[1].column_indicators)
-            @test colinds[1, 2]                        # 2,,2
-            @test colinds[2,:] == [false, true, true]  # 2,,
-            @test colinds[3,:] == [false, false, true] # 3,3
-            @test colinds[4,:] == [false, true, true]  # 3
-            @test all(colinds[5,:])                    # garbage,garbage,garbage
-            @test colinds[6,:] == [true, false, true]  # garbage,1,garbage
-            @test all(colinds[7,:])                    # # comment
-            @test all(colinds[8,:])                    # ,,
+            @test testctx.results[1].row_statuses[8] == RS.ValueParsingError
+            @test testctx.results[1].row_statuses[9] == RS.ValueParsingError
+            @test testctx.results[1].row_statuses[10] == RS.MissingValues | RS.SkippedRow
+            @test testctx.results[1].row_statuses[11] == RS.MissingValues
+            missing_values = collect(testctx.results[1].missing_values)
+            @test missing_values[1, 2]                        # 2,,2
+            @test missing_values[2,:] == [false, true, true]  # 2,,
+            @test all(missing_values[3,:])                    # # comment
+            @test all(missing_values[4,:])                    # ,,
+            errored_values = collect(testctx.results[1].errored_values)
+            @test errored_values[1,:] == [false, false, true] # 3,3
+            @test errored_values[2,:] == [false, true, true]  # 3
+            @test all(errored_values[3,:])                    # garbage,garbage,garbage
+            @test errored_values[4,:] == [true, false, true]  # garbage,1,garbage
         end
     end
 
@@ -2448,25 +2449,26 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test testctx.results[1].cols[1][[1, 4, 6, 7, 9]] == [1, 3, 4, 4, 5]
             @test testctx.results[1].cols[2][[1, 2, 6, 7]] == [1, 2, 4, 4]
             @test testctx.results[1].row_statuses[1] == RS.Ok
-            @test testctx.results[1].row_statuses[2] == RS.HasColumnIndicators
-            @test testctx.results[1].row_statuses[3] == RS.HasColumnIndicators
-            @test testctx.results[1].row_statuses[4] == RS.HasColumnIndicators | RS.TooFewColumns
-            @test testctx.results[1].row_statuses[5] == RS.HasColumnIndicators | RS.TooFewColumns
+            @test testctx.results[1].row_statuses[2] == RS.MissingValues
+            @test testctx.results[1].row_statuses[3] == RS.MissingValues
+            @test testctx.results[1].row_statuses[4] == RS.TooFewColumns
+            @test testctx.results[1].row_statuses[5] == RS.TooFewColumns
             @test testctx.results[1].row_statuses[6] == RS.TooManyColumns
             @test testctx.results[1].row_statuses[7] == RS.TooManyColumns
-            @test testctx.results[1].row_statuses[8] == RS.HasColumnIndicators | RS.ValueParsingError
-            @test testctx.results[1].row_statuses[9] == RS.HasColumnIndicators | RS.ValueParsingError
-            @test testctx.results[1].row_statuses[10] == RS.HasColumnIndicators | RS.SkippedRow
-            @test testctx.results[1].row_statuses[11] == RS.HasColumnIndicators
-            colinds = collect(testctx.results[1].column_indicators)
-            @test colinds[1,:] == [true, false] # 2,,2
-            @test colinds[2,:] == [true,true]   # 2,,
-            @test colinds[3,:] == [false,true]  # 3,3
-            @test colinds[4,:] == [true,true]   # 3
-            @test colinds[5,:] == [true,true]   # garbage,garbage,garbage
-            @test colinds[6,:] == [false,true]  # garbage,1,garbage
-            @test colinds[7,:] == [true,true]   # # comment
-            @test colinds[8,:] == [true,true]   # ,,
+            @test testctx.results[1].row_statuses[8] == RS.ValueParsingError
+            @test testctx.results[1].row_statuses[9] == RS.ValueParsingError
+            @test testctx.results[1].row_statuses[10] == RS.MissingValues | RS.SkippedRow
+            @test testctx.results[1].row_statuses[11] == RS.MissingValues
+            missing_values = collect(testctx.results[1].missing_values)
+            @test missing_values[1,:] == [true, false] # 2,,2
+            @test missing_values[2,:] == [true,true]   # 2,,
+            @test missing_values[3,:] == [true,true]   # # comment
+            @test missing_values[4,:] == [true,true]   # ,,
+            errored_values = collect(testctx.results[1].errored_values)
+            @test errored_values[1,:] == [false,true]  # 3,3
+            @test errored_values[2,:] == [true,true]   # 3
+            @test errored_values[3,:] == [true,true]   # garbage,garbage,garbage
+            @test errored_values[4,:] == [false,true]  # garbage,1,garbage
 
             RS = ChunkedCSV.RowStatus
             testctx = TestContext()
@@ -2495,23 +2497,24 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test testctx.results[1].cols[2][[1, 2, 6, 7]] == [1, 2, 4, 4]
             @test testctx.results[1].row_statuses[1] == RS.Ok
             @test testctx.results[1].row_statuses[2] == RS.Ok
-            @test testctx.results[1].row_statuses[3] == RS.HasColumnIndicators
-            @test testctx.results[1].row_statuses[4] == RS.HasColumnIndicators | RS.TooFewColumns
-            @test testctx.results[1].row_statuses[5] == RS.HasColumnIndicators | RS.TooFewColumns
+            @test testctx.results[1].row_statuses[3] == RS.MissingValues
+            @test testctx.results[1].row_statuses[4] == RS.TooFewColumns
+            @test testctx.results[1].row_statuses[5] == RS.TooFewColumns
             @test testctx.results[1].row_statuses[6] == RS.TooManyColumns
             @test testctx.results[1].row_statuses[7] == RS.TooManyColumns
-            @test testctx.results[1].row_statuses[8] == RS.HasColumnIndicators | RS.ValueParsingError
-            @test testctx.results[1].row_statuses[9] == RS.HasColumnIndicators | RS.ValueParsingError
-            @test testctx.results[1].row_statuses[10] == RS.HasColumnIndicators | RS.SkippedRow
-            @test testctx.results[1].row_statuses[11] == RS.HasColumnIndicators
-            colinds = collect(testctx.results[1].column_indicators)
-            @test colinds[1,:] == [false, true] # 2,,
-            @test colinds[2,:] == [false, true] # 3,3
-            @test colinds[3,:] == [false, true] # 3
-            @test colinds[4,:] == [true, true]  # garbage,garbage,garbage
-            @test colinds[5,:] == [true, true]  # garbage,1,garbage
-            @test colinds[6,:] == [true, true]  # # comment
-            @test colinds[7,:] == [true, true]  # ,,
+            @test testctx.results[1].row_statuses[8] == RS.ValueParsingError
+            @test testctx.results[1].row_statuses[9] == RS.ValueParsingError
+            @test testctx.results[1].row_statuses[10] == RS.MissingValues | RS.SkippedRow
+            @test testctx.results[1].row_statuses[11] == RS.MissingValues
+            missing_values = collect(testctx.results[1].missing_values)
+            @test missing_values[1,:] == [false, true] # 2,,
+            @test missing_values[2,:] == [true, true]  # # comment
+            @test missing_values[3,:] == [true, true]  # ,,
+            errored_values = collect(testctx.results[1].errored_values)
+            @test errored_values[1,:] == [false, true] # 3,3
+            @test errored_values[2,:] == [false, true] # 3
+            @test errored_values[3,:] == [true, true]  # garbage,garbage,garbage
+            @test errored_values[4,:] == [true, true]  # garbage,1,garbage
 
             RS = ChunkedCSV.RowStatus
             testctx = TestContext()
@@ -2539,24 +2542,25 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test testctx.results[1].cols[1][1:7] == [1, 2, 2, 3, 3, 4, 4]
             @test testctx.results[1].cols[2][[1, 4, 6, 7, 9]] == [1, 3, 4, 4, 5]
             @test testctx.results[1].row_statuses[1] == RS.Ok
-            @test testctx.results[1].row_statuses[2] == RS.HasColumnIndicators
-            @test testctx.results[1].row_statuses[3] == RS.HasColumnIndicators
+            @test testctx.results[1].row_statuses[2] == RS.MissingValues
+            @test testctx.results[1].row_statuses[3] == RS.MissingValues
             @test testctx.results[1].row_statuses[4] == RS.Ok
-            @test testctx.results[1].row_statuses[5] == RS.HasColumnIndicators | RS.TooFewColumns
+            @test testctx.results[1].row_statuses[5] == RS.TooFewColumns
             @test testctx.results[1].row_statuses[6] == RS.TooManyColumns
             @test testctx.results[1].row_statuses[7] == RS.TooManyColumns
-            @test testctx.results[1].row_statuses[8] == RS.HasColumnIndicators | RS.ValueParsingError
-            @test testctx.results[1].row_statuses[9] == RS.HasColumnIndicators | RS.ValueParsingError
-            @test testctx.results[1].row_statuses[10] == RS.HasColumnIndicators | RS.SkippedRow
-            @test testctx.results[1].row_statuses[11] == RS.HasColumnIndicators
-            colinds = collect(testctx.results[1].column_indicators)
-            @test colinds[1,:] == [false, true] # 2,,
-            @test colinds[2,:] == [false, true] # 2,,2
-            @test colinds[3,:] == [false, true] # 3
-            @test colinds[4,:] == [true, true]  # garbage,garbage,garbage
-            @test colinds[5,:] == [true, false] # garbage,1,garbage
-            @test colinds[6,:] == [true, true]  # # comment
-            @test colinds[7,:] == [true, true]  # ,,
+            @test testctx.results[1].row_statuses[8] == RS.ValueParsingError
+            @test testctx.results[1].row_statuses[9] == RS.ValueParsingError
+            @test testctx.results[1].row_statuses[10] == RS.MissingValues | RS.SkippedRow
+            @test testctx.results[1].row_statuses[11] == RS.MissingValues
+            missing_values = collect(testctx.results[1].missing_values)
+            @test missing_values[1,:] == [false, true] # 2,,
+            @test missing_values[2,:] == [false, true] # 2,,2
+            @test missing_values[3,:] == [true, true]  # # comment
+            @test missing_values[4,:] == [true, true]  # ,,
+            errored_values = collect(testctx.results[1].errored_values)
+            @test errored_values[1,:] == [false, true] # 3
+            @test errored_values[2,:] == [true, true]  # garbage,garbage,garbage
+            @test errored_values[3,:] == [true, false] # garbage,1,garbage
 
             RS = ChunkedCSV.RowStatus
             testctx = TestContext()
@@ -2589,15 +2593,16 @@ for (io_t, alg) in Iterators.product((iobuffer, iostream, gzip_stream), (:serial
             @test testctx.results[1].row_statuses[5] == RS.Ok
             @test testctx.results[1].row_statuses[6] == RS.TooManyColumns
             @test testctx.results[1].row_statuses[7] == RS.TooManyColumns
-            @test testctx.results[1].row_statuses[8] == RS.HasColumnIndicators | RS.ValueParsingError
-            @test testctx.results[1].row_statuses[9] == RS.HasColumnIndicators | RS.ValueParsingError
-            @test testctx.results[1].row_statuses[10] == RS.HasColumnIndicators | RS.SkippedRow
-            @test testctx.results[1].row_statuses[11] == RS.HasColumnIndicators
-            colinds = collect(testctx.results[1].column_indicators)
-            @test colinds[1,:] == [true] # garbage,garbage,garbage
-            @test colinds[2,:] == [true] # garbage,1,garbage
-            @test colinds[3,:] == [true] # # comment
-            @test colinds[4,:] == [true] # ,,
+            @test testctx.results[1].row_statuses[8] == RS.ValueParsingError
+            @test testctx.results[1].row_statuses[9] == RS.ValueParsingError
+            @test testctx.results[1].row_statuses[10] == RS.MissingValues | RS.SkippedRow
+            @test testctx.results[1].row_statuses[11] == RS.MissingValues
+            missing_values = collect(testctx.results[1].missing_values)
+            @test missing_values[1,:] == [true] # # comment
+            @test missing_values[2,:] == [true] # ,,
+            errored_values = collect(testctx.results[1].errored_values)
+            @test errored_values[1,:] == [true] # garbage,garbage,garbage
+            @test errored_values[2,:] == [true] # garbage,1,garbage
         end
     end
 end # for (io_t, alg)

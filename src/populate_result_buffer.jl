@@ -21,8 +21,8 @@ function skip_row!(result_buf::AbstractResultBuffer, row_bytes, comment::Vector{
 end
 function skip_row!(result_buf::AbstractResultBuffer)
     foreach(skip_element!, result_buf.cols)
-    unsafe_push!(result_buf.row_statuses, RowStatus.HasColumnIndicators | RowStatus.SkippedRow)
-    addrows!(result_buf.column_indicators, 1, true)
+    unsafe_push!(result_buf.row_statuses, RowStatus.MissingValues | RowStatus.SkippedRow)
+    addrows!(result_buf.missing_values, 1, true)
     return true
 end
 
@@ -70,28 +70,31 @@ function ChunkedBase.populate_result_buffer!(
     empty!(result_buf)
     enum_schema = parsing_ctx.enum_schema
     schema = parsing_ctx.schema
-    colinds_row_idx = 1
+    missing_idx = 1
+    errored_idx = 1
     options = parsing_ctx.options
 
     Base.ensureroom(result_buf, ceil(Int, length(newlines_segment) * 1.01))
 
     ignorerepeated = options.ignorerepeated::Bool
     ignoreemptyrows = options.ignoreemptylines::Bool
-    colinds = result_buf.column_indicators
+    missing_values = result_buf.missing_values
+    errored_values = result_buf.errored_values
     cols = result_buf.cols
 
     N = length(schema)
     for row_idx in 2:length(newlines_segment)
         # We only grow the column indicators when we need to, this flag tacks whether we
         # already added one for this row
-        added_collind_row = false
+        added_missing_row = false
+        added_errored_row = false
         @inbounds prev_newline = newlines_segment[row_idx - 1]
         @inbounds curr_newline = newlines_segment[row_idx]
         isemptyrow = ChunkedBase._isemptyrow(prev_newline, curr_newline, buf)
-        (ignoreemptyrows && isemptyrow) && skip_row!(result_buf) && (colinds_row_idx += 1; continue)
+        (ignoreemptyrows && isemptyrow) && skip_row!(result_buf) && (missing_idx += 1; continue)
         # +1 -1 to exclude newline chars
         @inbounds row_bytes = view(buf, prev_newline+Int32(1):curr_newline-Int32(1))
-        skip_row!(result_buf, row_bytes, comment) && (colinds_row_idx += 1; continue)
+        skip_row!(result_buf, row_bytes, comment) && (missing_idx += 1; continue)
 
         len = length(row_bytes)
         pos = 1
@@ -120,11 +123,10 @@ function ChunkedBase.populate_result_buffer!(
 
             if Parsers.eof(code) && !(col_idx == N && Parsers.delimited(code))
                 row_status |= RowStatus.TooFewColumns
-                row_status |= RowStatus.HasColumnIndicators
-                added_collind_row || (added_collind_row = true; addrows!(colinds))
+                added_errored_row || (added_errored_row = true; addrows!(errored_values))
                 for _col_idx in col_idx:N
                     skip_element!(cols[_col_idx])
-                    colinds[colinds_row_idx, _col_idx] = true
+                    errored_values[errored_idx, _col_idx] = true
                 end
                 break
             end
@@ -164,14 +166,13 @@ function ChunkedBase.populate_result_buffer!(
                 (val, tlen, code) = parsecustom!(CT, row_bytes, pos, len, col_idx, cols, options, schema[col_idx])
             end
             if Parsers.sentinel(code)
-                row_status |= RowStatus.HasColumnIndicators
-                added_collind_row || (added_collind_row = true; addrows!(colinds))
-                @inbounds colinds[colinds_row_idx, col_idx] = true
+                row_status |= RowStatus.MissingValues
+                added_missing_row || (added_missing_row = true; addrows!(missing_values))
+                @inbounds missing_values[missing_idx, col_idx] = true
             elseif !Parsers.ok(code)
                 row_status |= RowStatus.ValueParsingError
-                row_status |= RowStatus.HasColumnIndicators
-                added_collind_row || (added_collind_row = true; addrows!(colinds))
-                @inbounds colinds[colinds_row_idx, col_idx] = true
+                added_errored_row || (added_errored_row = true; addrows!(errored_values))
+                @inbounds errored_values[errored_idx, col_idx] = true
             end
             pos += tlen
         end # for col_idx
@@ -179,7 +180,8 @@ function ChunkedBase.populate_result_buffer!(
             row_status |= RowStatus.TooManyColumns
         end
         unsafe_push!(result_buf.row_statuses, row_status)
-        colinds_row_idx += (row_status & RowStatus.HasColumnIndicators) > 0
+        missing_idx += added_missing_row
+        errored_idx += added_errored_row
     end # for row_idx
     return nothing
 end

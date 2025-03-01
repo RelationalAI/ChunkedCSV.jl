@@ -16,6 +16,9 @@ It will parse the following formats:
 - `yyyy-mm-ddTHH:MM:SSZ`
 - `yyyy-mm-ddTHH:MM:SS.sZ`
 
+Negative years are also supported. The smallest DateTime value that can be represented is
+`-292277024-05-15T16:47:04.192` and the largest is `292277025-08-17T07:12:55.807`.
+
 # Examples:
 ```julia
 julia> Parsers.xparse(ChunkedCSV.GuessDateTime, "2014-01-01")
@@ -50,7 +53,39 @@ function _unsafe_datetime(y=0, m=1, d=1, h=0, mi=0, s=0, ms=0)
     return DateTime(Dates.UTM(rata))
 end
 
-# [y]yyy-[m]m-[d]d((T|\s)HH:MM:SS(\.s{1,3}})?)?(zzzz|ZZZ|\Z)?
+# Like Dates.validargs, but also checks for overflow
+function _validargs(::Type{DateTime}, y::Int64, m::Int64, d::Int64, h::Int64, mi::Int64, s::Int64, ms::Int64)
+    # We check that y is <= 292277025 and >= -292277024 earlier in the parser since values
+    # outside that range are sure to overflow. Here we check the years on the edge of the range.
+    if y == 292277025 && !(m <= 8 && d <= 17 && h <= 7 && mi <= 12 && s <= 55 && ms <= 807)
+        return ArgumentError("DateTime($y, $m, $d, $h, $mi, $s, $ms) is out of range")
+
+    elseif y == -292277024 && !(m <= 5 && d <= 15 && h <= 16 && mi <= 47 && s <= 4 && ms <= 192)
+        return ArgumentError("DateTime($y, $m, $d, $h, $mi, $s, $ms) is out of range")
+    end
+    return Dates.validargs(DateTime, y, m, d, h, mi, s, ms, Dates.TWENTYFOURHOUR)
+end
+# Like above, but note that this doesn't check for overflows _caused by the timezone_, since
+# it's easier to compare the signs of the original DateTime and produced ZonedDateTime values
+# after the conversion.
+function _validargs(::Type{ZonedDateTime}, y::Int64, m::Int64, d::Int64, h::Int64, mi::Int64, s::Int64, ms::Int64, tz)
+    # We check that y is <= 292277025 and >= -292277024 earlier in the parser since values
+    # outside that range are sure to overflow. Here we check the years on the edge of the range.
+    if y == 292277025 && !(m <= 8 && d <= 17 && h <= 7 && mi <= 12 && s <= 55 && ms <= 807)
+        return ArgumentError("ZonedDateTime($y, $m, $d, $h, $mi, $s, $ms) is out of range")
+
+    elseif y == -292277024 && !(m <= 5 && d <= 15 && h <= 16 && mi <= 47 && s <= 4 && ms <= 192)
+        return ArgumentError("ZonedDateTime($y, $m, $d, $h, $mi, $s, $ms) is out of range")
+    end
+    return Dates.validargs(ZonedDateTime, y, m, d, h, mi, s, ms, tz)
+end
+function _timezone_overflow(year, zdt)
+    year == 292277025 && sign(Dates.value(zdt.utc_datetime)) != 1 && return true
+    year == -292277024 && sign(Dates.value(zdt.utc_datetime)) != -1 && return true
+    return false
+end
+
+# [-][y]yyy-[m]m-[d]d((T|\s)HH:MM:SS(\.s{1,3}})?)?(zzzz|ZZZ|\Z)?
 Base.@propagate_inbounds function _default_tryparse_timestamp(buf, pos, len, code, b, options)
     delim = options.delim.token
     cq = options.cq.token
@@ -61,16 +96,32 @@ Base.@propagate_inbounds function _default_tryparse_timestamp(buf, pos, len, cod
         (pos >= len) && (code |= Parsers.EOF)
         return _unsafe_datetime(0), code, pos
     end
+    sign_mul = 1
+    if b == UInt8('-')
+        sign_mul = -1
+        pos += 1
+        b = buf[pos]
+    end
 
     year = 0
-    for i in 1:4
+    # The maximum and minimum year that can be represented by a DateTime with millisecond precision
+    # backed by an Int64 has 9 digits:
+    # julia> DateTime(Dates.UTM(typemax(Int)))
+    # 292277025-08-17T07:12:55.807
+
+    # julia> DateTime(Dates.UTM(typemin(Int)))
+    # -292277024-05-15T16:47:04.192
+    for i in 1:9
         b -= 0x30
         b > 0x09 && (return _unsafe_datetime(0), code | Parsers.INVALID, pos)
         year = Int(b) + 10 * year
         b = buf[pos += 1]
         (i > 2 && b == UInt8('-')) && break
     end
-    b != UInt8('-')  && (return _unsafe_datetime(year), code | Parsers.INVALID, pos)
+    year *= sign_mul
+    if b != UInt8('-') || year > 292277025 || year < -292277024
+        return _unsafe_datetime(year), code | Parsers.INVALID, pos
+    end
     b = buf[pos += 1]
 
     month = 0
@@ -137,7 +188,7 @@ Base.@propagate_inbounds function _default_tryparse_timestamp(buf, pos, len, cod
         b = buf[pos += 1]
     end
     if (pos == len || b == delim || b == cq)
-        code |= isnothing(Dates.validargs(DateTime, year, month, day, hour, minute, second, 0)) ? Parsers.OK : Parsers.INVALID
+        code |= isnothing(_validargs(DateTime, year, month, day, hour, minute, second, 0)) ? Parsers.OK : Parsers.INVALID
         if !(b == delim || b == cq)
             code |= Parsers.EOF
             pos += 1
@@ -184,7 +235,7 @@ Base.@propagate_inbounds function _default_tryparse_timestamp(buf, pos, len, cod
 
         b += UInt8('0')
         if (pos == len || b == delim || b == cq)
-            code |= isnothing(Dates.validargs(DateTime, year, month, day, hour, minute, second, millisecond)) ? Parsers.OK : Parsers.INVALID
+            code |= isnothing(_validargs(DateTime, year, month, day, hour, minute, second, millisecond)) ? Parsers.OK : Parsers.INVALID
             if !(b == delim || b == cq)
                 code |= Parsers.EOF
                 pos += 1
@@ -196,7 +247,7 @@ Base.@propagate_inbounds function _default_tryparse_timestamp(buf, pos, len, cod
     tz, pos, code = _tryparse_timezone(buf, pos, b, len, code)
     pos >= len && (code |= Parsers.EOF)
     Parsers.invalid(code) && (return _unsafe_datetime(year, month, day, hour, minute, second, millisecond), code , pos)
-    if isnothing(Dates.validargs(ZonedDateTime, year, month, day, hour, minute, second, millisecond, tz))
+    if isnothing(_validargs(ZonedDateTime, year, month, day, hour, minute, second, millisecond, tz))
         code |= Parsers.OK
         if tz === _Z
             # Avoiding TimeZones.ZonedDateTime to save some allocations in case the `tz`
@@ -204,8 +255,11 @@ Base.@propagate_inbounds function _default_tryparse_timestamp(buf, pos, len, cod
             return (_unsafe_datetime(year, month, day, hour, minute, second, millisecond), code, pos)
         else
             dt = _unsafe_datetime(year, month, day, hour, minute, second, millisecond)
-            ztd = TimeZones.ZonedDateTime(dt, TimeZones.TimeZone(tz))
-            return (DateTime(ztd, TimeZones.UTC), code, pos)
+            zdt = TimeZones.ZonedDateTime(dt, TimeZones.TimeZone(tz))
+            if _timezone_overflow(year, zdt)
+                return (_unsafe_datetime(0), code | Parsers.INVALID, pos) # we overflowed due to the timezone
+            end
+            return (DateTime(zdt, TimeZones.UTC), code, pos)
         end
     else
         return (_unsafe_datetime(0), code | Parsers.INVALID, pos)

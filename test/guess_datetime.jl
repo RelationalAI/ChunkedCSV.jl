@@ -21,6 +21,10 @@ macro test_noalloc(e) :(@test(@allocated($(esc(e))) == 0)) end
     end
 
     @testset "Datetimes with only the Date part" begin
+        res = Parsers.xparse(ChunkedCSV.GuessDateTime, "0-1-1")
+        @test res.val == DateTime(0, 1, 1)
+        @test Parsers.ok(res.code)
+
         res = Parsers.xparse(ChunkedCSV.GuessDateTime, "0-01-01")
         @test res.val == DateTime(0, 1, 1)
         @test Parsers.ok(res.code)

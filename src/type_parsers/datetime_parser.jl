@@ -90,8 +90,8 @@ Base.@propagate_inbounds function _default_tryparse_timestamp(buf, pos, len, cod
     delim = options.delim.token
     cq = options.cq.token
     rounding = options.rounding
-    # ensure there is enough room for at least yyyy-m-d
-    if len - pos < 8
+    # ensure there is enough room for at least y-m-d
+    if len - pos + 1 < 5
         (b != delim) && (code |= Parsers.INVALID)
         (pos >= len) && (code |= Parsers.EOF)
         return _unsafe_datetime(0), code, pos
@@ -116,7 +116,7 @@ Base.@propagate_inbounds function _default_tryparse_timestamp(buf, pos, len, cod
         b > 0x09 && (return _unsafe_datetime(0), code | Parsers.INVALID, pos)
         year = Int(b) + 10 * year
         b = buf[pos += 1]
-        (i > 2 && b == UInt8('-')) && break
+        b == UInt8('-') && break
     end
     year *= sign_mul
     if b != UInt8('-') || year > 292277025 || year < -292277024

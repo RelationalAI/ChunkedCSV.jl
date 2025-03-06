@@ -19,7 +19,8 @@ It will parse the following formats:
 Negative years are also supported. The smallest DateTime value that can be represented is
 `-292277024-05-15T16:47:04.192` and the largest is `292277025-08-17T07:12:55.807`.
 
-Additionally, since some systems use 32 bit integers to represent years, all valid
+Additionally, since some systems use 32 bit integers to represent years and we don't want to
+fail loudly parsing these even though we can't parse represent them exactly, all valid
 timestamps with in the range `[-2147483648-01-01T00:00:00.000, -292277024-05-15T16:47:04.193]`
 will be clamped to the minimal representable DateTime, `-292277024-05-15T16:47:04.192`, and all valid
 timestamps with in the range `[292277025-08-17T07:12:55.808, 2147483647-12-31T23:59:59.999]`
@@ -81,8 +82,8 @@ Base.@propagate_inbounds function _default_tryparse_timestamp(buf, pos, len, cod
     delim = options.delim.token
     cq = options.cq.token
     rounding = options.rounding
-    # ensure there is enough room for at least y-m-d
-    if len - pos + 1 < 5
+    # ensure there is enough room for at least y-mm-dd
+    if len - pos + 1 < 7
         (b != delim) && (code |= Parsers.INVALID)
         (pos >= len) && (code |= Parsers.EOF)
         return _unsafe_datetime(0), code, pos
@@ -96,96 +97,117 @@ Base.@propagate_inbounds function _default_tryparse_timestamp(buf, pos, len, cod
 
     year = 0
     for i in 1:10
-        b -= 0x30
-        b > 0x09 && (return _unsafe_datetime(0), code | Parsers.INVALID, pos)
-        year = Int(b) + 10 * year
-        b = buf[pos += 1]
+        b0 = b - 0x30
+        b0 > 0x09 && (return _unsafe_datetime(0), code | Parsers.INVALID, pos)
+        year = Int(b0) + 10 * year
+        pos += 1
+        pos > len && (return _unsafe_datetime(0), code | Parsers.INVALID | Parsers.EOF, pos)
+        b = buf[pos]
         b == UInt8('-') && break
     end
     year *= sign_mul
-    if b != UInt8('-') || year > typemax(Int32) || year < typemin(Int32)
+    # If the year is larger than what can be represented by a 32 bit integer, fail to parse,
+    # values between typemin(Int32) and MIN_DATETIME are clamped to MIN_DATETIME
+    # values between typemax(Int32) and MAX_DATETIME are clamped to MAX_DATETIME
+    overflowed = (year > typemax(Int32) || year < typemin(Int32))
+    if b != UInt8('-') || overflowed
+        overflowed || (code |= Parsers.OVERFLOW)
         return (_unsafe_datetime(year), code | Parsers.INVALID, pos)
     end
-    b = buf[pos += 1]
+    pos += 1
+    pos > len && (return _unsafe_datetime(0), code | Parsers.INVALID | Parsers.EOF, pos)
+    b = buf[pos]
 
     month = 0
     for _ in 1:2
-        b -= 0x30
-        b > 0x09 && (return _unsafe_datetime(year), code | Parsers.INVALID, pos)
-        month = Int(b) + 10 * month
-        b = buf[pos += 1]
-        b == UInt8('-') && break
+        b0 = b - 0x30
+        b0 > 0x09 && (return _unsafe_datetime(year), code | Parsers.INVALID, pos)
+        month = Int(b0) + 10 * month
+        pos += 1
+        pos > len && (return _unsafe_datetime(year), code | Parsers.INVALID | Parsers.EOF, pos)
+        b = buf[pos]
     end
     month > 12 && (return _unsafe_datetime(year), code | Parsers.INVALID, pos)
     b != UInt8('-') && (return _unsafe_datetime(year, month), code | Parsers.INVALID, pos)
-    b = buf[pos += 1]
+    pos += 1
+    pos > len && (return _unsafe_datetime(year), code | Parsers.INVALID | Parsers.EOF, pos)
+    b = buf[pos]
 
     day = 0
-    for _ in 1:2
-        b -= 0x30
-        b > 0x09 && (return _unsafe_datetime(year, month), code | Parsers.INVALID, pos)
-        day = Int(b) + 10 * day
-        pos == len && (code |= Parsers.EOF; break)
-        b = buf[pos += 1]
-        (b == UInt8('T') ||  b == UInt8(' ')) && break
+    for i in 1:2
+        b0 = b - 0x30
+        b0 > 0x09 && (return _unsafe_datetime(year), code | Parsers.INVALID, pos)
+        day = Int(b0) + 10 * day
+        pos += 1
+        if pos > len
+            code |= Parsers.EOF;
+            if i == 2
+                break # 2 digit day at the very end of the buffer
+            else # 1 digit day is an error
+                return (_unsafe_datetime(year, month), code | Parsers.INVALID, pos)
+            end
+        else
+            b = buf[pos]
+        end
     end
     day > Dates.daysinmonth(year, month) && (return _unsafe_datetime(year, month), code | Parsers.INVALID, pos)
-    if (pos >= len || (b != UInt8('T') && b != UInt8(' ')))
-        if !(b == delim || b == cq)
-            code |= Parsers.EOF
-            pos += 1
-        end
+    if (pos > len) || (b != UInt8('T') && b != UInt8(' '))
         return _clamped_datetime(year, month, day), code | Parsers.OK, pos
     end
     # ensure there is enough room for at least HH:MM:DD
-    len - pos < 8 && (return _unsafe_datetime(0), code | Parsers.INVALID, len)
+    len - pos + 1 < 8 && (return _unsafe_datetime(0), code | Parsers.INVALID, pos)
     b = buf[pos += 1]
 
     hour = 0
     for _ in 1:2
-        b -= 0x30
-        b > 0x09 && (return _unsafe_datetime(year, month, day), code | Parsers.INVALID, pos)
-        hour = Int(b) + 10 * hour
+        b0 = b - 0x30
+        b0 > 0x09 && (return _unsafe_datetime(year, month, day), code | Parsers.INVALID, pos)
+        hour = Int(b0) + 10 * hour
         b = buf[pos += 1]
     end
-    hour > 24 && (return _unsafe_datetime(year, month, day), code | Parsers.INVALID, pos)
+    hour >= 24 && (return _unsafe_datetime(year, month, day), code | Parsers.INVALID, pos)
     b != UInt8(':') && (return _unsafe_datetime(year, month, day, hour), code | Parsers.INVALID, pos)
     b = buf[pos += 1]
 
     minute = 0
     for _ in 1:2
-        b -= 0x30
-        b > 0x09 && (return _unsafe_datetime(year, month, day, hour), code | Parsers.INVALID, pos)
-        minute = Int(b) + 10 * minute
+        b0 = b - 0x30
+        b0 > 0x09 && (return _unsafe_datetime(year, month, day, hour), code | Parsers.INVALID, pos)
+        minute = Int(b0) + 10 * minute
         b = buf[pos += 1]
     end
-    minute > 60 && (return _unsafe_datetime(year, month, day, hour), code | Parsers.INVALID, pos)
+    minute >= 60 && (return _unsafe_datetime(year, month, day, hour), code | Parsers.INVALID, pos)
     b != UInt8(':') && (return _unsafe_datetime(year, month, day, hour, minute), code | Parsers.INVALID, pos)
     b = buf[pos += 1]
 
     second = 0
     for _ in 1:2
-        b -= 0x30
-        b > 0x09 && (return _unsafe_datetime(year, month, day, hour, minute), code | Parsers.INVALID, pos)
-        second = Int(b) + 10 * second
-        pos == len && break
-        b = buf[pos += 1]
+        b0 = b - 0x30
+        b0 > 0x09 && (return _unsafe_datetime(year, month, day, hour, minute), code | Parsers.INVALID, pos)
+        second = Int(b0) + 10 * second
+        pos += 1
+        pos > len && (code |= Parsers.EOF; break)
+        b = buf[pos]
     end
-    if (pos == len || b == delim || b == cq)
-        code |= isnothing(Dates.validargs(DateTime, year, month, day, hour, minute, second, 0)) ? Parsers.OK : Parsers.INVALID
-        if !(b == delim || b == cq)
-            code |= Parsers.EOF
-            pos += 1
-        end
-        return _clamped_datetime(year, month, day, hour, minute, second), code, pos
+    second >= 60 && (return _unsafe_datetime(year, month, day, hour, minute), code | Parsers.INVALID, pos)
+    if pos > len
+        return _clamped_datetime(year, month, day, hour, minute, second), code | Parsers.OK, pos
     end
 
     millisecond = 0
     if b == UInt8('.')
         i = 0
-        while pos < len && ((b = (buf[pos += 1] - UInt8('0'))) <= 0x09)
-            millisecond = Int(b) + 10 * millisecond
+        pos += 1
+        pos > len && (return _unsafe_datetime(year, month, day, hour, minute, second), code | Parsers.INVALID | Parsers.EOF, pos)
+        b = buf[pos]
+        while true
+            b0 = b - UInt8('0')
+            b0 > 0x09 && break
             i += 1
+            millisecond = Int(b0) + 10 * millisecond
+            pos += 1
+            pos > len && break
+            b = buf[pos]
         end
 
         i == 0 && (return _unsafe_datetime(year, month, day, hour, minute, second), code | Parsers.INVALID, pos)
@@ -216,34 +238,26 @@ Base.@propagate_inbounds function _default_tryparse_timestamp(buf, pos, len, cod
                 throw(ArgumentError("invalid rounding mode: $rounding"))
             end
         end
-
-        b += UInt8('0')
-        if (pos == len || b == delim || b == cq)
-            code |= isnothing(Dates.validargs(DateTime, year, month, day, hour, minute, second, millisecond)) ? Parsers.OK : Parsers.INVALID
-            if !(b == delim || b == cq)
-                code |= Parsers.EOF
-                pos += 1
-            end
-            return _clamped_datetime(year, month, day, hour, minute, second, millisecond), code, pos
-        end
+        millisecond >= 1000 && (return _unsafe_datetime(year, month, day, hour, minute, second), code | Parsers.INVALID, pos)
     end
     b == UInt8(' ') && pos < len && (b = buf[pos += 1])
+
     tz, pos, code = _tryparse_timezone(buf, pos, b, len, code)
-    pos >= len && (code |= Parsers.EOF)
-    Parsers.invalid(code) && (return _unsafe_datetime(year, month, day, hour, minute, second, millisecond), code , pos)
-    if isnothing(Dates.validargs(ZonedDateTime, year, month, day, hour, minute, second, millisecond, tz))
-        code |= Parsers.OK
+    pos > len && (code |= Parsers.EOF)
+
+    dt = _clamped_datetime(year, month, day, hour, minute, second, millisecond)
+    code |= Parsers.OK
+    if isnothing(tz)
+        return (dt, code, pos)
+    else
         if tz === _Z
             # Avoiding TimeZones.ZonedDateTime to save some allocations in case the `tz`
             # corresponds to a UTC time zone.
-            return (_clamped_datetime(year, month, day, hour, minute, second, millisecond), code, pos)
+            return (dt, code, pos)
         else
-            dt = _clamped_datetime(year, month, day, hour, minute, second, millisecond)
             zdt = TimeZones.ZonedDateTime(dt, TimeZones.TimeZone(tz))
             return (_clamped_datetime_from_zoned(year, zdt), code, pos)
         end
-    else
-        return (_unsafe_datetime(0), code | Parsers.INVALID, pos)
     end
 end
 
@@ -252,6 +266,13 @@ end
 # This is needed until https://github.com/JuliaTime/TimeZones.jl/issues/271 is fixed
 const _Z = SubString("Z", 1:1)
 @inline function _tryparse_timezone(buf, pos, b, len, code)
+    # At this point we don't even know if there is a timezone to parse, we might be at the end of
+    # the field. So in case we get an invalid TZ here, we just return the _original_ code
+    # and `nothing` for the timezone, as if we never attempted to parse it.
+    # If this _was_ a true invalid timezone, the other layers in Parsers.jl will mark the value
+    # as invalid because were at the very end of the field and if leave any non-whitespace characters
+    # between the end of the value and the delimiter, it will be marked as invalid by other layers
+    # in Parsers.jl.
     nb = len - pos
     @inbounds if b == UInt8('+') || b == UInt8('-')
         if nb > 1 && buf[pos+1] == UInt8('0')
@@ -267,8 +288,8 @@ const _Z = SubString("Z", 1:1)
                 end
             end
         end
-        (tz, pos, _, code) = Parsers.tryparsenext(Dates.DatePart{'z'}(4, false), buf, pos, len, b, code)
-        return tz, pos, code
+        (tz, pos, _, code_tz) = Parsers.tryparsenext(Dates.DatePart{'z'}(4, false), buf, pos, len, b, code)
+        return tz, pos, Parsers.invalid(code_tz) ? code : code_tz
     end
 
     @inbounds if b == UInt8('G')
@@ -282,8 +303,8 @@ const _Z = SubString("Z", 1:1)
             return (_Z, pos+3, code) # UTC
         end
     end
-    (tz, pos, _, code) = Parsers.tryparsenext(Dates.DatePart{'Z'}(3, false), buf, pos, len, b, code)
-    return tz, pos, code
+    (tz, pos, _, code_tz) = Parsers.tryparsenext(Dates.DatePart{'Z'}(3, false), buf, pos, len, b, code)
+    return tz, pos, Parsers.invalid(code_tz) ? code : code_tz
 end
 
 function Parsers.typeparser(::Parsers.AbstractConf{GuessDateTime}, source::AbstractVector{UInt8}, pos, len, b, code, pl, options)

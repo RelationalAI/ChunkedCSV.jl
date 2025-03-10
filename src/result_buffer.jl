@@ -274,7 +274,7 @@ function Base.iterate(itr::ColumnIterator{T}, state=(row=1, missing_idx=0, error
     isinvalidrow = has_errored_values_row | ((s & RowStatus.TooManyColumns) != 0)
     errored_idx += has_errored_values_row
 
-    has_missing_values_row = (s & RowStatus.MissingValues) != 0
+    has_missing_values_row = (s & RowStatus.MissingValues) != 0 # All SkippedRows have the MissingValues tag
     missing_idx += has_missing_values_row
     ismissingvalue = has_missing_values_row && @inbounds(itr.missing_values[missing_idx, itr.idx])
     iserroredvalue = has_errored_values_row && @inbounds(itr.errored_values[errored_idx, itr.idx])

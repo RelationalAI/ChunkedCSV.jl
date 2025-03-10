@@ -146,6 +146,19 @@ end
 
 @testset "ColumnIterator" begin
     buf = ChunkedCSV.TaskResultBuffer(1, [Int, Float64], 10)
+
+    # +------------------------------------------------------------------+
+    # |                        TASK_RESULT_BUFFER                        |
+    # +--------------------------+---------+---------+---------+---------+
+    # |       row_statuses       | missing | errored | cols[1] | cols[2] |
+    # +--------------------------+---------+---------+---------+---------+
+    # | Ok                       |   ---   |   ---   |    1    |   1.0   |
+    # | Miss                     |   1 0   |   ---   |  undef  |   2.0   |
+    # | TooManyColumns           |   ---   |   ---   |    3    |   3.0   |
+    # | Miss | ValueParsingError |   0 1   |   1 0   |  undef  |  undef  |
+    # | Miss | TooFewColumns     |   1 0   |   0 1   |  undef  |  undef  |
+    # | Miss | SkippedRow        |   1 1   |   ---   |  undef  |  undef  |
+    # +--------------------------+---------+---------+---------+---------+
     for i in 1:6; push!(buf.cols[1], i); end
     for i in 1:6; push!(buf.cols[2], Float64(i)); end
     push!(buf.row_statuses, ChunkedCSV.RowStatus.Ok)
@@ -157,30 +170,32 @@ end
     ChunkedCSV.addrows!(buf.missing_values, 4)
     ChunkedCSV.addrows!(buf.errored_values, 2)
 
-    buf.missing_values[1, 1] = true
-    buf.missing_values[2, 2] = true
-    buf.missing_values[3, 1] = true
-    buf.missing_values[4, 1] = true
-    buf.missing_values[4, 2] = true
+    buf.missing_values[1, 1] = true # ~ data row 2, col 1, "Miss"
+    buf.missing_values[2, 2] = true # ~ data row 4, col 2, "Miss | ValueParsingError"
+    buf.missing_values[3, 1] = true # ~ data row 5, col 1, "Miss | TooFewColumns"
+    buf.missing_values[4, 1] = true # ~ data row 6, col 1, "Miss | SkippedRow"
+    buf.missing_values[4, 2] = true # ~ data row 6, col 2, "Miss | SkippedRow"
 
-    buf.errored_values[1, 1] = true
-    buf.errored_values[2, 2] = true
+    buf.errored_values[1, 1] = true # ~ data row 4, col 1, "Miss | ValueParsingError"
+    buf.errored_values[2, 2] = true # ~ data row 5, col 2, "Miss | TooFewColumns"
 
     iter_data = collect(ChunkedCSV.ColumnIterator{Int}(buf, 1))
-    @test iter_data[1] == ChunkedCSV.ParsedField(1, false, false, false)
-    @test iter_data[2] == ChunkedCSV.ParsedField(2, false, false, true)
-    @test iter_data[3] == ChunkedCSV.ParsedField(3, true, false, false)
-    @test iter_data[4] == ChunkedCSV.ParsedField(4, true, true, false)
-    @test iter_data[5] == ChunkedCSV.ParsedField(5, true, false, true)
-    @test iter_data[6] == ChunkedCSV.ParsedField(6, false, false, true)
+    #                                          val, errrow, errval, missval
+    @test iter_data[1] == ChunkedCSV.ParsedField(1,  false,  false,  false)
+    @test iter_data[2] == ChunkedCSV.ParsedField(2,  false,  false,   true)
+    @test iter_data[3] == ChunkedCSV.ParsedField(3,   true,  false,  false)
+    @test iter_data[4] == ChunkedCSV.ParsedField(4,   true,   true,  false)
+    @test iter_data[5] == ChunkedCSV.ParsedField(5,   true,  false,   true)
+    @test iter_data[6] == ChunkedCSV.ParsedField(6,  false,  false,   true)
 
     iter_data = collect(ChunkedCSV.ColumnIterator{Float64}(buf, 2))
-    @test iter_data[1] == ChunkedCSV.ParsedField(1.0, false, false, false)
-    @test iter_data[2] == ChunkedCSV.ParsedField(2.0, false, false, false)
-    @test iter_data[3] == ChunkedCSV.ParsedField(3.0, true, false, false)
-    @test iter_data[4] == ChunkedCSV.ParsedField(4.0, true, false, true)
-    @test iter_data[5] == ChunkedCSV.ParsedField(5.0, true, true, false)
-    @test iter_data[6] == ChunkedCSV.ParsedField(6.0, false, false, true)
+    #                                            val, errrow, errval, missval
+    @test iter_data[1] == ChunkedCSV.ParsedField(1.0,  false,  false,  false)
+    @test iter_data[2] == ChunkedCSV.ParsedField(2.0,  false,  false,  false)
+    @test iter_data[3] == ChunkedCSV.ParsedField(3.0,   true,  false,  false)
+    @test iter_data[4] == ChunkedCSV.ParsedField(4.0,   true,  false,   true)
+    @test iter_data[5] == ChunkedCSV.ParsedField(5.0,   true,   true,  false)
+    @test iter_data[6] == ChunkedCSV.ParsedField(6.0,  false,  false,   true)
 end
 
 

@@ -2,10 +2,9 @@ using Dates
 using ChunkedCSV
 using Parsers
 using Test
+using BenchmarkTools
 
 const DT = b"1969-07-20 20:17:00"
-
-macro test_noalloc(e) :(@test(@allocated($(esc(e))) == 0)) end
 
 @testset "GuessDateTime" begin
     @testset "Parsing UTC equivalent timezones does not allocate" begin
@@ -15,7 +14,7 @@ macro test_noalloc(e) :(@test(@allocated($(esc(e))) == 0)) end
                 res = Parsers.xparse(ChunkedCSV.GuessDateTime, dt, 1, length(dt), Parsers.OPTIONS, DateTime)
                 @test res.val == DateTime(1969, 7, 20, 20, 17)
                 @test Parsers.ok(res.code)
-                @test_noalloc Parsers.xparse(ChunkedCSV.GuessDateTime, dt, 1, length(dt), Parsers.OPTIONS, DateTime)
+                @ballocated Parsers.xparse(ChunkedCSV.GuessDateTime, $dt, 1, length($dt), Parsers.OPTIONS, DateTime) == 0
             end
         end
     end

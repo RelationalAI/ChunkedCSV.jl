@@ -20,7 +20,7 @@ Negative years are also supported. The smallest DateTime value that can be repre
 `-292277024-05-15T16:47:04.192` and the largest is `292277025-08-17T07:12:55.807`.
 
 Additionally, since some systems use 32 bit integers to represent years and we don't want to
-fail loudly parsing these even though we can't parse represent them exactly, all valid
+fail loudly parsing these even though we can't represent them exactly, all valid
 timestamps with in the range `[-2147483648-01-01T00:00:00.000, -292277024-05-15T16:47:04.193]`
 will be clamped to the minimal representable DateTime, `-292277024-05-15T16:47:04.192`, and all valid
 timestamps with in the range `[292277025-08-17T07:12:55.808, 2147483647-12-31T23:59:59.999]`
@@ -59,7 +59,7 @@ function _unsafe_datetime(y=0, m=1, d=1, h=0, mi=0, s=0, ms=0)
     rata = ms + 1000 * (s + 60mi + 3600h + 86400 * Dates.totaldays(y, m, d))
     return DateTime(Dates.UTM(rata))
 end
-function _clamped_datetime(y=0, m=1, d=1, h=0, mi=0, s=0, ms=0)
+function _clamped_datetime(y, m, d, h=0, mi=0, s=0, ms=0)
     dt = _unsafe_datetime(y, m, d, h, mi, s, ms)
     y >= 292277025 && dt < ZERO_DATETIME && return MAX_DATETIME
     y <= -292277024 && dt > ZERO_DATETIME && return MIN_DATETIME
@@ -270,7 +270,7 @@ const _Z = SubString("Z", 1:1)
     # the field. So in case we get an invalid TZ here, we just return the _original_ code
     # and `nothing` for the timezone, as if we never attempted to parse it.
     # If this _was_ a true invalid timezone, the other layers in Parsers.jl will mark the value
-    # as invalid because were at the very end of the field and if leave any non-whitespace characters
+    # as invalid because we're at the very end of the field and if we leave any non-whitespace characters
     # between the end of the value and the delimiter, it will be marked as invalid by other layers
     # in Parsers.jl.
     nb = len - pos

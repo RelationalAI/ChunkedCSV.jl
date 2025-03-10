@@ -71,8 +71,8 @@ function ChunkedBase.consume!(consume_ctx::DebugContext, payload::ParsedPayload)
                         write(io, debug(col, j, parsing_ctx, consume_ctx, chunking_ctx))
                         n != 1 && print(io, ", ")
                         n -= 1
-                    elseif task_buf.row_statuses[j] == RowStatus.HasColumnIndicators
-                        write(io, k in task_buf.column_indicators[c] ? "?" : debug(col, j, parsing_ctx, consume_ctx, chunking_ctx))
+                    elseif task_buf.row_statuses[j] == RowStatus.MissingValues
+                        write(io, k in task_buf.missing_values[c] ? "?" : debug(col, j, parsing_ctx, consume_ctx, chunking_ctx))
                         n != 1 && print(io, ", ")
                         c += 1
                         n -= 1
@@ -97,7 +97,7 @@ function ChunkedBase.consume!(consume_ctx::DebugContext, payload::ParsedPayload)
                 consume_ctx.show_values && print(io, "\t$(name): [")
                 for j in 1:length(task_buf.row_statuses)
                     if (task_buf.row_statuses[j] & S) > 0
-                        has_missing = task_buf.row_statuses[j] > RowStatus.Ok && task_buf.column_indicators[c, k]
+                        has_missing = task_buf.row_statuses[j] & RowStatus.MissingValues > 0 && task_buf.missing_values[c, k]
                         consume_ctx.show_values && write(io, has_missing ? "?" : debug(col, j, parsing_ctx, consume_ctx, chunking_ctx))
                         consume_ctx.show_values && n != 1 && print(io, ", ")
                         has_missing && (c += 1)
@@ -154,9 +154,9 @@ function ChunkedBase.consume!(ctx::TestContext, payload::ParsedPayload)
         str_col = String[]
         push!(strings, str_col)
         if T === Parsers.PosLen31
-            col_iter = ColumnIterator(cols[i]::BufferedVector{Parsers.PosLen31}, i, task_buf.row_statuses, task_buf.column_indicators)
-            for (value, isinvalidrow, ismissingvalue) in col_iter
-                if ismissingvalue
+            col_iter = ColumnIterator(cols[i]::BufferedVector{Parsers.PosLen31}, i, task_buf.row_statuses, task_buf.missing_values, task_buf.errored_values)
+            for (value, isinvalidrow, iserroredvalue, ismissingvalue) in col_iter
+                if ismissingvalue || iserroredvalue
                     push!(str_col, "")
                 else
                     push!(str_col, Parsers.getstring(chunking_ctx.bytes, value, parsing_ctx.escapechar))

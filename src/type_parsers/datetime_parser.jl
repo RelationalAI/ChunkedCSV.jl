@@ -17,7 +17,9 @@ It will parse the following formats:
 - `yyyy-mm-ddTHH:MM:SS.sZ`
 
 Negative years are also supported. The smallest DateTime value that can be represented is
-`-292277024-05-15T16:47:04.192` and the largest is `292277025-08-17T07:12:55.807`.
+`-292277024-05-15T16:47:04.192` and the largest is `292277025-08-17T07:12:55.807`, since
+they are backed by a 64 bit integer with millisecond precision. These values correspond to
+`DateTime(Dates.UTM(typemin(Int)))` and `DateTime(Dates.UTM(typemax(Int)))` respectively.
 
 Additionally, since some systems use 32 bit integers to represent years and we don't want to
 fail loudly parsing these even though we can't represent them exactly, all valid
@@ -96,7 +98,7 @@ Base.@propagate_inbounds function _default_tryparse_timestamp(buf, pos, len, cod
     end
 
     year = 0
-    for i in 1:10
+    for i in 1:10 # 10 digits max, since that is the maximum length of a 32 bit integer, anything larger is invalid
         b0 = b - 0x30
         b0 > 0x09 && (return _unsafe_datetime(0), code | Parsers.INVALID, pos)
         year = Int(b0) + 10 * year
@@ -130,13 +132,13 @@ Base.@propagate_inbounds function _default_tryparse_timestamp(buf, pos, len, cod
     month > 12 && (return _unsafe_datetime(year), code | Parsers.INVALID, pos)
     b != UInt8('-') && (return _unsafe_datetime(year, month), code | Parsers.INVALID, pos)
     pos += 1
-    pos > len && (return _unsafe_datetime(year), code | Parsers.INVALID | Parsers.EOF, pos)
+    pos > len && (return _unsafe_datetime(year, month), code | Parsers.INVALID | Parsers.EOF, pos)
     b = buf[pos]
 
     day = 0
     for i in 1:2
         b0 = b - 0x30
-        b0 > 0x09 && (return _unsafe_datetime(year), code | Parsers.INVALID, pos)
+        b0 > 0x09 && (return _unsafe_datetime(year, month), code | Parsers.INVALID, pos)
         day = Int(b0) + 10 * day
         pos += 1
         if pos > len
@@ -144,7 +146,7 @@ Base.@propagate_inbounds function _default_tryparse_timestamp(buf, pos, len, cod
             if i == 2
                 break # 2 digit day at the very end of the buffer
             else # 1 digit day is an error
-                return (_unsafe_datetime(year, month), code | Parsers.INVALID, pos)
+                return (_unsafe_datetime(year, month, day), code | Parsers.INVALID, pos)
             end
         else
             b = buf[pos]
@@ -155,7 +157,7 @@ Base.@propagate_inbounds function _default_tryparse_timestamp(buf, pos, len, cod
         return _clamped_datetime(year, month, day), code | Parsers.OK, pos
     end
     # ensure there is enough room for at least HH:MM:DD
-    len - pos + 1 < 8 && (return _unsafe_datetime(0), code | Parsers.INVALID, pos)
+    len - pos + 1 < 8 && (return _unsafe_datetime(year, month, day), code | Parsers.INVALID, pos)
     b = buf[pos += 1]
 
     hour = 0
@@ -271,8 +273,7 @@ const _Z = SubString("Z", 1:1)
     # and `nothing` for the timezone, as if we never attempted to parse it.
     # If this _was_ a true invalid timezone, the other layers in Parsers.jl will mark the value
     # as invalid because we're at the very end of the field and if we leave any non-whitespace characters
-    # between the end of the value and the delimiter, it will be marked as invalid by other layers
-    # in Parsers.jl.
+    # between the end of the value and the delimiter.
     nb = len - pos
     @inbounds if b == UInt8('+') || b == UInt8('-')
         if nb > 1 && buf[pos+1] == UInt8('0')

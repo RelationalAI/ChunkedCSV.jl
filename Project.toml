@@ -13,6 +13,7 @@ SnoopPrecompile = "66db9d55-30c0-4569-8b51-7e840670fc0c"
 TimeZones = "f269a46b-ccf7-5d73-abea-4c690281aa53"
 
 [compat]
+BenchmarkTools = "1.6"
 ChunkedBase = "0.3"
 Dates = "1"
 FixedPointDecimals = "0.4.3, 0.5, 0.6"
@@ -20,10 +21,11 @@ Parsers = "2.7"
 SentinelArrays = "1"
 SnoopPrecompile = "1"
 TimeZones = "1"
-julia = "1.6"
+julia = "1.10"
 
 [extras]
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 CodecZlibNG = "642d12eb-acb5-4437-bcfc-a25e07ad685c"
 JET = "c3a54625-cd67-489e-a8e7-0a5a0ff4e31b"
 Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
@@ -31,4 +33,4 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 UUIDs = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
 
 [targets]
-test = ["Aqua", "CodecZlibNG", "JET", "Logging", "Test", "UUIDs"]
+test = ["Aqua", "BenchmarkTools", "CodecZlibNG", "JET", "Logging", "Test", "UUIDs"]

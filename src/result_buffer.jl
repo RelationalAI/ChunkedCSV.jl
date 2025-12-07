@@ -220,6 +220,7 @@ function _push_buffers!(::Type{T}, out, i, n) where {T}
 end
 
 Base.length(buf::TaskResultBuffer) = length(buf.row_statuses)
+capacity(buf::TaskResultBuffer) = length(buf.row_statuses.elements)
 
 function Base.empty!(buf::TaskResultBuffer)
     foreach(empty!, buf.cols)

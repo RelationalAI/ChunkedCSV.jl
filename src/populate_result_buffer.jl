@@ -35,6 +35,7 @@ end
 @inline function parsecustom!(::Type{customtypes}, row_bytes, pos, len, col_idx, cols, options, _type) where {customtypes}
     if @generated
         block = Expr(:block)
+        pushfirst!(block.args, :(error(lazy"Unreachable: type not matched")))
         for i = 1:fieldcount(customtypes)
             T = fieldtype(customtypes, i)
             pushfirst!(block.args, quote
@@ -42,7 +43,7 @@ end
                     res = Parsers.xparse($T, row_bytes, pos, len, options)::Parsers.Result{$T}
                     (val, tlen, code) = res.val, res.tlen, res.code
                     unsafe_push!(cols[col_idx]::BufferedVector{$T}, val)
-                    return val, tlen, code
+                    return tlen, code
                 end
             end)
         end
@@ -55,7 +56,7 @@ end
         res = Parsers.xparse(_type, row_bytes, pos, len, options)::Parsers.Result{_type}
         (val, tlen, code) = res.val, res.tlen, res.code
         unsafe_push!(cols[col_idx]::BufferedVector{_type}, val)
-        return val, tlen, code
+        return tlen, code
     end
 end
 
@@ -74,7 +75,8 @@ function ChunkedBase.populate_result_buffer!(
     errored_idx = 1
     options = parsing_ctx.options
 
-    Base.ensureroom(result_buf, ceil(Int, length(newlines_segment) * 1.01))
+    # If we need to grow the buffer, we add a bit of extra room to avoid having to reallocate too often
+    capacity(result_buf) < (length(newlines_segment)-1) && Base.ensureroom(result_buf, ceil(Int, length(newlines_segment) * 1.01))
 
     ignorerepeated = options.ignorerepeated::Bool
     ignoreemptyrows = options.ignoreemptylines::Bool
@@ -163,7 +165,7 @@ function ChunkedBase.populate_result_buffer!(
                 (val, tlen, code) = res.val, res.tlen, res.code
                 unsafe_push!(cols[col_idx]::BufferedVector{Parsers.PosLen31}, Parsers.PosLen31(prev_newline+val.pos, val.len, val.missingvalue, val.escapedvalue))
             else
-                (val, tlen, code) = parsecustom!(CT, row_bytes, pos, len, col_idx, cols, options, schema[col_idx])
+                (tlen, code) = parsecustom!(CT, row_bytes, pos, len, col_idx, cols, options, schema[col_idx])
             end
             if Parsers.sentinel(code)
                 row_status |= RowStatus.MissingValues
